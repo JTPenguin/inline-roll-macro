@@ -19,6 +19,9 @@ const SKILLS = [
     'Society', 'Stealth', 'Survival', 'Thievery'
 ];
 
+// Condition mapping for dynamic UUID retrieval
+let conditionMap = new Map();
+
 // Create regex patterns from type arrays
 const DAMAGE_TYPE_PATTERN = DAMAGE_TYPES.join('|');
 const SKILL_PATTERN = SKILLS.join('|');
@@ -282,14 +285,86 @@ const CONVERSION_PATTERNS = {
     },
     
     // ============================================================================
-    // PRIORITY 6 - AREA EFFECTS (Lowest priority)
+    // PRIORITY 5 - LEGACY FLAT-FOOTED CONVERSION (Before condition linking)
+    // ============================================================================
+    
+    // Legacy "flat-footed" to "off-guard" conversion (before condition linking)
+    legacyFlatFooted: {
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\bflat-footed\b(?!\})/gi,
+        replacement: 'off-guard',
+        priority: 5,
+        description: 'Legacy flat-footed to off-guard conversion (before condition linking)'
+    },
+    
+    // ============================================================================
+    // PRIORITY 6 - CONDITION LINKING (Process after legacy conversions to avoid conflicts)
+    // ============================================================================
+    
+    // Condition linking with values (e.g., "frightened 2", "enfeebled 1")
+    conditionWithValue: {
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(blinded|broken|clumsy|concealed|confused|controlled|dazzled|deafened|doomed|drained|dying|enfeebled|fascinated|fatigued|fleeing|frightened|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|sickened|slowed|stunned|stupefied|unconscious|undetected|wounded)\s+(\d+)\b(?!\})/gi,
+        replacement: function(match, condition, value) {
+            const uuid = getConditionUUID(condition);
+            
+            if (!uuid) return match;
+            
+            // Check if this condition+value combination has already been linked
+            const conditionKey = `${condition.toLowerCase()}-${value}`;
+            if (this.linkedConditions.has(conditionKey)) return match;
+            
+            this.linkedConditions.add(conditionKey);
+            return `@UUID[${uuid}]{${condition} ${value}}`;
+        },
+        priority: 6,
+        description: 'Condition linking with values'
+    },
+    
+    // Condition linking without values (e.g., "blinded", "prone")
+    conditionWithoutValue: {
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(blinded|broken|clumsy|concealed|confused|controlled|dazzled|deafened|doomed|drained|dying|enfeebled|fascinated|fatigued|fleeing|frightened|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|sickened|slowed|stunned|stupefied|unconscious|undetected|wounded)\b(?!\})/gi,
+        replacement: function(match, condition) {
+            const uuid = getConditionUUID(condition);
+            
+            if (!uuid) return match;
+            
+            // Check if this condition has already been linked
+            const conditionKey = condition.toLowerCase();
+            if (this.linkedConditions.has(conditionKey)) return match;
+            
+            this.linkedConditions.add(conditionKey);
+            return `@UUID[${uuid}]{${condition}}`;
+        },
+        priority: 6,
+        description: 'Condition linking without values'
+    },
+    
+    // Additional condition patterns for edge cases
+    conditionWithValueHyphenated: {
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(off-guard)\s+(\d+)\b(?!\})/gi,
+        replacement: function(match, condition, value) {
+            const uuid = getConditionUUID(condition);
+            if (!uuid) return match;
+            
+            // Check if this condition+value combination has already been linked
+            const conditionKey = `${condition.toLowerCase()}-${value}`;
+            if (this.linkedConditions.has(conditionKey)) return match;
+            
+            this.linkedConditions.add(conditionKey);
+            return `@UUID[${uuid}]{${condition} ${value}}`;
+        },
+        priority: 6,
+        description: 'Hyphenated condition linking with values'
+    },
+    
+    // ============================================================================
+    // PRIORITY 7 - AREA EFFECTS (Lowest priority)
     // ============================================================================
     
     // Basic area effects
     basicAreaEffects: {
         regex: /(\d+)-foot\s+(burst|cone|line|emanation)/gi,
         replacement: '@Template[type:$2|distance:$1]',
-        priority: 6,
+        priority: 7,
         description: 'Basic area effects'
     },
     
@@ -297,10 +372,182 @@ const CONVERSION_PATTERNS = {
     radiusEffects: {
         regex: /(\d+)-foot\s+radius/gi,
         replacement: '@Template[type:burst|distance:$1]',
-        priority: 6,
+        priority: 7,
         description: 'Radius area effects'
     }
 };
+
+/**
+ * Try to get condition UUID from compendium
+ * @param {string} conditionName - The condition name to look up
+ * @returns {string|null} - The condition UUID or null if not found
+ */
+function getConditionUUIDFromCompendium(conditionName) {
+    try {
+        const conditionCompendium = game.packs.get('pf2e.conditionitems');
+        if (!conditionCompendium) return null;
+        
+        const normalizedName = conditionName.toLowerCase().trim();
+        
+        // Search through the compendium index
+        const entries = conditionCompendium.index.contents;
+        for (const entry of entries) {
+            if (entry.name.toLowerCase() === normalizedName) {
+                return entry.uuid;
+            }
+        }
+        
+        return null;
+    } catch (error) {
+        console.log('PF2e Converter: Error getting condition from compendium:', error);
+        return null;
+    }
+}
+
+/**
+ * Build condition mapping for dynamic UUID retrieval
+ * @returns {Map} - Map of condition names to UUIDs
+ */
+function buildConditionMap() {
+    const conditionMap = new Map();
+    
+    // List of all conditions we want to support
+    const conditionNames = [
+        'blinded', 'broken', 'clumsy', 'concealed', 'confused', 'controlled', 
+        'dazzled', 'deafened', 'doomed', 'drained', 'dying', 'enfeebled', 
+        'fascinated', 'fatigued', 'fleeing', 'frightened', 'grabbed', 'immobilized', 
+        'invisible', 'off-guard', 'paralyzed', 'petrified', 'prone', 'quickened', 
+        'restrained', 'sickened', 'slowed', 'stunned', 'stupefied', 'unconscious', 
+        'undetected', 'wounded'
+    ];
+    
+    console.log('PF2e Converter: Building condition map from compendium...');
+    
+    // Try to get all conditions from the compendium
+    for (const conditionName of conditionNames) {
+        const uuid = getConditionUUIDFromCompendium(conditionName);
+        if (uuid) {
+            conditionMap.set(conditionName, {
+                uuid: uuid,
+                name: conditionName,
+                slug: conditionName
+            });
+            console.log(`PF2e Converter: Found "${conditionName}": ${uuid}`);
+        } else {
+            console.warn(`PF2e Converter: Could not find UUID for condition "${conditionName}"`);
+        }
+    }
+    
+    // Fallback condition UUIDs (common PF2e conditions) - Updated for Remaster
+    const fallbackConditions = {
+        'blinded': 'Compendium.pf2e.conditionitems.Item.blinded',
+        'broken': 'Compendium.pf2e.conditionitems.Item.broken',
+        'clumsy': 'Compendium.pf2e.conditionitems.Item.clumsy',
+        'concealed': 'Compendium.pf2e.conditionitems.Item.concealed',
+        'confused': 'Compendium.pf2e.conditionitems.Item.confused',
+        'controlled': 'Compendium.pf2e.conditionitems.Item.controlled',
+        'dazzled': 'Compendium.pf2e.conditionitems.Item.dazzled',
+        'deafened': 'Compendium.pf2e.conditionitems.Item.deafened',
+        'doomed': 'Compendium.pf2e.conditionitems.Item.doomed',
+        'drained': 'Compendium.pf2e.conditionitems.Item.drained',
+        'dying': 'Compendium.pf2e.conditionitems.Item.dying',
+        'enfeebled': 'Compendium.pf2e.conditionitems.Item.enfeebled',
+        'fascinated': 'Compendium.pf2e.conditionitems.Item.fascinated',
+        'fatigued': 'Compendium.pf2e.conditionitems.Item.fatigued',
+        'fleeing': 'Compendium.pf2e.conditionitems.Item.fleeing',
+        'frightened': 'Compendium.pf2e.conditionitems.Item.frightened',
+        'grabbed': 'Compendium.pf2e.conditionitems.Item.grabbed',
+        'immobilized': 'Compendium.pf2e.conditionitems.Item.immobilized',
+        'invisible': 'Compendium.pf2e.conditionitems.Item.invisible',
+        'off-guard': 'Compendium.pf2e.conditionitems.Item.off-guard',
+        'paralyzed': 'Compendium.pf2e.conditionitems.Item.paralyzed',
+        'petrified': 'Compendium.pf2e.conditionitems.Item.petrified',
+        'prone': 'Compendium.pf2e.conditionitems.Item.prone',
+        'quickened': 'Compendium.pf2e.conditionitems.Item.quickened',
+        'restrained': 'Compendium.pf2e.conditionitems.Item.restrained',
+        'sickened': 'Compendium.pf2e.conditionitems.Item.sickened',
+        'slowed': 'Compendium.pf2e.conditionitems.Item.slowed',
+        'stunned': 'Compendium.pf2e.conditionitems.Item.stunned',
+        'stupefied': 'Compendium.pf2e.conditionitems.Item.stupefied',
+        'unconscious': 'Compendium.pf2e.conditionitems.Item.unconscious',
+        'undetected': 'Compendium.pf2e.conditionitems.Item.undetected',
+        'wounded': 'Compendium.pf2e.conditionitems.Item.wounded'
+    };
+    
+    // If we didn't get any conditions from the compendium, use fallbacks
+    if (conditionMap.size === 0) {
+        console.warn('PF2e Converter: No conditions found from compendium, using fallback mapping');
+        for (const [name, uuid] of Object.entries(fallbackConditions)) {
+            conditionMap.set(name, {
+                uuid: uuid,
+                name: name,
+                slug: name
+            });
+            console.log(`PF2e Converter: Using fallback for "${name}": ${uuid}`);
+        }
+    } else {
+        // Fill in any missing conditions with fallbacks
+        for (const [name, uuid] of Object.entries(fallbackConditions)) {
+            if (!conditionMap.has(name)) {
+                conditionMap.set(name, {
+                    uuid: uuid,
+                    name: name,
+                    slug: name
+                });
+                console.log(`PF2e Converter: Using fallback for missing "${name}": ${uuid}`);
+            }
+        }
+    }
+    
+    return conditionMap;
+}
+
+/**
+ * Get condition UUID by name
+ * @param {string} conditionName - The condition name to look up
+ * @returns {string|null} - The condition UUID or null if not found
+ */
+function getConditionUUID(conditionName) {
+    const normalizedName = conditionName.toLowerCase().trim();
+    
+    // Get from our pre-loaded map
+    const condition = conditionMap.get(normalizedName);
+    
+    return condition?.uuid || null;
+}
+
+/**
+ * Initialize condition mapping
+ */
+function initializeConditionMap() {
+    conditionMap = buildConditionMap();
+    console.log(`PF2e Converter: Initialized condition map with ${conditionMap.size} conditions`);
+    
+    // Debug: Try to access conditions through different methods
+    console.log('PF2e Converter: Debugging condition access...');
+    console.log('game.pf2e:', game.pf2e);
+    console.log('game.pf2e.conditions:', game.pf2e?.conditions);
+    
+    // Try to access conditions through compendium
+    try {
+        const conditionCompendium = game.packs.get('pf2e.conditionitems');
+        if (conditionCompendium) {
+            console.log('PF2e Converter: Found condition compendium:', conditionCompendium);
+            console.log('PF2e Converter: Compendium index:', conditionCompendium.index);
+        }
+    } catch (error) {
+        console.log('PF2e Converter: Could not access condition compendium:', error);
+    }
+    
+    // Try to access conditions through system data
+    try {
+        if (game.pf2e?.system?.conditions) {
+            console.log('PF2e Converter: System conditions:', game.pf2e.system.conditions);
+        }
+    } catch (error) {
+        console.log('PF2e Converter: Could not access system conditions:', error);
+    }
+}
 
 /**
  * Main conversion engine
@@ -321,6 +568,7 @@ function convertText(inputText) {
     let conversionsCount = 0;
     let errors = [];
     let patternMatches = {};
+    let linkedConditions = new Set(); // Track already linked conditions
 
     try {
         // Sort patterns by priority (lowest number = highest priority)
@@ -337,7 +585,17 @@ function convertText(inputText) {
                 console.log(`PF2e Converter: Found ${matchCount} matches for "${patternName}":`, matches);
                 console.log(`PF2e Converter: Text before replacement:`, convertedText);
                 
-                convertedText = convertedText.replace(pattern.regex, pattern.replacement);
+                // For condition patterns, create a closure that captures linkedConditions
+                let replacementFunction = pattern.replacement;
+                if (patternName.startsWith('condition') || patternName === 'legacyFlatFooted') {
+                    replacementFunction = (match, ...args) => {
+                        // Call the original replacement function with linkedConditions context
+                        return pattern.replacement.call({ linkedConditions }, match, ...args);
+                    };
+                }
+                
+                convertedText = convertedText.replace(pattern.regex, replacementFunction);
+                
                 conversionsCount += matchCount;
                 patternMatches[patternName] = matchCount;
                 
@@ -697,9 +955,24 @@ function showConverterDialog() {
     dialog.render(true);
 }
 
+/**
+ * Test condition linking functionality
+ */
+function testConditionLinking() {
+    console.log('PF2e Converter: Testing condition linking...');
+    
+    const testText = "The target becomes frightened 2 and off-guard. The poison causes enfeebled 1.";
+    console.log('PF2e Converter: Test input:', testText);
+    
+    const result = convertText(testText);
+    console.log('PF2e Converter: Test result:', result);
+    
+    return result;
+}
+
 // Main execution
 try {
-    console.log('PF2e Inline Roll Converter v2.1: Starting...');
+    console.log('PF2e Inline Roll Converter v2.2: Starting...');
     
     // Verify we're in a PF2e game
     if (game.system.id !== 'pf2e') {
@@ -711,6 +984,12 @@ try {
     if (!game.version || parseInt(game.version.split('.')[0]) < 12) {
         ui.notifications.warn("This macro is designed for Foundry VTT v12+. Some features may not work properly.");
     }
+    
+    // Initialize condition mapping
+    initializeConditionMap();
+    
+    // Test condition linking
+    testConditionLinking();
     
     // Show the converter dialog
     showConverterDialog();
