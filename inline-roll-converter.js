@@ -321,7 +321,7 @@ const CONVERSION_PATTERNS = {
     
     // Condition linking without values (e.g., "blinded", "prone")
     conditionWithoutValue: {
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(blinded|broken|clumsy|concealed|confused|controlled|dazzled|deafened|doomed|drained|dying|enfeebled|fascinated|fatigued|fleeing|frightened|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|sickened|slowed|stunned|stupefied|unconscious|undetected|wounded)\b(?!\})/gi,
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(blinded|broken|clumsy|concealed|confused|controlled|dazzled|deafened|doomed|drained|dying|enfeebled|fascinated|fatigued|fleeing|frightened|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|sickened|slowed|stunned|stupefied|unconscious|undetected|wounded)\b(?!\s+\d+)(?!\})/gi,
         replacement: function(match, condition) {
             const uuid = getConditionUUID(condition);
             
