@@ -209,7 +209,34 @@ const CONVERSION_PATTERNS = {
     },
     
     // ============================================================================
-    // PRIORITY 4 - DAMAGE CONSOLIDATION AND LEGACY CONVERSIONS
+    // PRIORITY 4 - LEGACY DAMAGE TYPE CONVERSIONS (Before consolidation)
+    // ============================================================================
+    
+    // Legacy damage type conversions (only within @Damage[...] rolls, before consolidation)
+    legacyAlignmentDamage: {
+        // Replace any occurrence of a legacy alignment type in the type list with 'spirit'
+        regex: /@Damage\[(.*?\[)([^\]]*?)(chaotic|evil|good|lawful)([^\]]*?)\](.*?)\]/gi,
+        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}spirit${after}]${suffix}]`,
+        priority: 4,
+        description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
+    },
+    
+    legacyPositiveDamage: {
+        regex: /@Damage\[(.*?\[)([^\]]*?)(positive)([^\]]*?)\](.*?)\]/gi,
+        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}vitality${after}]${suffix}]`,
+        priority: 4,
+        description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
+    },
+    
+    legacyNegativeDamage: {
+        regex: /@Damage\[(.*?\[)([^\]]*?)(negative)([^\]]*?)\](.*?)\]/gi,
+        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}void${after}]${suffix}]`,
+        priority: 4,
+        description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
+    },
+    
+    // ============================================================================
+    // PRIORITY 5 - DAMAGE CONSOLIDATION (After legacy conversions)
     // ============================================================================
     
     // Multiple damage types - consolidate individual @Damage rolls into single roll
@@ -250,42 +277,19 @@ const CONVERSION_PATTERNS = {
             
             return match;
         },
-        priority: 4,
+        priority: 5,
         description: 'Multiple damage types consolidation'
     },
     
-    // Legacy damage type conversions (only within @Damage[...] rolls, after all damage roll conversions)
-    legacyAlignmentDamage: {
-        // Replace any occurrence of a legacy alignment type in the type list with 'spirit'
-        regex: /@Damage\[(.*?\[)([^\]]*?)(chaotic|evil|good|lawful)([^\]]*?)\](.*?)\]/gi,
-        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}spirit${after}]${suffix}]`,
-        priority: 4,
-        description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
-    },
-    
-    legacyPositiveDamage: {
-        regex: /@Damage\[(.*?\[)([^\]]*?)(positive)([^\]]*?)\](.*?)\]/gi,
-        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}vitality${after}]${suffix}]`,
-        priority: 4,
-        description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
-    },
-    
-    legacyNegativeDamage: {
-        regex: /@Damage\[(.*?\[)([^\]]*?)(negative)([^\]]*?)\](.*?)\]/gi,
-        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}void${after}]${suffix}]`,
-        priority: 4,
-        description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
-    },
-    
     // ============================================================================
-    // PRIORITY 5 - AREA EFFECTS (Lowest priority)
+    // PRIORITY 6 - AREA EFFECTS (Lowest priority)
     // ============================================================================
     
     // Basic area effects
     basicAreaEffects: {
         regex: /(\d+)-foot\s+(burst|cone|line|emanation)/gi,
         replacement: '@Template[type:$2|distance:$1]',
-        priority: 5,
+        priority: 6,
         description: 'Basic area effects'
     },
     
@@ -293,7 +297,7 @@ const CONVERSION_PATTERNS = {
     radiusEffects: {
         regex: /(\d+)-foot\s+radius/gi,
         replacement: '@Template[type:burst|distance:$1]',
-        priority: 5,
+        priority: 6,
         description: 'Radius area effects'
     }
 };
