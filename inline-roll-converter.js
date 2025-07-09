@@ -8,11 +8,7 @@
 // Remaster damage types for validation
 const DAMAGE_TYPES = [
     'acid', 'bludgeoning', 'cold', 'electricity', 'fire', 'force', 'mental', 
-    'piercing', 'slashing', 'sonic', 'spirit', 'vitality', 'void', 'bleed', 'poison'
-];
-
-// Legacy damage types that need conversion
-const LEGACY_DAMAGE_TYPES = [
+    'piercing', 'slashing', 'sonic', 'spirit', 'vitality', 'void', 'bleed', 'poison',
     'chaotic', 'evil', 'good', 'lawful', 'positive', 'negative'
 ];
 
@@ -25,34 +21,11 @@ const SKILLS = [
 
 // Create regex patterns from type arrays
 const DAMAGE_TYPE_PATTERN = DAMAGE_TYPES.join('|');
-const LEGACY_DAMAGE_PATTERN = LEGACY_DAMAGE_TYPES.join('|');
 const SKILL_PATTERN = SKILLS.join('|');
 
 // Configuration object for conversion patterns (ordered by priority)
 const CONVERSION_PATTERNS = {
     // HIGHEST PRIORITY - Process these first to avoid conflicts
-    
-    // Legacy damage type conversions
-    legacyAlignmentDamage: {
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(chaotic|evil|good|lawful)\\s+damage`, 'gi'),
-        replacement: '@Damage[$1[spirit]] damage',
-        priority: 1,
-        description: 'Legacy alignment damage to spirit'
-    },
-    
-    legacyPositiveDamage: {
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(positive)\\s+damage`, 'gi'),
-        replacement: '@Damage[$1[vitality]] damage',
-        priority: 1,
-        description: 'Legacy positive damage to vitality'
-    },
-    
-    legacyNegativeDamage: {
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(negative)\\s+damage`, 'gi'),
-        replacement: '@Damage[$1[void]] damage',
-        priority: 1,
-        description: 'Legacy negative damage to void'
-    },
     
     // HIGH PRIORITY - Common patterns
     
@@ -145,8 +118,29 @@ const CONVERSION_PATTERNS = {
             
             return match;
         },
-        priority: 3.5,
+        priority: 4,
         description: 'Multiple damage types consolidation'
+    },
+    
+    // Legacy damage type conversions (only within @Damage[...] rolls, after all damage roll conversions)
+    legacyAlignmentDamage: {
+        // Replace any occurrence of a legacy alignment type in the type list with 'spirit'
+        regex: /@Damage\[(.*?\[)([^\]]*?)(chaotic|evil|good|lawful)([^\]]*?)\](.*?)\]/gi,
+        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}spirit${after}]${suffix}]`,
+        priority: 3.5,
+        description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
+    },
+    legacyPositiveDamage: {
+        regex: /@Damage\[(.*?\[)([^\]]*?)(positive)([^\]]*?)\](.*?)\]/gi,
+        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}vitality${after}]${suffix}]`,
+        priority: 3.5,
+        description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
+    },
+    legacyNegativeDamage: {
+        regex: /@Damage\[(.*?\[)([^\]]*?)(negative)([^\]]*?)\](.*?)\]/gi,
+        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}void${after}]${suffix}]`,
+        priority: 3.5,
+        description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
     },
 	
     // Saves
@@ -380,7 +374,6 @@ function convertText(inputText) {
  */
 function validateDamageTypes(text) {
     const foundTypes = [];
-    const legacyTypes = [];
     
     // Find all damage type mentions
     const damageRegex = /(\w+)\s+damage/gi;
@@ -391,15 +384,12 @@ function validateDamageTypes(text) {
         
         if (DAMAGE_TYPES.includes(damageType)) {
             foundTypes.push(damageType);
-        } else if (LEGACY_DAMAGE_TYPES.includes(damageType)) {
-            legacyTypes.push(damageType);
         }
     }
     
     return {
         validTypes: [...new Set(foundTypes)],
-        legacyTypes: [...new Set(legacyTypes)],
-        hasLegacyTypes: legacyTypes.length > 0
+        hasLegacyTypes: false
     };
 }
 
