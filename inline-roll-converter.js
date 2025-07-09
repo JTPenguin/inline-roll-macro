@@ -299,10 +299,20 @@ const CONVERSION_PATTERNS = {
     // ============================================================================
     // PRIORITY 6 - CONDITION LINKING (Process after legacy conversions to avoid conflicts)
     // ============================================================================
+    // 
+    // Condition linking follows PF2e rules:
+    // - Conditions that CAN have values: clumsy, doomed, drained, dying, enfeebled, 
+    //   frightened, sickened, slowed, stunned, stupefied, wounded
+    // - Conditions that CANNOT have values: blinded, broken, concealed, confused, 
+    //   controlled, dazzled, deafened, fascinated, fatigued, fleeing, grabbed, 
+    //   immobilized, invisible, off-guard, paralyzed, petrified, prone, quickened, 
+    //   restrained, unconscious, undetected
+    // - Special case: stunned can appear with or without a value
+    // ============================================================================
     
-    // Condition linking with values (e.g., "frightened 2", "enfeebled 1")
+    // Condition linking with values (only for conditions that can have values)
     conditionWithValue: {
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(blinded|broken|clumsy|concealed|confused|controlled|dazzled|deafened|doomed|drained|dying|enfeebled|fascinated|fatigued|fleeing|frightened|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|sickened|slowed|stunned|stupefied|unconscious|undetected|wounded)\s+(\d+)\b(?!\})/gi,
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(clumsy|doomed|drained|dying|enfeebled|frightened|sickened|slowed|stunned|stupefied|wounded)\s+(\d+)\b(?!\})/gi,
         replacement: function(match, condition, value) {
             const uuid = getConditionUUID(condition);
             
@@ -316,12 +326,12 @@ const CONVERSION_PATTERNS = {
             return `@UUID[${uuid}]{${condition} ${value}}`;
         },
         priority: 6,
-        description: 'Condition linking with values'
+        description: 'Condition linking with values (only for conditions that support values)'
     },
     
-    // Condition linking without values (e.g., "blinded", "prone")
+    // Condition linking without values (for all conditions except stunned, which is handled separately)
     conditionWithoutValue: {
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(blinded|broken|clumsy|concealed|confused|controlled|dazzled|deafened|doomed|drained|dying|enfeebled|fascinated|fatigued|fleeing|frightened|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|sickened|slowed|stunned|stupefied|unconscious|undetected|wounded)\b(?!\s+\d+)(?!\})/gi,
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(blinded|broken|concealed|confused|controlled|dazzled|deafened|fascinated|fatigued|fleeing|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|unconscious|undetected)\b(?!\s+\d+)(?!\})/gi,
         replacement: function(match, condition) {
             const uuid = getConditionUUID(condition);
             
@@ -335,25 +345,26 @@ const CONVERSION_PATTERNS = {
             return `@UUID[${uuid}]{${condition}}`;
         },
         priority: 6,
-        description: 'Condition linking without values'
+        description: 'Condition linking without values (conditions that cannot have values)'
     },
     
-    // Additional condition patterns for edge cases
-    conditionWithValueHyphenated: {
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(off-guard)\s+(\d+)\b(?!\})/gi,
-        replacement: function(match, condition, value) {
+    // Special handling for stunned (can appear with or without value)
+    stunnedCondition: {
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(stunned)\b(?!\s+\d+)(?!\})/gi,
+        replacement: function(match, condition) {
             const uuid = getConditionUUID(condition);
+            
             if (!uuid) return match;
             
-            // Check if this condition+value combination has already been linked
-            const conditionKey = `${condition.toLowerCase()}-${value}`;
+            // Check if stunned has already been linked (without value)
+            const conditionKey = 'stunned';
             if (this.linkedConditions.has(conditionKey)) return match;
             
             this.linkedConditions.add(conditionKey);
-            return `@UUID[${uuid}]{${condition} ${value}}`;
+            return `@UUID[${uuid}]{${condition}}`;
         },
         priority: 6,
-        description: 'Hyphenated condition linking with values'
+        description: 'Stunned condition without value (special case)'
     },
     
     // ============================================================================
@@ -419,6 +430,12 @@ function buildConditionMap() {
         'invisible', 'off-guard', 'paralyzed', 'petrified', 'prone', 'quickened', 
         'restrained', 'sickened', 'slowed', 'stunned', 'stupefied', 'unconscious', 
         'undetected', 'wounded'
+    ];
+    
+    // Conditions that can have values (for validation and documentation)
+    const conditionsWithValues = [
+        'clumsy', 'doomed', 'drained', 'dying', 'enfeebled', 'frightened', 
+        'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
     ];
     
     console.log('PF2e Converter: Building condition map from compendium...');
@@ -587,7 +604,7 @@ function convertText(inputText) {
                 
                 // For condition patterns, create a closure that captures linkedConditions
                 let replacementFunction = pattern.replacement;
-                if (patternName.startsWith('condition') || patternName === 'legacyFlatFooted') {
+                if (patternName.startsWith('condition') || patternName === 'stunnedCondition') {
                     replacementFunction = (match, ...args) => {
                         // Call the original replacement function with linkedConditions context
                         return pattern.replacement.call({ linkedConditions }, match, ...args);
@@ -961,7 +978,8 @@ function showConverterDialog() {
 function testConditionLinking() {
     console.log('PF2e Converter: Testing condition linking...');
     
-    const testText = "The target becomes frightened 2 and off-guard. The poison causes enfeebled 1.";
+    // Test various condition types: with values, without values, and stunned (special case)
+    const testText = "The target becomes frightened 2 and off-guard. The poison causes enfeebled 1. The creature is stunned 3, then becomes stunned. The spell makes them blinded and prone.";
     console.log('PF2e Converter: Test input:', testText);
     
     const result = convertText(testText);
