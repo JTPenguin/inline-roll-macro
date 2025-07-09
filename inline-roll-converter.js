@@ -25,11 +25,43 @@ const SKILL_PATTERN = SKILLS.join('|');
 
 // Configuration object for conversion patterns (ordered by priority)
 const CONVERSION_PATTERNS = {
-    // HIGHEST PRIORITY - Process these first to avoid conflicts
+    // ============================================================================
+    // PRIORITY 1 - HIGHEST PRIORITY PATTERNS (Process first to avoid conflicts)
+    // ============================================================================
     
-    // HIGH PRIORITY - Common patterns
+    // Comprehensive save pattern (all variations including parenthetical)
+    comprehensiveSave: {
+        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?)(?:\)?)/gi,
+        replacement: (match, savePhrase, dc1, save1, dc2, save2, dc3, dc4, save3, dc5, save4) => {
+            // Extract save type and normalize
+            const save = (save1 || save2 || save3 || save4).toLowerCase();
+            const normalizedSave = save.startsWith('fort') ? 'fortitude' : 
+                                  save.startsWith('ref') ? 'reflex' : 'will';
+            
+            // Extract DC (could be in any of the capture groups)
+            const dc = dc1 || dc2 || dc3 || dc4 || dc5;
+            
+            // Check if basic is present
+            const basicMatch = savePhrase.match(/\bbasic\b/i);
+            const isBasic = !!basicMatch;
+            
+            // Check if the original match was wrapped in parentheses
+            const wasParenthetical = match.startsWith('(') && match.endsWith(')');
+            
+            // Build the replacement
+            const basicStr = isBasic ? '|basic' : '';
+            const replacement = `@Check[${normalizedSave}|dc:${dc}${basicStr}] save`;
+            
+            // Wrap in parentheses if the original was parenthetical
+            return wasParenthetical ? `(${replacement})` : replacement;
+        },
+        priority: 1,
+        description: 'Comprehensive save pattern (all variations including parenthetical)'
+    },
     
-    // SINGLE DAMAGE TYPE PARSING - Parse individual damage expressions first
+    // ============================================================================
+    // PRIORITY 2 - DAMAGE PATTERNS (Process before consolidation)
+    // ============================================================================
     
     // Persistent damage (highest priority among standard damage)
     persistentDamage: {
@@ -72,6 +104,94 @@ const CONVERSION_PATTERNS = {
         description: 'Generic precision damage'
     },
     
+    // Healing patterns
+    healingHitPoints: {
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+(?:hit\s+points?|HP)/gi,
+        replacement: '@Damage[$1[healing]] hit points',
+        priority: 2,
+        description: 'Healing hit points'
+    },
+    
+    healingGeneric: {
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+healing/gi,
+        replacement: '@Damage[$1[healing]] healing',
+        priority: 2,
+        description: 'Generic healing'
+    },
+    
+    // Multiple skill checks (must come before single skill checks)
+    multipleSkillChecks: {
+        regex: new RegExp(`DC\\s+(\\d+)\\s+((?:${SKILL_PATTERN})(?:\\s*,\\s*(?:${SKILL_PATTERN}))*\\s*(?:,\\s*)?(?:or\\s+)?(?:${SKILL_PATTERN}))\\s+check`, 'gi'),
+        replacement: (match, dc, skillsText) => {
+            // Clean up the skills text and split into individual skills
+            const skills = skillsText
+                .replace(/\s+or\s+/gi, ',')  // Replace "or" with comma
+                .split(/\s*,\s*/)            // Split on commas
+                .map(skill => skill.trim())  // Trim whitespace
+                .filter(skill => skill.length > 0); // Remove empty strings
+            
+            // Create individual check buttons while preserving structure
+            const checkButtons = skills.map(skill => `@Check[${skill.toLowerCase()}|dc:${dc}]`);
+            
+            if (skills.length === 2) {
+                // Two skills: "DC X Skill1 or Skill2 check"
+                return `DC ${dc} ${checkButtons[0]} or ${checkButtons[1]} check`;
+            } else if (skills.length > 2) {
+                // Multiple skills: "DC X Skill1, Skill2, or Skill3 check"
+                const lastSkill = checkButtons.pop();
+                return `DC ${dc} ${checkButtons.join(', ')}, or ${lastSkill} check`;
+            } else {
+                // Fallback to single skill
+                return `DC ${dc} ${checkButtons[0]} check`;
+            }
+        },
+        priority: 2,
+        description: 'Multiple skill checks'
+    },
+    
+    // Perception checks
+    perceptionChecks: {
+        regex: /DC\s+(\d+)\s+Perception\s+check/gi,
+        replacement: '@Check[perception|dc:$1] check',
+        priority: 2,
+        description: 'Perception checks'
+    },
+    
+    // Flat checks
+    flatChecks: {
+        regex: /DC\s+(\d+)\s+flat\s+check/gi,
+        replacement: '@Check[flat|dc:$1]',
+        priority: 2,
+        description: 'Flat checks'
+    },
+    
+    // Ability recharge patterns (higher priority than basic duration rolls)
+    abilityRechargeSpecific: {
+        regex: /again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        replacement: 'again for [[/gmr $1 #Recharge]]{$1 $2}',
+        priority: 2,
+        description: 'Ability recharge pattern'
+    },
+    
+    genericRechargeSpecific: {
+        regex: /can't use this (?:ability|action|feature|spell) again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        replacement: "can't use this ability again for [[/gmr $1 #Recharge]]{$1 $2}",
+        priority: 2,
+        description: 'Generic ability recharge'
+    },
+    
+    // Recharge variants
+    rechargePattern1: {
+        regex: /recharges? (?:in|after) (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        replacement: 'recharges in [[/gmr $1 #Recharge]]{$1 $2}',
+        priority: 2,
+        description: 'Recharge timing pattern'
+    },
+    
+    // ============================================================================
+    // PRIORITY 3 - BASIC DAMAGE AND SKILL PATTERNS
+    // ============================================================================
+    
     // Basic damage with type
     basicDamage: {
         regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${DAMAGE_TYPE_PATTERN})`, 'gi'),
@@ -79,8 +199,20 @@ const CONVERSION_PATTERNS = {
         priority: 3,
         description: 'Basic damage rolls'
     },
-	
-	// Multiple damage types - consolidate individual @Damage rolls into single roll
+    
+    // Single skill checks (lower priority than multiple)
+    skillChecks: {
+        regex: new RegExp(`DC\\s+(\\d+)\\s+(${SKILL_PATTERN})\\s+check`, 'gi'),
+        replacement: (match, dc, skill) => `@Check[${skill.toLowerCase()}|dc:${dc}] check`,
+        priority: 3,
+        description: 'Single skill checks'
+    },
+    
+    // ============================================================================
+    // PRIORITY 4 - DAMAGE CONSOLIDATION AND LEGACY CONVERSIONS
+    // ============================================================================
+    
+    // Multiple damage types - consolidate individual @Damage rolls into single roll
     multipleDamageTypes: {
         regex: /@Damage\[[^\@]*\](?:\s+(?:(?:splash|precision)\s+)?damage|(?:\s+(?:splash|precision)))?(?:\s*,\s*(?:and\s+)?|\s+and\s+)@Damage\[[^\@]*\](?:\s+(?:splash|precision))?(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)@Damage\[[^\@]*\](?:\s+(?:(?:splash|precision)\s+)?damage|(?:\s+(?:splash|precision)))?)*(?:\s+(?:splash|precision))?/gi,
         replacement: (match) => {
@@ -127,154 +259,33 @@ const CONVERSION_PATTERNS = {
         // Replace any occurrence of a legacy alignment type in the type list with 'spirit'
         regex: /@Damage\[(.*?\[)([^\]]*?)(chaotic|evil|good|lawful)([^\]]*?)\](.*?)\]/gi,
         replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}spirit${after}]${suffix}]`,
-        priority: 3.5,
+        priority: 4,
         description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
     },
+    
     legacyPositiveDamage: {
         regex: /@Damage\[(.*?\[)([^\]]*?)(positive)([^\]]*?)\](.*?)\]/gi,
         replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}vitality${after}]${suffix}]`,
-        priority: 3.5,
+        priority: 4,
         description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
     },
+    
     legacyNegativeDamage: {
         regex: /@Damage\[(.*?\[)([^\]]*?)(negative)([^\]]*?)\](.*?)\]/gi,
         replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}void${after}]${suffix}]`,
-        priority: 3.5,
+        priority: 4,
         description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
     },
-	
-    // Saves - Single comprehensive pattern to handle all variations
-    comprehensiveSave: {
-        // Match save phrases with flexible word order, abbreviations, punctuation, and optional parentheses (DC required)
-        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?)(?:\)?)/gi,
-        replacement: (match, savePhrase, dc1, save1, dc2, save2, dc3, dc4, save3, dc5, save4) => {
-            // Extract save type and normalize
-            const save = (save1 || save2 || save3 || save4).toLowerCase();
-            const normalizedSave = save.startsWith('fort') ? 'fortitude' : 
-                                  save.startsWith('ref') ? 'reflex' : 'will';
-            
-            // Extract DC (could be in any of the capture groups)
-            const dc = dc1 || dc2 || dc3 || dc4 || dc5;
-            
-            // Check if basic is present
-            const basicMatch = savePhrase.match(/\bbasic\b/i);
-            const isBasic = !!basicMatch;
-            
-            // Check if the original match was wrapped in parentheses
-            const wasParenthetical = match.startsWith('(') && match.endsWith(')');
-            
-            // Build the replacement
-            const basicStr = isBasic ? '|basic' : '';
-            const replacement = `@Check[${normalizedSave}|dc:${dc}${basicStr}] save`;
-            
-            // Wrap in parentheses if the original was parenthetical
-            return wasParenthetical ? `(${replacement})` : replacement;
-        },
-        priority: 0.5,
-        description: 'Comprehensive save pattern (all variations including parenthetical)'
-    },
     
-    // Healing
-    healingHitPoints: {
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+(?:hit\s+points?|HP)/gi,
-        replacement: '@Damage[$1[healing]] hit points',
-        priority: 2,
-        description: 'Healing hit points'
-    },
-    
-    healingGeneric: {
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+healing/gi,
-        replacement: '@Damage[$1[healing]] healing',
-        priority: 2,
-        description: 'Generic healing'
-    },
-    
-    // Multiple skill checks - Must come before single skill checks
-    multipleSkillChecks: {
-        regex: new RegExp(`DC\\s+(\\d+)\\s+((?:${SKILL_PATTERN})(?:\\s*,\\s*(?:${SKILL_PATTERN}))*\\s*(?:,\\s*)?(?:or\\s+)?(?:${SKILL_PATTERN}))\\s+check`, 'gi'),
-        replacement: (match, dc, skillsText) => {
-            // Clean up the skills text and split into individual skills
-            const skills = skillsText
-                .replace(/\s+or\s+/gi, ',')  // Replace "or" with comma
-                .split(/\s*,\s*/)            // Split on commas
-                .map(skill => skill.trim())  // Trim whitespace
-                .filter(skill => skill.length > 0); // Remove empty strings
-            
-            // Create individual check buttons while preserving structure
-            const checkButtons = skills.map(skill => `@Check[${skill.toLowerCase()}|dc:${dc}]`);
-            
-            if (skills.length === 2) {
-                // Two skills: "DC X Skill1 or Skill2 check"
-                return `DC ${dc} ${checkButtons[0]} or ${checkButtons[1]} check`;
-            } else if (skills.length > 2) {
-                // Multiple skills: "DC X Skill1, Skill2, or Skill3 check"
-                const lastSkill = checkButtons.pop();
-                return `DC ${dc} ${checkButtons.join(', ')}, or ${lastSkill} check`;
-            } else {
-                // Fallback to single skill
-                return `DC ${dc} ${checkButtons[0]} check`;
-            }
-        },
-        priority: 2,
-        description: 'Multiple skill checks'
-    },
-    
-    // Single skill checks - Lower priority than multiple
-    skillChecks: {
-        regex: new RegExp(`DC\\s+(\\d+)\\s+(${SKILL_PATTERN})\\s+check`, 'gi'),
-        replacement: (match, dc, skill) => `@Check[${skill.toLowerCase()}|dc:${dc}] check`,
-        priority: 3,
-        description: 'Single skill checks'
-    },
-    
-    // Perception checks
-    perceptionChecks: {
-        regex: /DC\s+(\d+)\s+Perception\s+check/gi,
-        replacement: '@Check[perception|dc:$1] check',
-        priority: 2,
-        description: 'Perception checks'
-    },
-    
-    // Flat checks
-    flatChecks: {
-        regex: /DC\s+(\d+)\s+flat\s+check/gi,
-        replacement: '@Check[flat|dc:$1]',
-        priority: 2,
-        description: 'Flat checks'
-    },
-    
-    // MEDIUM PRIORITY - Recharge patterns (must come before duration rolls)
-    
-    // Ability recharge patterns - Higher priority than basic duration rolls
-    abilityRechargeSpecific: {
-        regex: /again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
-        replacement: 'again for [[/gmr $1 #Recharge]]{$1 $2}',
-        priority: 3,
-        description: 'Ability recharge pattern'
-    },
-    
-    genericRechargeSpecific: {
-        regex: /can't use this (?:ability|action|feature|spell) again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
-        replacement: "can't use this ability again for [[/gmr $1 #Recharge]]{$1 $2}",
-        priority: 3,
-        description: 'Generic ability recharge'
-    },
-    
-    // Recharge variants
-    rechargePattern1: {
-        regex: /recharges? (?:in|after) (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
-        replacement: 'recharges in [[/gmr $1 #Recharge]]{$1 $2}',
-        priority: 3,
-        description: 'Recharge timing pattern'
-    },
-    
-    // MEDIUM-LOW PRIORITY - Area effects
+    // ============================================================================
+    // PRIORITY 5 - AREA EFFECTS (Lowest priority)
+    // ============================================================================
     
     // Basic area effects
     basicAreaEffects: {
         regex: /(\d+)-foot\s+(burst|cone|line|emanation)/gi,
         replacement: '@Template[type:$2|distance:$1]',
-        priority: 4,
+        priority: 5,
         description: 'Basic area effects'
     },
     
@@ -282,11 +293,9 @@ const CONVERSION_PATTERNS = {
     radiusEffects: {
         regex: /(\d+)-foot\s+radius/gi,
         replacement: '@Template[type:burst|distance:$1]',
-        priority: 4,
+        priority: 5,
         description: 'Radius area effects'
-    },
-
-
+    }
 };
 
 /**
