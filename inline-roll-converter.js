@@ -135,14 +135,14 @@ const CONVERSION_PATTERNS = {
             
             if (skills.length === 2) {
                 // Two skills: "DC X Skill1 or Skill2 check"
-                return `DC ${dc} ${checkButtons[0]} or ${checkButtons[1]} check`;
+                return `${checkButtons[0]} or ${checkButtons[1]} check`;
             } else if (skills.length > 2) {
                 // Multiple skills: "DC X Skill1, Skill2, or Skill3 check"
                 const lastSkill = checkButtons.pop();
-                return `DC ${dc} ${checkButtons.join(', ')}, or ${lastSkill} check`;
+                return `${checkButtons.join(', ')}, or ${lastSkill} check`;
             } else {
                 // Fallback to single skill
-                return `DC ${dc} ${checkButtons[0]} check`;
+                return `${checkButtons[0]} check`;
             }
         },
         priority: 2,
