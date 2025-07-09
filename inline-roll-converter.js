@@ -143,43 +143,35 @@ const CONVERSION_PATTERNS = {
         description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
     },
 	
-    // Saves
-    // Parenthetical save phrase (highest priority for parentheses)
-    parentheticalBasicSave: {
-        regex: /\((?=.*\bbasic\b)(?=.*\b(Fortitude|Reflex|Will)\s+save\b)(?=.*\bDC\s+(\d{1,2})\b)(?:[^.!?](?!\.|!|\?))*?(?:\bbasic\b|\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*?(?:\bbasic\b|\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*?\)/gi,
-        replacement: (match) => {
-            const saveMatch = match.match(/\b(Fortitude|Reflex|Will)\s+save\b/i);
-            const dcMatch = match.match(/\bDC\s+(\d{1,2})\b/i);
-            if (saveMatch && dcMatch) {
-                const save = saveMatch[1].toLowerCase();
-                const dc = dcMatch[1];
-                return `(@Check[${save}|dc:${dc}|basic] save)`;
-            }
-            return match;
+    // Saves - Single comprehensive pattern to handle all variations
+    comprehensiveSave: {
+        // Match save phrases with flexible word order, abbreviations, punctuation, and optional parentheses (DC required)
+        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?)(?:\)?)/gi,
+        replacement: (match, savePhrase, dc1, save1, dc2, save2, dc3, dc4, save3, dc5, save4) => {
+            // Extract save type and normalize
+            const save = (save1 || save2 || save3 || save4).toLowerCase();
+            const normalizedSave = save.startsWith('fort') ? 'fortitude' : 
+                                  save.startsWith('ref') ? 'reflex' : 'will';
+            
+            // Extract DC (could be in any of the capture groups)
+            const dc = dc1 || dc2 || dc3 || dc4 || dc5;
+            
+            // Check if basic is present
+            const basicMatch = savePhrase.match(/\bbasic\b/i);
+            const isBasic = !!basicMatch;
+            
+            // Check if the original match was wrapped in parentheses
+            const wasParenthetical = match.startsWith('(') && match.endsWith(')');
+            
+            // Build the replacement
+            const basicStr = isBasic ? '|basic' : '';
+            const replacement = `@Check[${normalizedSave}|dc:${dc}${basicStr}] save`;
+            
+            // Wrap in parentheses if the original was parenthetical
+            return wasParenthetical ? `(${replacement})` : replacement;
         },
         priority: 0.5,
-        description: 'Parenthetical basic save (entire phrase in parentheses)'
-    },
-
-    basicSaveFlexible: {
-        // Handle flexible word order for basic saves
-        regex: /(?:basic\s+(Fortitude|Reflex|Will)\s+save(?:\s*[,;:\(\)]?\s*DC\s+(\d{1,2}))?|(Fortitude|Reflex|Will)\s+save\s+basic(?:\s*[,;:\(\)]?\s*DC\s+(\d{1,2}))?|basic\s+DC\s+(\d{1,2})\s+(Fortitude|Reflex|Will)\s+save|DC\s+(\d{1,2})\s+basic\s+(Fortitude|Reflex|Will)\s+save)/gi,
-        replacement: (match, save1, dc1, save2, dc2, dc3, save3, dc4, save4) => {
-            // Extract the save type and DC from the various capture groups
-            const save = (save1 || save2 || save3 || save4).toLowerCase();
-            const dc = dc1 || dc2 || dc3 || dc4;
-            return `@Check[${save}|dc:${dc}|basic] save`;
-        },
-        priority: 1,
-        description: 'Basic saves (flexible word order)'
-    },
-
-    standardSaveFlexible: {
-        // Match only the save phrase, not the whole sentence
-        regex: /DC\s+(\d{1,2})\s+(Fortitude|Reflex|Will)\s+save/gi,
-        replacement: (match, dc, save) => `@Check[${save.toLowerCase()}|dc:${dc}] save`,
-        priority: 2,
-        description: 'Standard saves (targeted, no basic)'
+        description: 'Comprehensive save pattern (all variations including parenthetical)'
     },
     
     // Healing
@@ -294,23 +286,7 @@ const CONVERSION_PATTERNS = {
         description: 'Radius area effects'
     },
 
-    // Save phrase with DC in parentheses or after comma (high priority)
-    saveWithParentheticalDC: {
-        regex: /(basic\s+)?(Fortitude|Reflex|Will)\s+save\s*[\(,]\s*DC\s*(\d{1,2})[\)]?/gi,
-        replacement: (match, basic, save, dc) => {
-            const basicStr = basic ? '|basic' : '';
-            return `@Check[${save.toLowerCase()}|dc:${dc}${basicStr}] save`;
-        },
-        priority: 0.7,
-        description: 'Save phrase with DC in parentheses or after comma'
-    },
-    // Standalone save phrase with DC in parentheses (e.g., 'Reflex save (DC 25)')
-    saveStandaloneParenthetical: {
-        regex: /(Fortitude|Reflex|Will)\s+save\s*\(DC\s*(\d{1,2})\)/gi,
-        replacement: (match, save, dc) => `@Check[${save.toLowerCase()}|dc:${dc}] save`,
-        priority: 0.6,
-        description: 'Standalone save phrase with DC in parentheses'
-    }
+
 };
 
 /**
