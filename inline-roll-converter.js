@@ -144,48 +144,42 @@ const CONVERSION_PATTERNS = {
     },
 	
     // Saves
-    basicSaveFlexible: {
-        regex: /\b(?=.*\bbasic\b)(?=.*\b(Fortitude|Reflex|Will)\s+save\b)(?=.*\bDC\s+(\d{1,2})\b)(?:[^.!?](?!\.|!|\?))*?(?:\bbasic\b|\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*?(?:\bbasic\b|\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*?(?:\bbasic\b|\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*/gi,
+    // Parenthetical save phrase (highest priority for parentheses)
+    parentheticalBasicSave: {
+        regex: /\((?=.*\bbasic\b)(?=.*\b(Fortitude|Reflex|Will)\s+save\b)(?=.*\bDC\s+(\d{1,2})\b)(?:[^.!?](?!\.|!|\?))*?(?:\bbasic\b|\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*?(?:\bbasic\b|\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*?\)/gi,
         replacement: (match) => {
             const saveMatch = match.match(/\b(Fortitude|Reflex|Will)\s+save\b/i);
             const dcMatch = match.match(/\bDC\s+(\d{1,2})\b/i);
-            
             if (saveMatch && dcMatch) {
                 const save = saveMatch[1].toLowerCase();
                 const dc = dcMatch[1];
-                
-                // Replace all variations of the save expression in this match
-                return match.replace(
-                    /(?:basic\s+)?(?:DC\s+\d{1,2}\s*[,;:\(\)]?\s*)?(?:basic\s+)?(Fortitude|Reflex|Will)\s+save(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s+\d{1,2})?(?:\s*[,;:\(\)]?\s*basic)?|(?:basic\s+)?DC\s+\d{1,2}\s*[,;:\(\)]?\s*(?:basic\s+)?(Fortitude|Reflex|Will)\s+save|basic\s+(?:DC\s+\d{1,2}\s+)?(Fortitude|Reflex|Will)\s+save/gi,
-                    `@Check[${save}|dc:${dc}|basic] save`
-                );
+                return `(@Check[${save}|dc:${dc}|basic] save)`;
             }
             return match;
         },
+        priority: 0.5,
+        description: 'Parenthetical basic save (entire phrase in parentheses)'
+    },
+
+    basicSaveFlexible: {
+        // Handle flexible word order for basic saves
+        regex: /(?:basic\s+(Fortitude|Reflex|Will)\s+save(?:\s*[,;:\(\)]?\s*DC\s+(\d{1,2}))?|(Fortitude|Reflex|Will)\s+save\s+basic(?:\s*[,;:\(\)]?\s*DC\s+(\d{1,2}))?|basic\s+DC\s+(\d{1,2})\s+(Fortitude|Reflex|Will)\s+save|DC\s+(\d{1,2})\s+basic\s+(Fortitude|Reflex|Will)\s+save)/gi,
+        replacement: (match, save1, dc1, save2, dc2, dc3, save3, dc4, save4) => {
+            // Extract the save type and DC from the various capture groups
+            const save = (save1 || save2 || save3 || save4).toLowerCase();
+            const dc = dc1 || dc2 || dc3 || dc4;
+            return `@Check[${save}|dc:${dc}|basic] save`;
+        },
         priority: 1,
-        description: 'Flexible basic saves (any order)'
+        description: 'Basic saves (flexible word order)'
     },
 
     standardSaveFlexible: {
-        regex: /\b(?!.*\bbasic\b)(?=.*\b(Fortitude|Reflex|Will)\s+save\b)(?=.*\bDC\s+(\d{1,2})\b)(?:[^.!?](?!\.|!|\?))*?(?:\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*?(?:\b(?:Fortitude|Reflex|Will)\s+save\b|\bDC\s+\d{1,2}\b)(?:[^.!?](?!\.|!|\?))*/gi,
-        replacement: (match) => {
-            const saveMatch = match.match(/\b(Fortitude|Reflex|Will)\s+save\b/i);
-            const dcMatch = match.match(/\bDC\s+(\d{1,2})\b/i);
-            
-            if (saveMatch && dcMatch) {
-                const save = saveMatch[1].toLowerCase();
-                const dc = dcMatch[1];
-                
-                // Replace the save expression in this match
-                return match.replace(
-                    /(?:DC\s+\d{1,2}\s*[,;:\(\)]?\s*)?(Fortitude|Reflex|Will)\s+save(?:\s*[,;:\(\)]?\s*DC\s+\d{1,2})?|DC\s+\d{1,2}\s*[,;:\(\)]?\s*(Fortitude|Reflex|Will)\s+save/gi,
-                    `@Check[${save}|dc:${dc}] save`
-                );
-            }
-            return match;
-        },
+        // Match only the save phrase, not the whole sentence
+        regex: /DC\s+(\d{1,2})\s+(Fortitude|Reflex|Will)\s+save/gi,
+        replacement: (match, dc, save) => `@Check[${save.toLowerCase()}|dc:${dc}] save`,
         priority: 2,
-        description: 'Flexible standard saves (any order, no basic)'
+        description: 'Standard saves (targeted, no basic)'
     },
     
     // Healing
@@ -298,6 +292,24 @@ const CONVERSION_PATTERNS = {
         replacement: '@Template[type:burst|distance:$1]',
         priority: 4,
         description: 'Radius area effects'
+    },
+
+    // Save phrase with DC in parentheses or after comma (high priority)
+    saveWithParentheticalDC: {
+        regex: /(basic\s+)?(Fortitude|Reflex|Will)\s+save\s*[\(,]\s*DC\s*(\d{1,2})[\)]?/gi,
+        replacement: (match, basic, save, dc) => {
+            const basicStr = basic ? '|basic' : '';
+            return `@Check[${save.toLowerCase()}|dc:${dc}${basicStr}] save`;
+        },
+        priority: 0.7,
+        description: 'Save phrase with DC in parentheses or after comma'
+    },
+    // Standalone save phrase with DC in parentheses (e.g., 'Reflex save (DC 25)')
+    saveStandaloneParenthetical: {
+        regex: /(Fortitude|Reflex|Will)\s+save\s*\(DC\s*(\d{1,2})\)/gi,
+        replacement: (match, save, dc) => `@Check[${save.toLowerCase()}|dc:${dc}] save`,
+        priority: 0.6,
+        description: 'Standalone save phrase with DC in parentheses'
     }
 };
 
