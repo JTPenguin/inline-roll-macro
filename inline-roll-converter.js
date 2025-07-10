@@ -69,6 +69,10 @@ const TIME_UNITS_PATTERN = TIME_UNITS.join('|');
 const ABILITY_TYPES = ['ability', 'action', 'feature', 'spell'];
 const ABILITY_TYPES_PATTERN = ABILITY_TYPES.join('|');
 
+// Healing patterns
+const HEALING_TERMS = ['hit\\s+points?', 'HP', 'healing'];
+const HEALING_TERMS_PATTERN = HEALING_TERMS.join('|');
+
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
 
@@ -219,7 +223,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The spell emanates in a 15-foot radius.";
+const DEFAULT_TEST_INPUT = "The spell restores 3d8+5 hit points.\nThe potion provides 2d4+2 healing.\nThe ability grants 1d6 hit points to all allies.\nThe spell heals 4d6+8 hit points.\nThe potion restores 1d8+3 hit points.\nThe ability provides 2d6+4 healing.\nThe spell grants 5d8+10 hit points.\nThe potion heals 3d4+6 hit points.";
 
 // Utility for unique IDs
 function generateId() {
@@ -265,19 +269,15 @@ class RollReplacement extends Replacement {
 
 // -------------------- Damage Replacement --------------------
 class DamageComponent {
-    constructor(dice, damageType = '', persistent = false, precision = false, splash = false, healing = false) {
+    constructor(dice, damageType = '', persistent = false, precision = false, splash = false) {
         this.dice = dice;
         this.damageType = damageType;
         this.persistent = persistent;
         this.precision = precision;
         this.splash = splash;
-        this.healing = healing;
     }
     render() {
         let formula = this.dice;
-        if (this.healing) {
-            return `${formula}[healing]`;
-        }
         if (this.precision) formula = `(${formula})[precision]`;
         if (this.splash) formula = `(${formula})[splash]`;
         if (this.persistent && this.damageType) {
@@ -297,9 +297,13 @@ class DamageReplacement extends RollReplacement {
         this.rollType = 'damage';
         this.priority = 100;
         this.damageComponents = [];
+        this.match = match; // Save the match object for render()
         this.parseMatch(match, config);
     }
     parseMatch(match, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
         // If this is a multi-damage match, match[0] is the whole string, match[1] is the repeated group
         if (Array.isArray(match.multiMatches)) {
             for (const m of match.multiMatches) {
@@ -328,23 +332,33 @@ class DamageReplacement extends RollReplacement {
         const isPersistent = originalText.includes('persistent');
         const isPrecision = originalText.includes('precision');
         const isSplash = originalText.includes('splash');
-        const isHealing = originalText.includes('healing') || originalText.includes('hit point') || originalText.includes('hp');
         
-        if (isHealing) {
-            this.addDamageComponent(dice, '', false, false, false, true);
-        } else {
-            this.addDamageComponent(dice, type, isPersistent, isPrecision, isSplash);
-        }
+        this.addDamageComponent(dice, type, isPersistent, isPrecision, isSplash);
     }
-    addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false, healing = false) {
+    addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false) {
         // Convert legacy types to remaster types
         let remasterType = damageType;
         if (damageType && LEGACY_TO_REMASTER_DAMAGE_TYPE[damageType]) {
             remasterType = LEGACY_TO_REMASTER_DAMAGE_TYPE[damageType];
         }
-        this.damageComponents.push(new DamageComponent(dice, remasterType, persistent, precision, splash, healing));
+        this.damageComponents.push(new DamageComponent(dice, remasterType, persistent, precision, splash));
     }
     render() {
+        // If match.replacement exists, use it directly
+        if (this.match && this.match.replacement) {
+            return this.match.replacement;
+        }
+        
+        // Handle legacy damage type conversions
+        if (this.rollType === 'legacy') {
+            return this.renderLegacyConversion();
+        }
+        
+        // Handle damage consolidation
+        if (this.originalText.includes('@Damage[') && this.originalText.includes('@Damage[')) {
+            return this.renderDamageConsolidation();
+        }
+        
         let roll;
         if (this.damageComponents.length === 1) {
             roll = `@Damage[${this.damageComponents[0].render()}]`;
@@ -352,9 +366,61 @@ class DamageReplacement extends RollReplacement {
             const componentStrings = this.damageComponents.map(comp => comp.render());
             roll = `@Damage[${componentStrings.join(',')}]`;
         }
+        
         return roll + ' damage';
     }
+    
+    renderLegacyConversion() {
+        const originalText = this.originalText;
+        
+        // Handle alignment damage to spirit
+        if (originalText.includes('chaotic') || originalText.includes('evil') || 
+            originalText.includes('good') || originalText.includes('lawful')) {
+            return originalText.replace(/(chaotic|evil|good|lawful)/g, 'spirit');
+        }
+        
+        // Handle positive to vitality
+        if (originalText.includes('positive')) {
+            return originalText.replace(/positive/g, 'vitality');
+        }
+        
+        // Handle negative to void
+        if (originalText.includes('negative')) {
+            return originalText.replace(/negative/g, 'void');
+        }
+        
+        return originalText;
+    }
+    
+    renderDamageConsolidation() {
+        const damageRolls = [];
+        const regex = /@Damage\[/g;
+        let startMatch;
+        const originalText = this.originalText;
+        
+        while ((startMatch = regex.exec(originalText)) !== null) {
+            const startPos = startMatch.index + startMatch[0].length;
+            let bracketCount = 1;
+            let endPos = startPos;
+            while (endPos < originalText.length && bracketCount > 0) {
+                if (originalText[endPos] === '[') bracketCount++;
+                else if (originalText[endPos] === ']') bracketCount--;
+                if (bracketCount > 0) endPos++;
+            }
+            if (bracketCount === 0) {
+                const damageContent = originalText.substring(startPos, endPos);
+                damageRolls.push(damageContent);
+            }
+        }
+        
+        if (damageRolls.length >= 2) {
+            return `@Damage[${damageRolls.join(',')}]`;
+        }
+        
+        return originalText;
+    }
     validate() {
+        if (this.match && this.match.replacement) return true;
         return this.damageComponents.length > 0 && this.damageComponents.every(comp => comp.validate());
     }
 }
@@ -388,14 +454,46 @@ class CheckReplacement extends RollReplacement {
             // Defensive: if match.replacement exists, skip parsing (already replaced)
             if (match && match.replacement) return;
             
+            // Check if this is a save pattern by scanning for save types
+            let isSavePattern = false;
+            for (let i = 1; i < match.length; i++) {
+                const value = match[i];
+                if (value && /^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
+                    isSavePattern = true;
+                    this.checkType = value.toLowerCase();
+                    break;
+                }
+            }
+            
+            // If it's a save pattern, set rollType to 'save' and extract DC
+            if (isSavePattern) {
+                this.rollType = 'save';
+                // Extract DC by scanning for numeric values
+                for (let i = 1; i < match.length; i++) {
+                    const value = match[i];
+                    if (value && /^\d{1,2}$/.test(value)) {
+                        this.dc = value;
+                        break;
+                    }
+                }
+            }
+            
             // Check if this is a multiple skills match
             if (match.multipleSkills && match.skills) {
                 this.multipleSkills = true;
                 this.skills = match.skills;
                 this.dc = match.dc || match[1] || null;
             } else {
-                this.checkType = match[2] ? match[2].toLowerCase() : '';
-                this.dc = match[1] || null;
+                // Handle multiple skills logic (moved from pattern handler)
+                if (match[2] && match[2].includes(' or ')) {
+                    this.multipleSkills = true;
+                    this.skills = match[2].split(/\s+or\s+/).map(s => s.trim());
+                    this.dc = match[1] || null;
+                } else if (!isSavePattern) {
+                    // Only set checkType for non-save patterns
+                    this.checkType = match[2] ? match[2].toLowerCase() : '';
+                    this.dc = match[1] || null;
+                }
             }
         }
     }
@@ -403,6 +501,11 @@ class CheckReplacement extends RollReplacement {
         // If match.replacement exists, use it directly
         if (this.match && this.match.replacement) {
             return this.match.replacement;
+        }
+        
+        // Handle save patterns (complex logic moved from pattern handler)
+        if (this.rollType === 'save' || this.checkType === 'fortitude' || this.checkType === 'reflex' || this.checkType === 'will') {
+            return this.renderSave();
         }
         
         // Handle multiple skills
@@ -421,6 +524,48 @@ class CheckReplacement extends RollReplacement {
         if (this.dc) params.push(`dc:${this.dc}`);
         if (this.basic) params.push('basic');
         return `@Check[${params.join('|')}] check`;
+    }
+    
+    renderSave() {
+        // Robust extraction by scanning all indices for components
+        let save = '';
+        let dc = '';
+        
+        // Scan all match indices to find components by their characteristics
+        for (let i = 1; i < this.match.length; i++) {
+            const value = this.match[i];
+            if (!value) continue;
+            
+            // Check if this is a DC (numeric value, typically 1-2 digits)
+            if (/^\d{1,2}$/.test(value)) {
+                dc = value;
+            }
+            // Check if this is a save type (fort/reflex/will variations)
+            else if (/^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
+                save = value;
+            }
+        }
+        
+        // Normalize save type
+        if (save) {
+            save = save.toLowerCase();
+            if (save.startsWith('fort')) save = 'fortitude';
+            else if (save.startsWith('ref')) save = 'reflex';
+            else if (save.startsWith('will')) save = 'will';
+        }
+        
+        const isBasic = /\bbasic\b/i.test(this.match[0]);
+        const basicStr = isBasic ? '|basic' : '';
+        const saveTerm = 'save';
+        
+        // Check if the entire save phrase is wrapped in parentheses
+        const originalText = this.match[0];
+        const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
+        
+        const replacement = `@Check[${save}${dc ? `|dc:${dc}` : ''}${basicStr}] ${saveTerm}`;
+        
+        // If the original text was wrapped in parentheses, preserve them
+        return hasWrappingParentheses ? `(${replacement})` : replacement;
     }
     validate() {
         if (this.match && this.match.replacement) return true;
@@ -443,8 +588,14 @@ class TemplateReplacement extends RollReplacement {
         this.parseMatch(match, config);
     }
     parseMatch(match, config) {
-        this.shape = match[2] ? match[2].toLowerCase() : '';
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        const shapeName = match[2] ? match[2].toLowerCase() : '';
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
+        
+        // Map alternate names to standard shapes
+        this.shape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
     }
     render() {
         // Check if we need custom display text by finding the original shape name
@@ -494,13 +645,71 @@ class UtilityReplacement extends RollReplacement {
         this.expression = '';
         this.flavor = '';
         this.gmOnly = false;
+        this.match = match; // Save the match object for render()
         this.parseMatch(match, config);
     }
     parseMatch(match, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
         this.expression = match[1] || '';
     }
     render() {
-        return `[[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+        // If match.replacement exists, use it directly
+        if (this.match && this.match.replacement) {
+            return this.match.replacement;
+        }
+        
+        // Handle different utility patterns
+        const originalText = this.originalText.toLowerCase();
+        
+        if (originalText.includes('again for')) {
+            return `again for [[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+        } else if (originalText.includes("can't use this")) {
+            return `can't use this ability again for [[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+        } else if (originalText.includes('recharges')) {
+            return `recharges in [[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+        } else {
+            // Default fallback
+            return `[[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+        }
+    }
+    validate() {
+        if (this.match && this.match.replacement) return true;
+        return this.expression && this.expression.length > 0;
+    }
+}
+
+// -------------------- Healing Replacement --------------------
+class HealingReplacement extends RollReplacement {
+    constructor(match, config) {
+        super(match);
+        this.rollType = 'healing';
+        this.priority = 85; // Between damage and skill checks
+        this.dice = '';
+        this.match = match; // Save the match object for render()
+        this.parseMatch(match, config);
+    }
+    parseMatch(match, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        this.dice = match[1] || '';
+    }
+    render() {
+        // If match.replacement exists, use it directly
+        if (this.match && this.match.replacement) {
+            return this.match.replacement;
+        }
+        
+        // Create healing replacement that preserves surrounding text
+        const dice = this.dice;
+        const restOfText = this.originalText.substring(dice.length);
+        return `@Damage[${dice}[healing]]${restOfText}`;
+    }
+    validate() {
+        if (this.match && this.match.replacement) return true;
+        return this.dice && this.dice.length > 0;
     }
 }
 
@@ -571,6 +780,7 @@ class ConditionReplacement extends Replacement {
 // Replacement class mapping for pattern types
 const REPLACEMENT_CLASS_MAP = {
     damage: DamageReplacement,
+    healing: HealingReplacement, // Dedicated healing replacement class
     save: CheckReplacement,
     skill: CheckReplacement,
     template: TemplateReplacement,
@@ -609,6 +819,8 @@ const PRIORITY = {
     TEMPLATE: 7
 };
 
+
+
 // ===================== PATTERN DEFINITIONS =====================
 // Centralized pattern definitions
 const PATTERN_DEFINITIONS = [
@@ -638,40 +850,7 @@ const PATTERN_DEFINITIONS = [
         type: 'save',
         regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?)(?:\)?)/gi,
         priority: PRIORITY.SAVE,
-        handler: (match) => {
-            // Defensive extraction of save type and DC from match array
-            let save = '';
-            let dc = '';
-            save = match[3] || match[5] || match[8] || match[10] || '';
-            dc = match[2] || match[4] || match[6] || match[7] || match[9] || '';
-            if (save) save = save.toLowerCase();
-            let normalizedSave = '';
-            if (save.startsWith('fort')) normalizedSave = 'fortitude';
-            else if (save.startsWith('ref')) normalizedSave = 'reflex';
-            else if (save.startsWith('will')) normalizedSave = 'will';
-            else normalizedSave = save;
-            const isBasic = /\bbasic\b/i.test(match[0]);
-            const basicStr = isBasic ? '|basic' : '';
-            // Always use 'save' for the output, never 'saving throw'
-            const saveTerm = 'save';
-            
-            // Check if the entire save phrase is wrapped in parentheses
-            const originalText = match[0];
-            const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
-            
-            const replacement = `@Check[${normalizedSave}${dc ? `|dc:${dc}` : ''}${basicStr}] ${saveTerm}`;
-            
-            // If the original text was wrapped in parentheses, preserve them
-            const finalReplacement = hasWrappingParentheses ? `(${replacement})` : replacement;
-            
-            // Return a match-like object for resolveConflicts, with 0 as the original matched text and 'replacement' property
-            return {
-                0: match[0],
-                index: match.index,
-                length: match[0].length,
-                replacement: finalReplacement
-            };
-        },
+        handler: (match) => match,
         description: 'Comprehensive save pattern (all variations including parenthetical)'
     },
     // Priority 2: Damage and skill patterns
@@ -703,42 +882,19 @@ const PATTERN_DEFINITIONS = [
         handler: (match) => match,
         description: 'Generic precision damage'
     },
+    // Healing patterns - consolidated handler
     {
         type: 'healing',
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+(?:hit\s+points?|HP)(?:\s+healed)?/gi,
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:${HEALING_TERMS_PATTERN})(?:\\s+(?:healed|damage))?`, 'gi'),
         priority: PRIORITY.HEALING,
         handler: (match) => match,
-        description: 'Healing hit points'
-    },
-    {
-        type: 'healing',
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+healing(?:\s+damage)?/gi,
-        priority: PRIORITY.HEALING,
-        handler: (match) => match,
-        description: 'Generic healing'
+        description: 'Healing patterns (hit points, HP, healing)'
     },
     {
         type: 'skill',
         regex: new RegExp(`DC\\s+(\\d+)\\s+((?:${SKILL_PATTERN})(?:\\s*,\\s*(?:${SKILL_PATTERN}))*\\s*(?:,\\s*)?(?:or\\s+)?(?:${SKILL_PATTERN}))\\s+check`, 'gi'),
         priority: PRIORITY.SKILL,
-        handler: function(match) {
-            // Check if this contains "or" separators for multiple skills
-            const skillText = match[2];
-            if (skillText.includes(' or ')) {
-                // Split by "or" and create multiple matches
-                const skills = skillText.split(/\s+or\s+/).map(s => s.trim());
-                const dc = match[1];
-                
-                // Create a special match object that indicates multiple skills
-                return {
-                    ...match,
-                    multipleSkills: true,
-                    skills: skills,
-                    dc: dc
-                };
-            }
-            return match;
-        },
+        handler: (match) => match,
         description: 'Multiple skill checks with "or" separators'
     },
     {
@@ -759,21 +915,21 @@ const PATTERN_DEFINITIONS = [
         type: 'utility',
         regex: new RegExp(`again for (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
         priority: PRIORITY.UTILITY,
-        handler: (match, dice, unit) => `again for [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
+        handler: (match) => match,
         description: 'Ability recharge pattern'
     },
     {
         type: 'utility',
         regex: new RegExp(`can't use this (?:${ABILITY_TYPES_PATTERN}) again for (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
         priority: PRIORITY.UTILITY,
-        handler: (match, dice, unit) => `can't use this ability again for [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
+        handler: (match) => match,
         description: 'Generic ability recharge'
     },
     {
         type: 'utility',
         regex: new RegExp(`recharges? (?:in|after) (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
         priority: PRIORITY.UTILITY,
-        handler: (match, dice, unit) => `recharges in [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
+        handler: (match) => match,
         description: 'Recharge timing pattern'
     },
     // Priority 3: Basic damage and skill patterns (lowered priority)
@@ -796,21 +952,21 @@ const PATTERN_DEFINITIONS = [
         type: 'legacy',
         regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_ALIGNMENT_PATTERN})([^\\]]*?)\\](.*?)\\]`, 'gi'),
         priority: PRIORITY.LEGACY,
-        handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}spirit${after}]${suffix}]`,
+        handler: (match) => match,
         description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
     },
     {
         type: 'legacy',
         regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_POSITIVE})([^\\]]*?)\\](.*?)\\]`, 'gi'),
         priority: PRIORITY.LEGACY,
-        handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}vitality${after}]${suffix}]`,
+        handler: (match) => match,
         description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
     },
     {
         type: 'legacy',
         regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_NEGATIVE})([^\\]]*?)\\](.*?)\\]`, 'gi'),
         priority: PRIORITY.LEGACY,
-        handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}void${after}]${suffix}]`,
+        handler: (match) => match,
         description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
     },
     // Priority 5: Damage consolidation
@@ -818,27 +974,7 @@ const PATTERN_DEFINITIONS = [
         type: 'damage',
         regex: /@Damage\[[^\@]*\](?:\s+(?:(?:splash|precision)\s+)?damage|(?:\s+(?:splash|precision)))?(?:\s*,\s*(?:and\s+)?|\s+and\s+)@Damage\[[^\@]*\](?:\s+(?:splash|precision))?(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)@Damage\[[^\@]*\](?:\s+(?:(?:splash|precision)\s+)?damage|(?:\s+(?:splash|precision)))?)*(?:\s+(?:splash|precision))?/gi,
         priority: PRIORITY.DAMAGE_CONSOLIDATION,
-        handler: (match) => {
-            const damageRolls = [];
-            const regex = /@Damage\[/g;
-            let startMatch;
-            while ((startMatch = regex.exec(match)) !== null) {
-                const startPos = startMatch.index + startMatch[0].length;
-                let bracketCount = 1;
-                let endPos = startPos;
-                while (endPos < match.length && bracketCount > 0) {
-                    if (match[endPos] === '[') bracketCount++;
-                    else if (match[endPos] === ']') bracketCount--;
-                    if (bracketCount > 0) endPos++;
-                }
-                if (bracketCount === 0) {
-                    const damageContent = match.substring(startPos, endPos);
-                    damageRolls.push(damageContent);
-                }
-            }
-            if (damageRolls.length >= 2) return `@Damage[${damageRolls.join(',')}]`;
-            return match;
-        },
+        handler: (match) => match,
         description: 'Multiple damage types consolidation'
     },
     // Priority 5: Legacy flat-footed
@@ -879,21 +1015,7 @@ const PATTERN_DEFINITIONS = [
         type: 'template',
         regex: new RegExp(`(\\d+)\\s*-?(?:foot|feet)\\s+(${TEMPLATE_SHAPES_PATTERN}|${Object.keys(ALTERNATE_SHAPE_NAMES).join('|')})`, 'gi'),
         priority: PRIORITY.TEMPLATE,
-        handler: function(match) {
-            const distance = match[1];
-            const shapeName = match[2].toLowerCase();
-            
-            // Map alternate names to standard shapes
-            const standardShape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
-            
-            return {
-                0: match[0],
-                index: match.index,
-                length: match[0].length,
-                1: distance,
-                2: standardShape
-            };
-        },
+        handler: (match) => match,
         description: 'Consolidated area effects (standard and alternate shape names, with optional hyphen) - accepts both foot and feet'
     },
     // Priority 7: "within X feet" pattern
@@ -901,16 +1023,7 @@ const PATTERN_DEFINITIONS = [
         type: 'within',
         regex: /within\s+(\d+)\s+(?:foot|feet)/gi,
         priority: PRIORITY.TEMPLATE,
-        handler: function(match) {
-            const distance = match[1];
-            
-            return {
-                0: match[0],
-                index: match.index,
-                length: match[0].length,
-                1: distance
-            };
-        },
+        handler: (match) => match,
         description: '"within X feet" pattern for inline template generation'
     }
 ];
