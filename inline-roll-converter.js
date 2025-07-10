@@ -210,7 +210,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "You can attempt a DC 20 Deception or Intimidation check to distract the guard.";
+const DEFAULT_TEST_INPUT = "The creature is paralyzed. While paralyzed, it can't see or speak.";
 
 // Utility for unique IDs
 function generateId() {
@@ -492,6 +492,14 @@ class ConditionReplacement extends Replacement {
         this.linkedConditions = config && config.linkedConditions ? config.linkedConditions : new Set();
         this.args = matchObj.args || [];
         this.parseMatch();
+        // Deduplication: only link the first occurrence
+        const key = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
+        if (this.linkedConditions.has(key)) {
+            this.enabled = false;
+        } else {
+            this.linkedConditions.add(key);
+            this.enabled = true;
+        }
     }
     parseMatch() {
         // args: [condition, value?]
@@ -502,10 +510,6 @@ class ConditionReplacement extends Replacement {
     }
     render() {
         if (!this.uuid) return this.originalText;
-        // Deduplication: only link the first occurrence
-        const key = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
-        if (this.linkedConditions.has(key)) return this.originalText;
-        this.linkedConditions.add(key);
         const capitalized = this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
         if (this.degree) {
             return `@UUID[${this.uuid}]{${capitalized} ${this.degree}}`;
