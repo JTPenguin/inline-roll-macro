@@ -3,126 +3,130 @@
 ## Basic Damage Tests
 
 ```
-The dragon breathes fire, dealing 6d6 fire damage.<br>
-The explosion deals 3d6 fire damage and 2d4 force damage to all creatures in the area.<br>
-The weapon deals 1d8+4 slashing damage on a hit.<br>
-The spell deals 5 chaotic damage and 5 fire damage.<br>
-The attack inflicts 2d6 positive damage.<br>
-The effect causes 3 negative damage each round.<br>
-The weapon deals 1d8 good damage.<br>
-The trap deals 2d6 evil damage and 2d6 acid damage.<br>
-The spell deals 2d6 fire damage and 2d6 lawful damage.<br>
+The dragon breathes fire, dealing 6d6 fire damage.
+The explosion deals 3d6 fire damage and 2d4 force damage to all creatures in the area.
+The weapon deals 1d8+4 slashing damage on a hit.
+The spell deals 5 chaotic damage and 5 fire damage.
+The attack inflicts 2d6 positive damage.
+The effect causes 3 negative damage each round.
+The weapon deals 1d8 good damage.
+The trap deals 2d6 evil damage and 2d6 acid damage.
+The spell deals 2d6 fire damage and 2d6 lawful damage.
 The attack deals 1d4 acid, 1d4 good, and 1d4 slashing damage.
 ```
 
 ## Advanced Damage Tests (Persistent, Splash, Precision)
 
 ```
-The target takes 1d6 persistent fire damage.<br>
-On a failure, the target takes 2d4 persistent poison damage and must make a DC 20 Fortitude save each turn.<br>
-The spell deals 1d6 persistent chaotic damage.<br>
-The bomb deals 2 splash positive damage.<br>
-The arrow deals 1d8 precision negative damage.<br>
-The weapon deals 1d8+4 slashing damage and 1d6 persistent bleed damage.<br>
-The spell deals 2d6 fire damage and 1d4 splash acid damage.<br>
-The attack deals 1d6 precision piercing damage and 1d4 persistent poison damage.<br>
-The effect causes 1d4+2 void damage and 1d6 persistent spirit damage.<br>
-The weapon deals 1d8+3 slashing damage, 1d6 precision fire damage, and 1d4 splash cold damage.<br>
-The spell deals 3d6 vitality damage and 2d4 persistent spirit damage.<br>
-The attack deals 1d6+2 piercing damage and 1d8 precision void damage.<br>
-The effect causes 2d6 force damage and 1d4 splash sonic damage.<br>
-The weapon deals 1d10+5 bludgeoning damage and 1d6 persistent mental damage.<br>
+The target takes 1d6 persistent fire damage.
+On a failure, the target takes 2d4 persistent poison damage and must make a DC 20 Fortitude save each turn.
+The spell deals 1d6 persistent chaotic damage.
+The bomb deals 2 splash positive damage.
+The arrow deals 1d8 precision negative damage.
+The weapon deals 1d8+4 slashing damage and 1d6 persistent bleed damage.
+The spell deals 2d6 fire damage and 1d4 splash acid damage.
+The attack deals 1d6 precision piercing damage and 1d4 persistent poison damage.
+The effect causes 1d4+2 void damage and 1d6 persistent spirit damage.
+The weapon deals 1d8+3 slashing damage, 1d6 precision fire damage, and 1d4 splash cold damage.
+The spell deals 3d6 vitality damage and 2d4 persistent spirit damage.
+The attack deals 1d6+2 piercing damage and 1d8 precision void damage.
+The effect causes 2d6 force damage and 1d4 splash sonic damage.
+The weapon deals 1d10+5 bludgeoning damage and 1d6 persistent mental damage.
 The spell deals 4d6 electricity damage and 2d4 splash fire damage.
 ```
 
 ## Legacy Damage Type Tests
 
 ```
-The spell deals 1d6 chaotic damage (converts to spirit).<br>
-The weapon deals 1d8+2 positive damage (converts to vitality).<br>
-The effect causes 2d6 negative damage (converts to void).<br>
-The attack deals 1d6 evil damage and 1d4 lawful damage (both convert to spirit).<br>
-The spell deals 2d8 good damage and 1d6 chaotic damage (both convert to spirit).<br>
-The weapon deals 1d6+3 positive damage and 1d4 negative damage (converts to vitality and void).<br>
-The effect causes 3d6 lawful damage and 2d4 evil damage (both convert to spirit).<br>
-The attack deals 1d8+4 good damage (converts to spirit).<br>
-The spell deals 2d6+5 positive damage (converts to vitality).<br>
-The weapon deals 1d6+2 negative damage (converts to void).<br>
-A chaotic aura surrounds the caster.<br>
-The positive energy heals the target.<br>
-Negative effects linger in the area.<br>
-The spell deals 1d6 chaotic damage. The chaotic energy lingers.<br>
+The spell deals 1d6 chaotic damage (converts to spirit).
+The weapon deals 1d8+2 positive damage (converts to vitality).
+The effect causes 2d6 negative damage (converts to void).
+The attack deals 1d6 evil damage and 1d4 lawful damage (both convert to spirit).
+The spell deals 2d8 good damage and 1d6 chaotic damage (both convert to spirit).
+The weapon deals 1d6+3 positive damage and 1d4 negative damage (converts to vitality and void).
+The effect causes 3d6 lawful damage and 2d4 evil damage (both convert to spirit).
+The attack deals 1d8+4 good damage (converts to spirit).
+The spell deals 2d6+5 positive damage (converts to vitality).
+The weapon deals 1d6+2 negative damage (converts to void).
+A chaotic aura surrounds the caster.
+The positive energy heals the target.
+Negative effects linger in the area.
+The spell deals 1d6 chaotic damage. The chaotic energy lingers.
 Gain 2d6 positive damage and a positive feeling.
 ```
 
 ## Saving Throw Tests
 
 ```
-Each creature in the area must attempt a DC 25 Reflex save.<br>
-Make a DC 20 Fortitude saving throw or take 4d6 poison damage.<br>
-The target must make a DC 18 Will save or become frightened 2. On a critical failure, make a DC 18 Fortitude saving throw or be paralyzed for 1 round.<br>
-Creatures take 8d6 fire damage (basic Reflex save, DC 28).<br>
-Creatures take 8d6 fire damage (DC 28 basic Reflex saving throw).<br>
-The spell deals 6d6 electricity damage; basic Reflex saving throw, DC 24.<br>
-Each creature must make a basic Reflex save (DC 28) or take 8d6 fire damage.<br>
-4d6 fire (basic Ref DC 22)<br>
-The target takes 6d6 cold damage, basic Fortitude saving throw DC 25.<br>
-The target takes 6d6 cold damage (basic Fortitude save, DC 25).<br>
-Creatures take 8d6 fire damage (basic Reflex saving throw, DC 28).<br>
-The spell deals 4d6 electricity damage; basic Reflex save, DC 22.<br>
-Each creature must make a Will saving throw (DC 24) or take 3d6 mental damage.<br>
-The target takes 5d6 acid damage (DC 26 basic Fortitude save).<br>
-Creatures take 7d6 sonic damage (basic Reflex saving throw, DC 27).<br>
-The spell deals 3d8 force damage; DC 25 basic Will save.<br>
-Each target takes 4d6 void damage (basic Fortitude saving throw, DC 23).<br>
-The effect causes 2d6 spirit damage (DC 20 basic Will saving throw).<br>
-The attack deals 6d6 vitality damage (basic Reflex save, DC 29).<br>
-Fortitude saving throw DC 18<br>
-DC 22 Reflex save<br>
-Will saving throw (DC 20)<br>
-basic Fortitude save DC 25<br>
-DC 28 basic Reflex saving throw<br>
+Each creature in the area must attempt a DC 25 Reflex save.
+Make a DC 20 Fortitude saving throw or take 4d6 poison damage.
+The target must make a DC 18 Will save or become frightened 2. On a critical failure, make a DC 18 Fortitude saving throw or be paralyzed for 1 round.
+Creatures take 8d6 fire damage (basic Reflex save, DC 28).
+Creatures take 8d6 fire damage (DC 28 basic Reflex saving throw).
+The spell deals 6d6 electricity damage; basic Reflex saving throw, DC 24.
+Each creature must make a basic Reflex save (DC 28) or take 8d6 fire damage.
+4d6 fire (basic Ref DC 22)
+The target takes 6d6 cold damage, basic Fortitude saving throw DC 25.
+The target takes 6d6 cold damage (basic Fortitude save, DC 25).
+Creatures take 8d6 fire damage (basic Reflex saving throw, DC 28).
+The spell deals 4d6 electricity damage; basic Reflex save, DC 22.
+Each creature must make a Will saving throw (DC 24) or take 3d6 mental damage.
+The target takes 5d6 acid damage (DC 26 basic Fortitude save).
+Creatures take 7d6 sonic damage (basic Reflex saving throw, DC 27).
+The spell deals 3d8 force damage; DC 25 basic Will save.
+Each target takes 4d6 void damage (basic Fortitude saving throw, DC 23).
+The effect causes 2d6 spirit damage (DC 20 basic Will saving throw).
+The attack deals 6d6 vitality damage (basic Reflex save, DC 29).
+Fortitude saving throw DC 18
+DC 22 Reflex save
+Will saving throw (DC 20)
+basic Fortitude save DC 25
+DC 28 basic Reflex saving throw
 The target must succeed at a DC 18 Fortitude save or be paralyzed for 1 round.
 ```
 
 ## Skill Check Tests
 
 ```
-Make a DC 15 Athletics check to climb the wall.<br>
-You can attempt a DC 20 Deception or Intimidation check to distract the guard.<br>
-Make a DC 22 Stealth check with the manipulate trait to pick the lock.<br>
-The target must succeed at a DC 18 Fortitude save or be paralyzed for 1 round.<br>
-Make a DC 25 Arcana check to understand the magical runes.<br>
-You can attempt a DC 16 Acrobatics check to avoid the trap.<br>
-Make a DC 19 Religion check to identify the divine symbol.<br>
-The creature must make a DC 21 Nature check to track the prey.<br>
-Make a DC 17 Thievery check to disable the device.<br>
+Make a DC 15 Athletics check to climb the wall.
+You can attempt a DC 20 Deception or Intimidation check to distract the guard.
+Make a DC 22 Stealth check with the manipulate trait to pick the lock.
+The target must succeed at a DC 18 Fortitude save or be paralyzed for 1 round.
+Make a DC 25 Arcana check to understand the magical runes.
+You can attempt a DC 16 Acrobatics check to avoid the trap.
+Make a DC 19 Religion check to identify the divine symbol.
+The creature must make a DC 21 Nature check to track the prey.
+Make a DC 17 Thievery check to disable the device.
 You can attempt a DC 23 Society check to recall historical information.
 ```
 
-## Area Effect and Template Tests
+## Area Effects and Templates
 
 ```
-The spell creates a 20-foot burst centered on a point you choose.<br>
-You can cast this as either a 30-foot cone or a 60-foot line.<br>
-The fireball explodes in a 20-foot burst, dealing 6d6 fire damage to all creatures in the area.<br>
-The dragon's breath weapon creates a 40-foot cone of poison.<br>
-The spell emanates in a 15-foot radius.<br>
-The lightning bolt travels in a 120-foot line.<br>
-The spell affects all creatures within a 30-foot radius.<br>
-The dragon's breath creates a 50-foot cone of fire.<br>
-The spell emanates from the caster in a 10-foot burst.<br>
-The area of effect is a 25-foot cone.<br>
-The spell affects all creatures within a 30-foot radius.<br>
-The dragon's breath creates a 50-foot cone of fire.<br>
-The lightning bolt travels in a 120-foot line.<br>
-The spell emanates from the caster in a 10-foot burst.<br>
-The area of effect is a 25-foot cone.<br>
-The spell creates a 40-foot line of force.<br>
-The effect emanates in a 35-foot burst.<br>
-The breath weapon creates a 45-foot cone of acid.<br>
-The spell affects a 15-foot radius around the target.<br>
-The area extends in a 80-foot line from the caster.
+The spell creates a 20-foot burst centered on a point you choose.
+You can cast this as either a 30 foot cone or a 60 foot line.
+The fireball explodes in a 20-foot burst, dealing 6d6 fire damage to all creatures in the area.
+The dragon's breath weapon creates a 40 foot cone of poison.
+The spell emanates in a 15-foot radius.
+The lightning bolt travels in a 120 foot line.
+The spell affects all creatures within a 30 foot radius.
+The dragon's breath creates a 50-foot cone of fire.
+The spell emanates from the caster in a 10 foot burst.
+The area of effect is a 25 foot cone.
+The spell affects all creatures within a 30-foot radius.
+The dragon's breath creates a 50 foot cone of fire.
+The lightning bolt travels in a 120-foot line.
+The spell emanates from the caster in a 10 foot burst.
+The area of effect is a 25-foot cone.
+The spell creates a 40 foot line of force.
+The effect emanates in a 35 foot burst.
+The breath weapon creates a 45 foot cone of acid.
+The spell affects a 15 foot radius around the target.
+The area extends in a 80 foot line from the caster.
+The spell creates a 20 foot sphere of energy.
+The effect emanates in a 30 foot cylinder around the caster.
+The attack creates a 25 foot wedge of destruction.
+The barrier extends in a 40 foot wall of force.
 ```
 
 ## Condition Tests

@@ -52,6 +52,15 @@ const CONDITIONS_WITHOUT_VALUES_PATTERN = CONDITIONS_WITHOUT_VALUES.join('|');
 const TEMPLATE_SHAPES = ['burst', 'cone', 'line', 'emanation'];
 const TEMPLATE_SHAPES_PATTERN = TEMPLATE_SHAPES.join('|');
 
+// Mapping of alternate shape names to standard shapes (for display text)
+const ALTERNATE_SHAPE_NAMES = {
+    'radius': 'burst',
+    'sphere': 'burst',
+    'cylinder': 'burst',
+    'wedge': 'cone',
+    'wall': 'line'
+};
+
 // Time unit patterns
 const TIME_UNITS = ['rounds?', 'minutes?', 'hours?', 'days?'];
 const TIME_UNITS_PATTERN = TIME_UNITS.join('|');
@@ -210,7 +219,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "Creatures take 8d6 fire damage (basic Reflex save, DC 28).";
+const DEFAULT_TEST_INPUT = "The spell emanates in a 15-foot radius.";
 
 // Utility for unique IDs
 function generateId() {
@@ -438,7 +447,23 @@ class TemplateReplacement extends RollReplacement {
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
     }
     render() {
-        return `@Template[type:${this.shape}|distance:${this.distance}]`;
+        // Check if we need custom display text by finding the original shape name
+        const originalText = this.originalText.toLowerCase();
+        let originalShapeName = null;
+        
+        // Find which alternate shape name was used in the original text
+        for (const [alternateName, standardShape] of Object.entries(ALTERNATE_SHAPE_NAMES)) {
+            if (originalText.includes(alternateName) && standardShape === this.shape) {
+                originalShapeName = alternateName;
+                break;
+            }
+        }
+        
+        if (originalShapeName) {
+            return `@Template[type:${this.shape}|distance:${this.distance}]{${this.distance}-foot ${originalShapeName}}`;
+        } else {
+            return `@Template[type:${this.shape}|distance:${this.distance}]`;
+        }
     }
 }
 
@@ -830,20 +855,27 @@ const PATTERN_DEFINITIONS = [
         handler: function(match) { return { match, args: [match[1]] }; },
         description: 'Stunned condition without value (special case)'
     },
-    // Priority 7: Area effects
+    // Priority 7: Area effects (consolidated)
     {
         type: 'template',
-        regex: new RegExp(`(\\d+)-foot\\s+(${TEMPLATE_SHAPES_PATTERN})`, 'gi'),
+        regex: new RegExp(`(\\d+)\\s*-?foot\\s+(${TEMPLATE_SHAPES_PATTERN}|${Object.keys(ALTERNATE_SHAPE_NAMES).join('|')})`, 'gi'),
         priority: PRIORITY.TEMPLATE,
-        handler: (match) => match,
-        description: 'Basic area effects'
-    },
-    {
-        type: 'template',
-        regex: /(\d+)-foot\s+radius/gi,
-        priority: PRIORITY.TEMPLATE,
-        handler: (match) => match,
-        description: 'Radius area effects'
+        handler: function(match) {
+            const distance = match[1];
+            const shapeName = match[2].toLowerCase();
+            
+            // Map alternate names to standard shapes
+            const standardShape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
+            
+            return {
+                0: match[0],
+                index: match.index,
+                length: match[0].length,
+                1: distance,
+                2: standardShape
+            };
+        },
+        description: 'Consolidated area effects (standard and alternate shape names, with optional hyphen)'
     }
 ];
 
