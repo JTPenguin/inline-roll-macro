@@ -210,7 +210,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The creature is paralyzed. While paralyzed, it can't see or speak.";
+const DEFAULT_TEST_INPUT = "Creatures take 8d6 fire damage (basic Reflex save, DC 28).";
 
 // Utility for unique IDs
 function generateId() {
@@ -610,13 +610,22 @@ const PATTERN_DEFINITIONS = [
             const basicStr = isBasic ? '|basic' : '';
             // Always use 'save' for the output, never 'saving throw'
             const saveTerm = 'save';
+            
+            // Check if the entire save phrase is wrapped in parentheses
+            const originalText = match[0];
+            const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
+            
             const replacement = `@Check[${normalizedSave}${dc ? `|dc:${dc}` : ''}${basicStr}] ${saveTerm}`;
+            
+            // If the original text was wrapped in parentheses, preserve them
+            const finalReplacement = hasWrappingParentheses ? `(${replacement})` : replacement;
+            
             // Return a match-like object for resolveConflicts, with 0 as the original matched text and 'replacement' property
             return {
                 0: match[0],
                 index: match.index,
                 length: match[0].length,
-                replacement: replacement
+                replacement: finalReplacement
             };
         },
         description: 'Comprehensive save pattern (all variations including parenthetical)'
