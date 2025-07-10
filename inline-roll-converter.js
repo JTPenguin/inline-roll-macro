@@ -186,7 +186,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The spell deals 5 chaotic damage and 5 fire damage.";
+const DEFAULT_TEST_INPUT = "The explosion deals 3d6 fire damage and 2d4 force damage.\nThe explosion deals 3d6 fire and 2d4 force damage.\nThe attack deals 1d4 acid, 1d4 good, and 1d4 slashing damage.";
 
 // Utility for unique IDs
 function generateId() {
@@ -267,18 +267,26 @@ class DamageReplacement extends RollReplacement {
         this.parseMatch(match, config);
     }
     parseMatch(match, config) {
+        // If this is a multi-damage match, match[0] is the whole string, match[1] is the repeated group
+        if (Array.isArray(match.multiMatches)) {
+            for (const m of match.multiMatches) {
+                this._parseSingleDamage(m);
+            }
+        } else {
+            this._parseSingleDamage(match);
+        }
+    }
+    _parseSingleDamage(match) {
+        // Accepts a regex match array for a single dice/type pair
         const dice = match[1] || '';
         const type1 = match[2] || '';
         const type2 = match[3] || '';
         const type = type1 || type2;
-        
-        // Determine damage type and flags based on the original text
         const originalText = match[0].toLowerCase();
         const isPersistent = originalText.includes('persistent');
         const isPrecision = originalText.includes('precision');
         const isSplash = originalText.includes('splash');
         const isHealing = originalText.includes('healing') || originalText.includes('hit point') || originalText.includes('hp');
-        
         if (isHealing) {
             this.addDamageComponent(dice, '', false, false, false, true);
         } else {
@@ -294,12 +302,14 @@ class DamageReplacement extends RollReplacement {
         this.damageComponents.push(new DamageComponent(dice, remasterType, persistent, precision, splash, healing));
     }
     render() {
+        let roll;
         if (this.damageComponents.length === 1) {
-            return `@Damage[${this.damageComponents[0].render()}]`;
+            roll = `@Damage[${this.damageComponents[0].render()}]`;
         } else {
             const componentStrings = this.damageComponents.map(comp => comp.render());
-            return `@Damage[${componentStrings.join(',')}]`;
+            roll = `@Damage[${componentStrings.join(',')}]`;
         }
+        return roll + ' damage';
     }
     validate() {
         return this.damageComponents.length > 0 && this.damageComponents.every(comp => comp.validate());
@@ -480,8 +490,30 @@ const PRIORITY = {
     TEMPLATE: 7
 };
 
+// ===================== PATTERN DEFINITIONS =====================
 // Centralized pattern definitions
 const PATTERN_DEFINITIONS = [
+    // NEW: Multi-damage pattern (highest priority)
+    {
+        type: 'damage',
+        // Improved regex: matches a sequence of dice/type pairs, with optional trailing 'damage' after the last type
+        regex: new RegExp(`((?:\\d+d\\d+(?:[+-]\\d+)?\\s+(?:${DAMAGE_TYPE_PATTERN})(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s+and\\s+))*\\d+d\\d+(?:[+-]\\d+)?\\s+(?:${DAMAGE_TYPE_PATTERN})(?:\\s+damage)?)`, 'gi'),
+        priority: PRIORITY.DAMAGE + 10, // Higher than all other damage patterns
+        handler: function(match) {
+            // Find all dice/type pairs in the match[0] string
+            // Accepts: '1d4 acid, 1d4 good, and 1d4 slashing damage' (with or without 'damage' after each type)
+            const singlePattern = new RegExp(`(\\d+d\\d+(?:[+-]\\d+)?)(?:\\s+(${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?`, 'gi');
+            let m;
+            const multiMatches = [];
+            while ((m = singlePattern.exec(match[0])) !== null) {
+                multiMatches.push(m);
+            }
+            // Attach all submatches for DamageReplacement
+            match.multiMatches = multiMatches;
+            return match;
+        },
+        description: 'Multi-damage grouping (comma, and, or both separated, trailing damage allowed)'
+    },
     // Priority 1: Comprehensive save pattern
     {
         type: 'save',
@@ -588,13 +620,13 @@ const PATTERN_DEFINITIONS = [
         handler: (match, dice, unit) => `recharges in [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
         description: 'Recharge timing pattern'
     },
-    // Priority 3: Basic damage and skill patterns
+    // Priority 3: Basic damage and skill patterns (lowered priority)
     {
         type: 'damage',
         regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${DAMAGE_TYPE_PATTERN})`, 'gi'),
-        priority: PRIORITY.BASIC_DAMAGE,
+        priority: PRIORITY.BASIC_DAMAGE - 10, // Lowered priority
         handler: (match) => match,
-        description: 'Basic damage rolls'
+        description: 'Basic damage rolls (single)'
     },
     {
         type: 'skill',
