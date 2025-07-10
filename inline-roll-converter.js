@@ -323,7 +323,9 @@ const CONVERSION_PATTERNS = {
             if (this.linkedConditions.has(conditionKey)) return match;
             
             this.linkedConditions.add(conditionKey);
-            return `@UUID[${uuid}]{${condition} ${value}}`;
+            // Capitalize the first letter of the condition name
+            const capitalizedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
+            return `@UUID[${uuid}]{${capitalizedCondition} ${value}}`;
         },
         priority: 6,
         description: 'Condition linking with values (only for conditions that support values)'
@@ -342,7 +344,9 @@ const CONVERSION_PATTERNS = {
             if (this.linkedConditions.has(conditionKey)) return match;
             
             this.linkedConditions.add(conditionKey);
-            return `@UUID[${uuid}]{${condition}}`;
+            // Capitalize the first letter of the condition name
+            const capitalizedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
+            return `@UUID[${uuid}]{${capitalizedCondition}}`;
         },
         priority: 6,
         description: 'Condition linking without values (conditions that cannot have values)'
@@ -361,7 +365,9 @@ const CONVERSION_PATTERNS = {
             if (this.linkedConditions.has(conditionKey)) return match;
             
             this.linkedConditions.add(conditionKey);
-            return `@UUID[${uuid}]{${condition}}`;
+            // Capitalize the first letter of the condition name
+            const capitalizedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
+            return `@UUID[${uuid}]{${capitalizedCondition}}`;
         },
         priority: 6,
         description: 'Stunned condition without value (special case)'
