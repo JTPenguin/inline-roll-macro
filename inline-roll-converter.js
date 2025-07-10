@@ -19,6 +19,16 @@ const SKILLS = [
     'Society', 'Stealth', 'Survival', 'Thievery'
 ];
 
+// Legacy to Remaster damage type mapping
+const LEGACY_TO_REMASTER_DAMAGE_TYPE = {
+    chaotic: 'spirit',
+    evil: 'spirit',
+    good: 'spirit',
+    lawful: 'spirit',
+    positive: 'vitality',
+    negative: 'void'
+};
+
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
 
@@ -176,7 +186,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The dragon breathes fire, dealing 6d6 fire damage.";
+const DEFAULT_TEST_INPUT = "The spell deals 5 chaotic damage and 5 fire damage.";
 
 // Utility for unique IDs
 function generateId() {
@@ -275,8 +285,13 @@ class DamageReplacement extends RollReplacement {
             this.addDamageComponent(dice, type, isPersistent, isPrecision, isSplash);
         }
     }
-    addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false) {
-        this.damageComponents.push(new DamageComponent(dice, damageType, persistent, precision, splash));
+    addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false, healing = false) {
+        // Convert legacy types to remaster types
+        let remasterType = damageType;
+        if (damageType && LEGACY_TO_REMASTER_DAMAGE_TYPE[damageType]) {
+            remasterType = LEGACY_TO_REMASTER_DAMAGE_TYPE[damageType];
+        }
+        this.damageComponents.push(new DamageComponent(dice, remasterType, persistent, precision, splash, healing));
     }
     render() {
         if (this.damageComponents.length === 1) {
