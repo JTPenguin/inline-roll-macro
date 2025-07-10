@@ -34,7 +34,7 @@ const CONVERSION_PATTERNS = {
     
     // Comprehensive save pattern (all variations including parenthetical)
     comprehensiveSave: {
-        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+save)?)(?:\)?)/gi,
+        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?)(?:\)?)/gi,
         replacement: (match, savePhrase, dc1, save1, dc2, save2, dc3, dc4, save3, dc5, save4) => {
             // Extract save type and normalize
             const save = (save1 || save2 || save3 || save4).toLowerCase();
@@ -51,9 +51,13 @@ const CONVERSION_PATTERNS = {
             // Check if the original match was wrapped in parentheses
             const wasParenthetical = match.startsWith('(') && match.endsWith(')');
             
+            // Determine if the original had "saving throw" or "save"
+            const hasSavingThrow = savePhrase.match(/\bsaving\s+throw\b/i);
+            const saveTerm = hasSavingThrow ? 'saving throw' : 'save';
+            
             // Build the replacement
             const basicStr = isBasic ? '|basic' : '';
-            const replacement = `@Check[${normalizedSave}|dc:${dc}${basicStr}] save`;
+            const replacement = `@Check[${normalizedSave}|dc:${dc}${basicStr}] ${saveTerm}`;
             
             // Wrap in parentheses if the original was parenthetical
             return wasParenthetical ? `(${replacement})` : replacement;
