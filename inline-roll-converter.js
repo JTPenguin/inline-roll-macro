@@ -574,10 +574,9 @@ const PATTERN_DEFINITIONS = [
             else if (save.startsWith('will')) normalizedSave = 'will';
             else normalizedSave = save;
             const isBasic = /\bbasic\b/i.test(match[0]);
-            const wasParenthetical = match[0].startsWith('(') && match[0].endsWith(')');
-            const hasSavingThrow = /\bsaving\s+throw\b/i.test(match[0]);
-            const saveTerm = hasSavingThrow ? 'saving throw' : 'save';
             const basicStr = isBasic ? '|basic' : '';
+            // Always use 'save' for the output, never 'saving throw'
+            const saveTerm = 'save';
             const replacement = `@Check[${normalizedSave}${dc ? `|dc:${dc}` : ''}${basicStr}] ${saveTerm}`;
             // Return a match-like object for resolveConflicts, with 0 as the original matched text and 'replacement' property
             return {
