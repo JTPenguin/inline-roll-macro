@@ -29,6 +29,11 @@ const LEGACY_TO_REMASTER_DAMAGE_TYPE = {
     negative: 'void'
 };
 
+// Patterns for legacy types
+const LEGACY_ALIGNMENT_PATTERN = 'chaotic|evil|good|lawful';
+const LEGACY_POSITIVE = 'positive';
+const LEGACY_NEGATIVE = 'negative';
+
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
 
@@ -186,7 +191,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The explosion deals 3d6 fire damage and 2d4 force damage.\nThe explosion deals 3d6 fire and 2d4 force damage.\nThe attack deals 1d4 acid, 1d4 good, and 1d4 slashing damage.";
+const DEFAULT_TEST_INPUT = "The weapon deals 1d8+4 slashing damage and 1d6 persistent bleed damage.";
 
 // Utility for unique IDs
 function generateId() {
@@ -279,14 +284,24 @@ class DamageReplacement extends RollReplacement {
     _parseSingleDamage(match) {
         // Accepts a regex match array for a single dice/type pair
         const dice = match[1] || '';
-        const type1 = match[2] || '';
-        const type2 = match[3] || '';
-        const type = type1 || type2;
         const originalText = match[0].toLowerCase();
+        
+        // Extract damage type from the various capture groups
+        // The new regex has multiple capture groups for different damage patterns:
+        // match[2] = persistent damage type (first pattern)
+        // match[3] = persistent damage type (second pattern) 
+        // match[4] = splash damage type (first pattern)
+        // match[5] = splash damage type (second pattern)
+        // match[6] = precision damage type (first pattern)
+        // match[7] = precision damage type (second pattern)
+        // match[8] = basic damage type
+        const type = match[2] || match[3] || match[4] || match[5] || match[6] || match[7] || match[8] || '';
+        
         const isPersistent = originalText.includes('persistent');
         const isPrecision = originalText.includes('precision');
         const isSplash = originalText.includes('splash');
         const isHealing = originalText.includes('healing') || originalText.includes('hit point') || originalText.includes('hp');
+        
         if (isHealing) {
             this.addDamageComponent(dice, '', false, false, false, true);
         } else {
@@ -328,6 +343,7 @@ class CheckReplacement extends RollReplacement {
         this.secret = false;
         this.defense = '';
         this.against = '';
+        this.match = match; // Save the match object for render()
         this.parseMatch(match, config);
     }
     parseMatch(match, config) {
@@ -339,17 +355,24 @@ class CheckReplacement extends RollReplacement {
                 if (group.basic && match[group.basic]) this.basic = true;
             }
         } else {
+            // Defensive: if match.replacement exists, skip parsing (already replaced)
+            if (match && match.replacement) return;
             this.checkType = match[2] ? match[2].toLowerCase() : '';
             this.dc = match[1] || null;
         }
     }
     render() {
+        // If match.replacement exists, use it directly
+        if (this.match && this.match.replacement) {
+            return this.match.replacement;
+        }
         let params = [`${this.checkType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
         if (this.basic) params.push('basic');
         return `@Check[${params.join('|')}] check`;
     }
     validate() {
+        if (this.match && this.match.replacement) return true;
         return this.checkType && (this.dc || this.defense || this.against);
     }
 }
@@ -496,13 +519,13 @@ const PATTERN_DEFINITIONS = [
     // NEW: Multi-damage pattern (highest priority)
     {
         type: 'damage',
-        // Improved regex: matches a sequence of dice/type pairs, with optional trailing 'damage' after the last type
-        regex: new RegExp(`((?:\\d+d\\d+(?:[+-]\\d+)?\\s+(?:${DAMAGE_TYPE_PATTERN})(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s+and\\s+))*\\d+d\\d+(?:[+-]\\d+)?\\s+(?:${DAMAGE_TYPE_PATTERN})(?:\\s+damage)?)`, 'gi'),
+        // Comprehensive regex: matches a sequence of dice/type pairs including persistent, splash, precision, and basic damage
+        regex: new RegExp(`((?:\\d+d\\d+(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s+and\\s+))*\\d+d\\d+(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?)`, 'gi'),
         priority: PRIORITY.DAMAGE + 10, // Higher than all other damage patterns
         handler: function(match) {
             // Find all dice/type pairs in the match[0] string
-            // Accepts: '1d4 acid, 1d4 good, and 1d4 slashing damage' (with or without 'damage' after each type)
-            const singlePattern = new RegExp(`(\\d+d\\d+(?:[+-]\\d+)?)(?:\\s+(${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?`, 'gi');
+            // Accepts: '1d4 acid, 1d6 persistent bleed, and 1d4 slashing damage' (with or without 'damage' after each type)
+            const singlePattern = new RegExp(`(\\d+d\\d+(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${DAMAGE_TYPE_PATTERN}))(?:\\s+persistent)?|(?:(${DAMAGE_TYPE_PATTERN}))\\s+splash|splash\\s+(?:(${DAMAGE_TYPE_PATTERN}))|(?:(${DAMAGE_TYPE_PATTERN}))\\s+precision|precision\\s+(?:(${DAMAGE_TYPE_PATTERN}))|precision|(?:(${DAMAGE_TYPE_PATTERN})))(?:\\s+damage)?`, 'gi');
             let m;
             const multiMatches = [];
             while ((m = singlePattern.exec(match[0])) !== null) {
@@ -512,68 +535,80 @@ const PATTERN_DEFINITIONS = [
             match.multiMatches = multiMatches;
             return match;
         },
-        description: 'Multi-damage grouping (comma, and, or both separated, trailing damage allowed)'
+        description: 'Multi-damage grouping (comma, and, or both separated, trailing damage allowed) - includes persistent, splash, precision'
     },
     // Priority 1: Comprehensive save pattern
     {
         type: 'save',
         regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?)(?:\)?)/gi,
         priority: PRIORITY.SAVE,
-        handler: (match, ...args) => {
-            const savePhrase = args[0];
-            const dc1 = args[1], save1 = args[2], dc2 = args[3], save2 = args[4], dc3 = args[5], dc4 = args[6], save3 = args[7], dc5 = args[8], save4 = args[9];
-            const save = (save1 || save2 || save3 || save4).toLowerCase();
-            const normalizedSave = save.startsWith('fort') ? 'fortitude' : save.startsWith('ref') ? 'reflex' : 'will';
-            const dc = dc1 || dc2 || dc3 || dc4 || dc5;
-            const isBasic = /\bbasic\b/i.test(savePhrase);
-            const wasParenthetical = match.startsWith('(') && match.endsWith(')');
-            const hasSavingThrow = /\bsaving\s+throw\b/i.test(savePhrase);
+        handler: (match) => {
+            // Defensive extraction of save type and DC from match array
+            let save = '';
+            let dc = '';
+            save = match[3] || match[5] || match[8] || match[10] || '';
+            dc = match[2] || match[4] || match[6] || match[7] || match[9] || '';
+            if (save) save = save.toLowerCase();
+            let normalizedSave = '';
+            if (save.startsWith('fort')) normalizedSave = 'fortitude';
+            else if (save.startsWith('ref')) normalizedSave = 'reflex';
+            else if (save.startsWith('will')) normalizedSave = 'will';
+            else normalizedSave = save;
+            const isBasic = /\bbasic\b/i.test(match[0]);
+            const wasParenthetical = match[0].startsWith('(') && match[0].endsWith(')');
+            const hasSavingThrow = /\bsaving\s+throw\b/i.test(match[0]);
             const saveTerm = hasSavingThrow ? 'saving throw' : 'save';
             const basicStr = isBasic ? '|basic' : '';
-            const replacement = `@Check[${normalizedSave}|dc:${dc}${basicStr}] ${saveTerm}`;
-            return wasParenthetical ? `(${replacement})` : replacement;
+            const replacement = `@Check[${normalizedSave}${dc ? `|dc:${dc}` : ''}${basicStr}] ${saveTerm}`;
+            // Return a match-like object for resolveConflicts, with 0 as the original matched text and 'replacement' property
+            return {
+                0: match[0],
+                index: match.index,
+                length: match[0].length,
+                replacement: replacement
+            };
         },
         description: 'Comprehensive save pattern (all variations including parenthetical)'
     },
     // Priority 2: Damage and skill patterns
     {
         type: 'damage',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+persistent)`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+persistent)(?:\\s+damage)?`, 'gi'),
         priority: PRIORITY.DAMAGE,
         handler: (match) => match,
         description: 'Persistent damage'
     },
     {
         type: 'damage',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(${DAMAGE_TYPE_PATTERN}))`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?`, 'gi'),
         priority: PRIORITY.DAMAGE,
         handler: (match) => match,
         description: 'Splash damage'
     },
     {
         type: 'damage',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:precision\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+precision)`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:precision\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+precision)(?:\\s+damage)?`, 'gi'),
         priority: PRIORITY.DAMAGE,
         handler: (match) => match,
         description: 'Precision damage with type'
     },
     {
         type: 'damage',
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+precision/gi,
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+precision(?:\s+damage)?/gi,
         priority: PRIORITY.DAMAGE,
         handler: (match) => match,
         description: 'Generic precision damage'
     },
     {
         type: 'healing',
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+(?:hit\s+points?|HP)/gi,
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+(?:hit\s+points?|HP)(?:\s+healed)?/gi,
         priority: PRIORITY.HEALING,
         handler: (match) => match,
         description: 'Healing hit points'
     },
     {
         type: 'healing',
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+healing/gi,
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+healing(?:\s+damage)?/gi,
         priority: PRIORITY.HEALING,
         handler: (match) => match,
         description: 'Generic healing'
@@ -623,7 +658,7 @@ const PATTERN_DEFINITIONS = [
     // Priority 3: Basic damage and skill patterns (lowered priority)
     {
         type: 'damage',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${DAMAGE_TYPE_PATTERN})`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${DAMAGE_TYPE_PATTERN})(?:\\s+damage)?`, 'gi'),
         priority: PRIORITY.BASIC_DAMAGE - 10, // Lowered priority
         handler: (match) => match,
         description: 'Basic damage rolls (single)'
@@ -638,21 +673,21 @@ const PATTERN_DEFINITIONS = [
     // Priority 4: Legacy damage type conversions
     {
         type: 'legacy',
-        regex: /@Damage\[(.*?\[)([^\]]*?)(chaotic|evil|good|lawful)([^\]]*?)\](.*?)\]/gi,
+        regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_ALIGNMENT_PATTERN})([^\\]]*?)\\](.*?)\\]`, 'gi'),
         priority: PRIORITY.LEGACY,
         handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}spirit${after}]${suffix}]`,
         description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
     },
     {
         type: 'legacy',
-        regex: /@Damage\[(.*?\[)([^\]]*?)(positive)([^\]]*?)\](.*?)\]/gi,
+        regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_POSITIVE})([^\\]]*?)\\](.*?)\\]`, 'gi'),
         priority: PRIORITY.LEGACY,
         handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}vitality${after}]${suffix}]`,
         description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
     },
     {
         type: 'legacy',
-        regex: /@Damage\[(.*?\[)([^\]]*?)(negative)([^\]]*?)\](.*?)\]/gi,
+        regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_NEGATIVE})([^\\]]*?)\\](.*?)\\]`, 'gi'),
         priority: PRIORITY.LEGACY,
         handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}void${after}]${suffix}]`,
         description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
