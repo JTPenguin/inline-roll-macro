@@ -176,7 +176,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The target becomes frightened 2 and off-guard. The poison causes enfeebled 1. The creature is stunned 3, then becomes stunned. The spell makes them blinded and prone.";
+const DEFAULT_TEST_INPUT = "The dragon breathes fire, dealing 6d6 fire damage.\nThe explosion deals 3d6 fire damage and 2d4 force damage to all creatures in the area.\nThe weapon deals 1d8+4 slashing damage on a hit.\nThe spell deals 5 chaotic damage and 5 fire damage.\nThe attack inflicts 2d6 positive damage.\nThe effect causes 3 negative damage each round.\nThe weapon deals 1d8 good damage.\nThe trap deals 2d6 evil damage and 2d6 acid damage.\nThe spell deals 2d6 fire damage and 2d6 lawful damage.\nThe attack deals 1d4 acid, 1d4 good, and 1d4 slashing damage.";
 
 // Utility for unique IDs
 function generateId() {
@@ -912,8 +912,11 @@ async function createLivePreview(text, container) {
     }
 
     try {
+        // Replace newlines with <br> for HTML preview
+        const htmlText = text.replace(/\n/g, '<br>');
+
         // Use TextEditor to process the inline rolls
-        const processedHTML = await TextEditor.enrichHTML(text, {
+        const processedHTML = await TextEditor.enrichHTML(htmlText, {
             async: true,
             rollData: {},
             relativeTo: null
@@ -1031,25 +1034,16 @@ function showConverterDialog() {
                         font-family: 'Signika', sans-serif;
                         font-size: 13px;
                         overflow-y: auto;
-                        max-height: 200px;
+                        max-height: 500px;
                     "
                 >
                     <em style="color: #999;">Live preview will appear here...</em>
                 </div>
             </div>
             
-            <div class="form-group">
-                <div id="conversion-stats" style="font-size: 12px; color: #666; margin-top: 5px;">
-                    Ready to convert...
-                </div>
-                <div id="pattern-details" style="font-size: 11px; color: #888; margin-top: 5px; display: none;">
-                </div>
-            </div>
-            
             <div class="converter-controls" style="display: flex; gap: 10px; margin-top: 15px;">
                 <button type="button" id="copy-output" style="flex: 1; padding: 8px;">Copy Output</button>
                 <button type="button" id="clear-all" style="flex: 1; padding: 8px;">Clear All</button>
-                <button type="button" id="show-details" style="flex: 1; padding: 8px;">Show Details</button>
             </div>
         </div>
         
@@ -1063,14 +1057,6 @@ function showConverterDialog() {
             .pf2e-converter-dialog label {
                 display: block;
                 margin-bottom: 5px;
-            }
-            #pattern-details {
-                background-color: #f8f8f8;
-                padding: 5px;
-                border-radius: 3px;
-                border: 1px solid #ddd;
-                max-height: 100px;
-                overflow-y: auto;
             }
             .pf2e-preview-content .inline-roll {
                 background: #1f5582;
@@ -1108,60 +1094,34 @@ function showConverterDialog() {
         content: dialogContent,
         buttons: {},
         render: (html) => {
-            let showingDetails = false;
-            
             // Add real-time conversion on input change
             const inputTextarea = html.find('#input-text');
             const outputTextarea = html.find('#output-text');
             const livePreview = html.find('#live-preview')[0];
-            const statsDiv = html.find('#conversion-stats');
-            const detailsDiv = html.find('#pattern-details');
-            
+
             inputTextarea.on('input', async () => {
                 const inputText = inputTextarea.val();
                 if (inputText.trim()) {
                     const result = convertText(inputText);
-                    const validation = validateDamageTypes(inputText);
-                    
                     outputTextarea.val(result.convertedText);
-                    
                     // Update live preview
                     await createLivePreview(result.convertedText, livePreview);
-                    
-                    let statsText = `Conversions: ${result.conversionsCount}`;
-                    if (result.errors.length > 0) {
-                        statsText += ` | Errors: ${result.errors.length}`;
-                    }
-                    if (validation.hasLegacyTypes) {
-                        statsText += ` | Legacy types converted: ${validation.legacyTypes.join(', ')}`;
-                    }
-                    statsDiv.text(statsText);
-                    
-                    // Update pattern details
-                    if (showingDetails && Object.keys(result.patternMatches).length > 0) {
-                        const patternText = Object.entries(result.patternMatches)
-                            .map(([pattern, count]) => `${pattern}: ${count}`)
-                            .join(', ');
-                        detailsDiv.text(`Patterns matched: ${patternText}`);
-                    }
                 } else {
                     outputTextarea.val('');
                     livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
-                    statsDiv.text('Ready to convert...');
-                    detailsDiv.hide();
                 }
             });
-            
+
             // Trigger initial conversion for the default test input
             setTimeout(() => {
                 inputTextarea.trigger('input');
             }, 0);
-            
+
             // Copy output button handler
             html.find('#copy-output').click((event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                
+
                 const outputText = outputTextarea.val();
                 if (outputText.trim()) {
                     copyToClipboard(outputText);
@@ -1169,34 +1129,15 @@ function showConverterDialog() {
                     ui.notifications.warn("No converted text to copy.");
                 }
             });
-            
+
             // Clear all button handler
             html.find('#clear-all').click((event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                
+
                 inputTextarea.val('');
                 outputTextarea.val('');
                 livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
-                statsDiv.text('Ready to convert...');
-                detailsDiv.hide();
-            });
-            
-            // Show details button handler
-            html.find('#show-details').click((event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                
-                showingDetails = !showingDetails;
-                if (showingDetails) {
-                    detailsDiv.show();
-                    $(event.target).text('Hide Details');
-                    // Trigger input event to update details
-                    inputTextarea.trigger('input');
-                } else {
-                    detailsDiv.hide();
-                    $(event.target).text('Show Details');
-                }
             });
         }
     }, {
