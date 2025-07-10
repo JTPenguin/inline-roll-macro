@@ -416,7 +416,7 @@ function getConditionUUIDFromCompendium(conditionName) {
         
         return null;
     } catch (error) {
-        console.log('PF2e Converter: Error getting condition from compendium:', error);
+        // Silently fail - fallback UUIDs will be used
         return null;
     }
 }
@@ -444,8 +444,6 @@ function buildConditionMap() {
         'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
     ];
     
-    console.log('PF2e Converter: Building condition map from compendium...');
-    
     // Try to get all conditions from the compendium
     for (const conditionName of conditionNames) {
         const uuid = getConditionUUIDFromCompendium(conditionName);
@@ -455,7 +453,6 @@ function buildConditionMap() {
                 name: conditionName,
                 slug: conditionName
             });
-            console.log(`PF2e Converter: Found "${conditionName}": ${uuid}`);
         } else {
             console.warn(`PF2e Converter: Could not find UUID for condition "${conditionName}"`);
         }
@@ -506,7 +503,6 @@ function buildConditionMap() {
                 name: name,
                 slug: name
             });
-            console.log(`PF2e Converter: Using fallback for "${name}": ${uuid}`);
         }
     } else {
         // Fill in any missing conditions with fallbacks
@@ -517,7 +513,6 @@ function buildConditionMap() {
                     name: name,
                     slug: name
                 });
-                console.log(`PF2e Converter: Using fallback for missing "${name}": ${uuid}`);
             }
         }
     }
@@ -544,32 +539,6 @@ function getConditionUUID(conditionName) {
  */
 function initializeConditionMap() {
     conditionMap = buildConditionMap();
-    console.log(`PF2e Converter: Initialized condition map with ${conditionMap.size} conditions`);
-    
-    // Debug: Try to access conditions through different methods
-    console.log('PF2e Converter: Debugging condition access...');
-    console.log('game.pf2e:', game.pf2e);
-    console.log('game.pf2e.conditions:', game.pf2e?.conditions);
-    
-    // Try to access conditions through compendium
-    try {
-        const conditionCompendium = game.packs.get('pf2e.conditionitems');
-        if (conditionCompendium) {
-            console.log('PF2e Converter: Found condition compendium:', conditionCompendium);
-            console.log('PF2e Converter: Compendium index:', conditionCompendium.index);
-        }
-    } catch (error) {
-        console.log('PF2e Converter: Could not access condition compendium:', error);
-    }
-    
-    // Try to access conditions through system data
-    try {
-        if (game.pf2e?.system?.conditions) {
-            console.log('PF2e Converter: System conditions:', game.pf2e.system.conditions);
-        }
-    } catch (error) {
-        console.log('PF2e Converter: Could not access system conditions:', error);
-    }
 }
 
 /**
@@ -600,13 +569,9 @@ function convertText(inputText) {
 
         // Process each conversion pattern in priority order
         for (const [patternName, pattern] of sortedPatterns) {
-            console.log(`PF2e Converter: Checking pattern "${patternName}" (priority ${pattern.priority})`);
-            
             const matches = convertedText.match(pattern.regex);
             if (matches) {
                 const matchCount = matches.length;
-                console.log(`PF2e Converter: Found ${matchCount} matches for "${patternName}":`, matches);
-                console.log(`PF2e Converter: Text before replacement:`, convertedText);
                 
                 // For condition patterns, create a closure that captures linkedConditions
                 let replacementFunction = pattern.replacement;
@@ -621,11 +586,6 @@ function convertText(inputText) {
                 
                 conversionsCount += matchCount;
                 patternMatches[patternName] = matchCount;
-                
-                console.log(`PF2e Converter: Text after replacement:`, convertedText);
-                console.log(`PF2e Converter: Applied ${pattern.description} - ${matchCount} conversions`);
-            } else {
-                console.log(`PF2e Converter: No matches for "${patternName}"`);
             }
         }
 
@@ -982,22 +942,16 @@ function showConverterDialog() {
  * Test condition linking functionality
  */
 function testConditionLinking() {
-    console.log('PF2e Converter: Testing condition linking...');
-    
     // Test various condition types: with values, without values, and stunned (special case)
     const testText = "The target becomes frightened 2 and off-guard. The poison causes enfeebled 1. The creature is stunned 3, then becomes stunned. The spell makes them blinded and prone.";
-    console.log('PF2e Converter: Test input:', testText);
     
     const result = convertText(testText);
-    console.log('PF2e Converter: Test result:', result);
     
     return result;
 }
 
 // Main execution
 try {
-    console.log('PF2e Inline Roll Converter v2.2: Starting...');
-    
     // Verify we're in a PF2e game
     if (game.system.id !== 'pf2e') {
         ui.notifications.error("This macro is designed for the Pathfinder 2e system only.");
