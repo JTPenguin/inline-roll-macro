@@ -454,30 +454,6 @@ class CheckReplacement extends RollReplacement {
             // Defensive: if match.replacement exists, skip parsing (already replaced)
             if (match && match.replacement) return;
             
-            // Check if this is a save pattern by scanning for save types
-            let isSavePattern = false;
-            for (let i = 1; i < match.length; i++) {
-                const value = match[i];
-                if (value && /^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
-                    isSavePattern = true;
-                    this.checkType = value.toLowerCase();
-                    break;
-                }
-            }
-            
-            // If it's a save pattern, set rollType to 'save' and extract DC
-            if (isSavePattern) {
-                this.rollType = 'save';
-                // Extract DC by scanning for numeric values
-                for (let i = 1; i < match.length; i++) {
-                    const value = match[i];
-                    if (value && /^\d{1,2}$/.test(value)) {
-                        this.dc = value;
-                        break;
-                    }
-                }
-            }
-            
             // Check if this is a multiple skills match
             if (match.multipleSkills && match.skills) {
                 this.multipleSkills = true;
@@ -489,8 +465,7 @@ class CheckReplacement extends RollReplacement {
                     this.multipleSkills = true;
                     this.skills = match[2].split(/\s+or\s+/).map(s => s.trim());
                     this.dc = match[1] || null;
-                } else if (!isSavePattern) {
-                    // Only set checkType for non-save patterns
+                } else {
                     this.checkType = match[2] ? match[2].toLowerCase() : '';
                     this.dc = match[1] || null;
                 }
@@ -501,11 +476,6 @@ class CheckReplacement extends RollReplacement {
         // If match.replacement exists, use it directly
         if (this.match && this.match.replacement) {
             return this.match.replacement;
-        }
-        
-        // Handle save patterns (complex logic moved from pattern handler)
-        if (this.rollType === 'save' || this.checkType === 'fortitude' || this.checkType === 'reflex' || this.checkType === 'will') {
-            return this.renderSave();
         }
         
         // Handle multiple skills
@@ -525,54 +495,74 @@ class CheckReplacement extends RollReplacement {
         if (this.basic) params.push('basic');
         return `@Check[${params.join('|')}] check`;
     }
-    
-    renderSave() {
-        // Robust extraction by scanning all indices for components
-        let save = '';
-        let dc = '';
-        
-        // Scan all match indices to find components by their characteristics
-        for (let i = 1; i < this.match.length; i++) {
-            const value = this.match[i];
-            if (!value) continue;
-            
-            // Check if this is a DC (numeric value, typically 1-2 digits)
-            if (/^\d{1,2}$/.test(value)) {
-                dc = value;
-            }
-            // Check if this is a save type (fort/reflex/will variations)
-            else if (/^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
-                save = value;
-            }
-        }
-        
-        // Normalize save type
-        if (save) {
-            save = save.toLowerCase();
-            if (save.startsWith('fort')) save = 'fortitude';
-            else if (save.startsWith('ref')) save = 'reflex';
-            else if (save.startsWith('will')) save = 'will';
-        }
-        
-        const isBasic = /\bbasic\b/i.test(this.match[0]);
-        const basicStr = isBasic ? '|basic' : '';
-        const saveTerm = 'save';
-        
-        // Check if the entire save phrase is wrapped in parentheses
-        const originalText = this.match[0];
-        const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
-        
-        const replacement = `@Check[${save}${dc ? `|dc:${dc}` : ''}${basicStr}] ${saveTerm}`;
-        
-        // If the original text was wrapped in parentheses, preserve them
-        return hasWrappingParentheses ? `(${replacement})` : replacement;
-    }
     validate() {
         if (this.match && this.match.replacement) return true;
         if (this.multipleSkills) {
             return this.skills.length > 0 && this.dc;
         }
         return this.checkType && (this.dc || this.defense || this.against);
+    }
+}
+
+// -------------------- Save Replacement --------------------
+class SaveReplacement extends RollReplacement {
+    constructor(match, config) {
+        super(match);
+        this.rollType = 'save';
+        this.priority = 90;
+        this.saveType = '';
+        this.dc = null;
+        this.basic = false;
+        this.match = match; // Save the match object for render()
+        this.parseMatch(match, config);
+    }
+    parseMatch(match, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        // Robust extraction by scanning all indices for components
+        for (let i = 1; i < match.length; i++) {
+            const value = match[i];
+            if (!value) continue;
+            
+            // Check if this is a DC (numeric value, typically 1-2 digits)
+            if (/^\d{1,2}$/.test(value)) {
+                this.dc = value;
+            }
+            // Check if this is a save type (fort/reflex/will variations)
+            else if (/^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
+                this.saveType = value.toLowerCase();
+                // Normalize save type
+                if (this.saveType.startsWith('fort')) this.saveType = 'fortitude';
+                else if (this.saveType.startsWith('ref')) this.saveType = 'reflex';
+                else if (this.saveType.startsWith('will')) this.saveType = 'will';
+            }
+        }
+        
+        // Check for basic saves
+        this.basic = /\bbasic\b/i.test(match[0]);
+    }
+    render() {
+        // If match.replacement exists, use it directly
+        if (this.match && this.match.replacement) {
+            return this.match.replacement;
+        }
+        
+        const basicStr = this.basic ? '|basic' : '';
+        const saveTerm = 'save';
+        
+        // Check if the entire save phrase is wrapped in parentheses
+        const originalText = this.match[0];
+        const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
+        
+        const replacement = `@Check[${this.saveType}${this.dc ? `|dc:${this.dc}` : ''}${basicStr}] ${saveTerm}`;
+        
+        // If the original text was wrapped in parentheses, preserve them
+        return hasWrappingParentheses ? `(${replacement})` : replacement;
+    }
+    validate() {
+        if (this.match && this.match.replacement) return true;
+        return this.saveType && this.dc;
     }
 }
 
@@ -781,7 +771,7 @@ class ConditionReplacement extends Replacement {
 const REPLACEMENT_CLASS_MAP = {
     damage: DamageReplacement,
     healing: HealingReplacement, // Dedicated healing replacement class
-    save: CheckReplacement,
+    save: SaveReplacement, // Dedicated save replacement class
     skill: CheckReplacement,
     template: TemplateReplacement,
     within: WithinReplacement,
