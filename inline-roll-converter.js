@@ -26,378 +26,6 @@ let conditionMap = new Map();
 const DAMAGE_TYPE_PATTERN = DAMAGE_TYPES.join('|');
 const SKILL_PATTERN = SKILLS.join('|');
 
-// Configuration object for conversion patterns (ordered by priority)
-const CONVERSION_PATTERNS = {
-    // ============================================================================
-    // PRIORITY 1 - HIGHEST PRIORITY PATTERNS (Process first to avoid conflicts)
-    // ============================================================================
-    
-    // Comprehensive save pattern (all variations including parenthetical)
-    comprehensiveSave: {
-        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?)(?:\)?)/gi,
-        replacement: (match, savePhrase, dc1, save1, dc2, save2, dc3, dc4, save3, dc5, save4) => {
-            // Extract save type and normalize
-            const save = (save1 || save2 || save3 || save4).toLowerCase();
-            const normalizedSave = save.startsWith('fort') ? 'fortitude' : 
-                                  save.startsWith('ref') ? 'reflex' : 'will';
-            
-            // Extract DC (could be in any of the capture groups)
-            const dc = dc1 || dc2 || dc3 || dc4 || dc5;
-            
-            // Check if basic is present
-            const basicMatch = savePhrase.match(/\bbasic\b/i);
-            const isBasic = !!basicMatch;
-            
-            // Check if the original match was wrapped in parentheses
-            const wasParenthetical = match.startsWith('(') && match.endsWith(')');
-            
-            // Determine if the original had "saving throw" or "save"
-            const hasSavingThrow = savePhrase.match(/\bsaving\s+throw\b/i);
-            const saveTerm = hasSavingThrow ? 'saving throw' : 'save';
-            
-            // Build the replacement
-            const basicStr = isBasic ? '|basic' : '';
-            const replacement = `@Check[${normalizedSave}|dc:${dc}${basicStr}] ${saveTerm}`;
-            
-            // Wrap in parentheses if the original was parenthetical
-            return wasParenthetical ? `(${replacement})` : replacement;
-        },
-        priority: 1,
-        description: 'Comprehensive save pattern (all variations including parenthetical)'
-    },
-    
-    // ============================================================================
-    // PRIORITY 2 - DAMAGE PATTERNS (Process before consolidation)
-    // ============================================================================
-    
-    // Persistent damage (highest priority among standard damage)
-    persistentDamage: {
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+persistent)`, 'gi'),
-        replacement: (match, dice, type1, type2) => {
-            const damageType = type1 || type2;
-            return `@Damage[${dice}[persistent,${damageType}]]`;
-        },
-        priority: 2,
-        description: 'Persistent damage'
-    },
-    
-    // Splash damage (handles both "fire splash" and "splash fire")
-    splashDamage: {
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(${DAMAGE_TYPE_PATTERN}))`, 'gi'),
-        replacement: (match, dice, type1, type2) => {
-            const damageType = type1 || type2;
-            return `@Damage[((${dice})[splash])[${damageType}]] splash`;
-        },
-        priority: 2,
-        description: 'Splash damage'
-    },
-    
-    // Precision damage with type (handles both "precision fire" and "fire precision")
-    precisionDamage: {
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:precision\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+precision)`, 'gi'),
-        replacement: (match, dice, type1, type2) => {
-            const damageType = type1 || type2;
-            return `@Damage[((${dice})[precision])[${damageType}]] precision`;
-        },
-        priority: 2,
-        description: 'Precision damage with type'
-    },
-    
-    // Generic precision damage (no type specified)
-    genericPrecisionDamage: {
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+precision/gi,
-        replacement: '@Damage[($1)[precision]] precision',
-        priority: 2,
-        description: 'Generic precision damage'
-    },
-    
-    // Healing patterns
-    healingHitPoints: {
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+(?:hit\s+points?|HP)/gi,
-        replacement: '@Damage[$1[healing]] hit points',
-        priority: 2,
-        description: 'Healing hit points'
-    },
-    
-    healingGeneric: {
-        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+healing/gi,
-        replacement: '@Damage[$1[healing]] healing',
-        priority: 2,
-        description: 'Generic healing'
-    },
-    
-    // Multiple skill checks (must come before single skill checks)
-    multipleSkillChecks: {
-        regex: new RegExp(`DC\\s+(\\d+)\\s+((?:${SKILL_PATTERN})(?:\\s*,\\s*(?:${SKILL_PATTERN}))*\\s*(?:,\\s*)?(?:or\\s+)?(?:${SKILL_PATTERN}))\\s+check`, 'gi'),
-        replacement: (match, dc, skillsText) => {
-            // Clean up the skills text and split into individual skills
-            const skills = skillsText
-                .replace(/\s+or\s+/gi, ',')  // Replace "or" with comma
-                .split(/\s*,\s*/)            // Split on commas
-                .map(skill => skill.trim())  // Trim whitespace
-                .filter(skill => skill.length > 0); // Remove empty strings
-            
-            // Create individual check buttons while preserving structure
-            const checkButtons = skills.map(skill => `@Check[${skill.toLowerCase()}|dc:${dc}]`);
-            
-            if (skills.length === 2) {
-                // Two skills: "DC X Skill1 or Skill2 check"
-                return `${checkButtons[0]} or ${checkButtons[1]} check`;
-            } else if (skills.length > 2) {
-                // Multiple skills: "DC X Skill1, Skill2, or Skill3 check"
-                const lastSkill = checkButtons.pop();
-                return `${checkButtons.join(', ')}, or ${lastSkill} check`;
-            } else {
-                // Fallback to single skill
-                return `${checkButtons[0]} check`;
-            }
-        },
-        priority: 2,
-        description: 'Multiple skill checks'
-    },
-    
-    // Perception checks
-    perceptionChecks: {
-        regex: /DC\s+(\d+)\s+Perception\s+check/gi,
-        replacement: '@Check[perception|dc:$1] check',
-        priority: 2,
-        description: 'Perception checks'
-    },
-    
-    // Flat checks
-    flatChecks: {
-        regex: /DC\s+(\d+)\s+flat\s+check/gi,
-        replacement: '@Check[flat|dc:$1]',
-        priority: 2,
-        description: 'Flat checks'
-    },
-    
-    // Ability recharge patterns (higher priority than basic duration rolls)
-    abilityRechargeSpecific: {
-        regex: /again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
-        replacement: 'again for [[/gmr $1 #Recharge]]{$1 $2}',
-        priority: 2,
-        description: 'Ability recharge pattern'
-    },
-    
-    genericRechargeSpecific: {
-        regex: /can't use this (?:ability|action|feature|spell) again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
-        replacement: "can't use this ability again for [[/gmr $1 #Recharge]]{$1 $2}",
-        priority: 2,
-        description: 'Generic ability recharge'
-    },
-    
-    // Recharge variants
-    rechargePattern1: {
-        regex: /recharges? (?:in|after) (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
-        replacement: 'recharges in [[/gmr $1 #Recharge]]{$1 $2}',
-        priority: 2,
-        description: 'Recharge timing pattern'
-    },
-    
-    // ============================================================================
-    // PRIORITY 3 - BASIC DAMAGE AND SKILL PATTERNS
-    // ============================================================================
-    
-    // Basic damage with type
-    basicDamage: {
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${DAMAGE_TYPE_PATTERN})`, 'gi'),
-        replacement: '@Damage[($1)[$2]]',
-        priority: 3,
-        description: 'Basic damage rolls'
-    },
-    
-    // Single skill checks (lower priority than multiple)
-    skillChecks: {
-        regex: new RegExp(`DC\\s+(\\d+)\\s+(${SKILL_PATTERN})\\s+check`, 'gi'),
-        replacement: (match, dc, skill) => `@Check[${skill.toLowerCase()}|dc:${dc}] check`,
-        priority: 3,
-        description: 'Single skill checks'
-    },
-    
-    // ============================================================================
-    // PRIORITY 4 - LEGACY DAMAGE TYPE CONVERSIONS (Before consolidation)
-    // ============================================================================
-    
-    // Legacy damage type conversions (only within @Damage[...] rolls, before consolidation)
-    legacyAlignmentDamage: {
-        // Replace any occurrence of a legacy alignment type in the type list with 'spirit'
-        regex: /@Damage\[(.*?\[)([^\]]*?)(chaotic|evil|good|lawful)([^\]]*?)\](.*?)\]/gi,
-        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}spirit${after}]${suffix}]`,
-        priority: 4,
-        description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
-    },
-    
-    legacyPositiveDamage: {
-        regex: /@Damage\[(.*?\[)([^\]]*?)(positive)([^\]]*?)\](.*?)\]/gi,
-        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}vitality${after}]${suffix}]`,
-        priority: 4,
-        description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
-    },
-    
-    legacyNegativeDamage: {
-        regex: /@Damage\[(.*?\[)([^\]]*?)(negative)([^\]]*?)\](.*?)\]/gi,
-        replacement: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}void${after}]${suffix}]`,
-        priority: 4,
-        description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
-    },
-    
-    // ============================================================================
-    // PRIORITY 5 - DAMAGE CONSOLIDATION (After legacy conversions)
-    // ============================================================================
-    
-    // Multiple damage types - consolidate individual @Damage rolls into single roll
-    multipleDamageTypes: {
-        regex: /@Damage\[[^\@]*\](?:\s+(?:(?:splash|precision)\s+)?damage|(?:\s+(?:splash|precision)))?(?:\s*,\s*(?:and\s+)?|\s+and\s+)@Damage\[[^\@]*\](?:\s+(?:splash|precision))?(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)@Damage\[[^\@]*\](?:\s+(?:(?:splash|precision)\s+)?damage|(?:\s+(?:splash|precision)))?)*(?:\s+(?:splash|precision))?/gi,
-        replacement: (match) => {
-            // Extract all @Damage[...] patterns from the match, handling nested brackets
-            const damageRolls = [];
-            const regex = /@Damage\[/g;
-            let startMatch;
-            
-            while ((startMatch = regex.exec(match)) !== null) {
-                const startPos = startMatch.index + startMatch[0].length;
-                let bracketCount = 1;
-                let endPos = startPos;
-                
-                // Find the matching closing bracket by counting brackets
-                while (endPos < match.length && bracketCount > 0) {
-                    if (match[endPos] === '[') {
-                        bracketCount++;
-                    } else if (match[endPos] === ']') {
-                        bracketCount--;
-                    }
-                    if (bracketCount > 0) {
-                        endPos++;
-                    }
-                }
-                
-                if (bracketCount === 0) {
-                    const damageContent = match.substring(startPos, endPos);
-                    damageRolls.push(damageContent);
-                }
-            }
-            
-            if (damageRolls.length >= 2) {
-                return `@Damage[${damageRolls.join(',')}]`;
-            }
-            
-            return match;
-        },
-        priority: 5,
-        description: 'Multiple damage types consolidation'
-    },
-    
-    // ============================================================================
-    // PRIORITY 5 - LEGACY FLAT-FOOTED CONVERSION (Before condition linking)
-    // ============================================================================
-    
-    // Legacy "flat-footed" to "off-guard" conversion (before condition linking)
-    legacyFlatFooted: {
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\bflat-footed\b(?!\})/gi,
-        replacement: 'off-guard',
-        priority: 5,
-        description: 'Legacy flat-footed to off-guard conversion (before condition linking)'
-    },
-    
-    // ============================================================================
-    // PRIORITY 6 - CONDITION LINKING (Process after legacy conversions to avoid conflicts)
-    // ============================================================================
-    // 
-    // Condition linking follows PF2e rules:
-    // - Conditions that CAN have values: clumsy, doomed, drained, dying, enfeebled, 
-    //   frightened, sickened, slowed, stunned, stupefied, wounded
-    // - Conditions that CANNOT have values: blinded, broken, concealed, confused, 
-    //   controlled, dazzled, deafened, fascinated, fatigued, fleeing, grabbed, 
-    //   immobilized, invisible, off-guard, paralyzed, petrified, prone, quickened, 
-    //   restrained, unconscious, undetected
-    // - Special case: stunned can appear with or without a value
-    // ============================================================================
-    
-    // Condition linking with values (only for conditions that can have values)
-    conditionWithValue: {
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(clumsy|doomed|drained|dying|enfeebled|frightened|sickened|slowed|stunned|stupefied|wounded)\s+(\d+)\b(?!\})/gi,
-        replacement: function(match, condition, value) {
-            const uuid = getConditionUUID(condition);
-            
-            if (!uuid) return match;
-            
-            // Check if this condition+value combination has already been linked
-            const conditionKey = `${condition.toLowerCase()}-${value}`;
-            if (this.linkedConditions.has(conditionKey)) return match;
-            
-            this.linkedConditions.add(conditionKey);
-            // Capitalize the first letter of the condition name
-            const capitalizedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
-            return `@UUID[${uuid}]{${capitalizedCondition} ${value}}`;
-        },
-        priority: 6,
-        description: 'Condition linking with values (only for conditions that support values)'
-    },
-    
-    // Condition linking without values (for all conditions except stunned, which is handled separately)
-    conditionWithoutValue: {
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(blinded|broken|concealed|confused|controlled|dazzled|deafened|fascinated|fatigued|fleeing|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|unconscious|undetected)\b(?!\s+\d+)(?!\})/gi,
-        replacement: function(match, condition) {
-            const uuid = getConditionUUID(condition);
-            
-            if (!uuid) return match;
-            
-            // Check if this condition has already been linked
-            const conditionKey = condition.toLowerCase();
-            if (this.linkedConditions.has(conditionKey)) return match;
-            
-            this.linkedConditions.add(conditionKey);
-            // Capitalize the first letter of the condition name
-            const capitalizedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
-            return `@UUID[${uuid}]{${capitalizedCondition}}`;
-        },
-        priority: 6,
-        description: 'Condition linking without values (conditions that cannot have values)'
-    },
-    
-    // Special handling for stunned (can appear with or without value)
-    stunnedCondition: {
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*)\b(stunned)\b(?!\s+\d+)(?!\})/gi,
-        replacement: function(match, condition) {
-            const uuid = getConditionUUID(condition);
-            
-            if (!uuid) return match;
-            
-            // Check if stunned has already been linked (without value)
-            const conditionKey = 'stunned';
-            if (this.linkedConditions.has(conditionKey)) return match;
-            
-            this.linkedConditions.add(conditionKey);
-            // Capitalize the first letter of the condition name
-            const capitalizedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
-            return `@UUID[${uuid}]{${capitalizedCondition}}`;
-        },
-        priority: 6,
-        description: 'Stunned condition without value (special case)'
-    },
-    
-    // ============================================================================
-    // PRIORITY 7 - AREA EFFECTS (Lowest priority)
-    // ============================================================================
-    
-    // Basic area effects
-    basicAreaEffects: {
-        regex: /(\d+)-foot\s+(burst|cone|line|emanation)/gi,
-        replacement: '@Template[type:$2|distance:$1]',
-        priority: 7,
-        description: 'Basic area effects'
-    },
-    
-    // Radius effects
-    radiusEffects: {
-        regex: /(\d+)-foot\s+radius/gi,
-        replacement: '@Template[type:burst|distance:$1]',
-        priority: 7,
-        description: 'Radius area effects'
-    }
-};
-
 /**
  * Try to get condition UUID from compendium
  * @param {string} conditionName - The condition name to look up
@@ -545,73 +173,706 @@ function initializeConditionMap() {
     conditionMap = buildConditionMap();
 }
 
-/**
- * Main conversion engine
- * @param {string} inputText - The text to convert
- * @returns {object} - Conversion result with converted text and stats
- */
-function convertText(inputText) {
-    if (!inputText || inputText.trim() === '') {
-        return {
-            convertedText: '',
-            conversionsCount: 0,
-            errors: [],
-            patternMatches: {}
-        };
-    }
+// ===================== OOP PIPELINE ARCHITECTURE =====================
 
-    let convertedText = inputText;
-    let conversionsCount = 0;
-    let errors = [];
-    let patternMatches = {};
-    let linkedConditions = new Set(); // Track already linked conditions
+// Define a test input for demonstration and testing
+const DEFAULT_TEST_INPUT = "The target becomes frightened 2 and off-guard. The poison causes enfeebled 1. The creature is stunned 3, then becomes stunned. The spell makes them blinded and prone.";
 
-    try {
-        // Sort patterns by priority (lowest number = highest priority)
-        const sortedPatterns = Object.entries(CONVERSION_PATTERNS)
-            .sort(([,a], [,b]) => a.priority - b.priority);
+// Utility for unique IDs
+function generateId() {
+    return '_' + Math.random().toString(36).substr(2, 9);
+}
 
-        // Process each conversion pattern in priority order
-        for (const [patternName, pattern] of sortedPatterns) {
-            const matches = convertedText.match(pattern.regex);
-            if (matches) {
-                const matchCount = matches.length;
-                
-                // For condition patterns, create a closure that captures linkedConditions
-                let replacementFunction = pattern.replacement;
-                if (patternName.startsWith('condition') || patternName === 'stunnedCondition') {
-                    replacementFunction = (match, ...args) => {
-                        // Call the original replacement function with linkedConditions context
-                        return pattern.replacement.call({ linkedConditions }, match, ...args);
-                    };
-                }
-                
-                convertedText = convertedText.replace(pattern.regex, replacementFunction);
-                
-                conversionsCount += matchCount;
-                patternMatches[patternName] = matchCount;
-            }
+// -------------------- Base Classes --------------------
+class Replacement {
+    constructor(match) {
+        if (!match || typeof match !== 'object' || typeof match[0] !== 'string' || typeof match.index !== 'number') {
+            throw new Error('Replacement: Invalid match object passed to constructor.');
         }
+        this.id = generateId();
+        this.startPos = match.index;
+        this.endPos = match.index + match[0].length;
+        this.originalText = match[0];
+        this.enabled = true;
+        this.priority = 0;
+    }
+    render() { throw new Error('Must implement render()'); }
+    validate() { return true; }
+    getText() { return this.originalText; }
+    getLength() { return this.endPos - this.startPos; }
+}
 
-        return {
-            convertedText,
-            conversionsCount,
-            errors,
-            patternMatches
-        };
-
-    } catch (error) {
-        console.error('PF2e Converter: Error during conversion:', error);
-        errors.push(`Conversion error: ${error.message}`);
-        
-        return {
-            convertedText: inputText, // Return original text on error
-            conversionsCount: 0,
-            errors,
-            patternMatches: {}
-        };
+class RollReplacement extends Replacement {
+    constructor(match) {
+        super(match);
+        this.rollType = '';
+        this.traits = [];
+        this.options = [];
+    }
+    addTrait(trait) { if (!this.traits.includes(trait)) this.traits.push(trait); }
+    addOption(option) { if (!this.options.includes(option)) this.options.push(option); }
+    hasTag(tag) { return this.traits.includes(tag) || this.options.includes(tag); }
+    buildParameters(baseParams) {
+        const params = [...baseParams];
+        if (this.traits.length > 0) params.push(`traits:${this.traits.join(',')}`);
+        if (this.options.length > 0) params.push(`options:${this.options.join(',')}`);
+        return params;
     }
 }
+
+// -------------------- Damage Replacement --------------------
+class DamageComponent {
+    constructor(dice, damageType = '', persistent = false, precision = false, splash = false) {
+        this.dice = dice;
+        this.damageType = damageType;
+        this.persistent = persistent;
+        this.precision = precision;
+        this.splash = splash;
+    }
+    render() {
+        let formula = this.dice;
+        if (this.precision) formula = `(${formula}[precision])`;
+        if (this.splash) formula = `(${formula}[splash])`;
+        if (this.persistent && this.damageType) {
+            return `${formula}[persistent,${this.damageType}]`;
+        }
+        if (this.damageType) {
+            formula = `(${formula})[${this.damageType}]`;
+        }
+        return formula;
+    }
+    validate() { return this.dice && this.dice.length > 0; }
+}
+
+class DamageReplacement extends RollReplacement {
+    constructor(match, config) {
+        super(match);
+        this.rollType = 'damage';
+        this.priority = 100;
+        this.damageComponents = [];
+        this.parseMatch(match, config);
+    }
+    parseMatch(match, config) {
+        // Use config to extract dice, type, and flags
+        if (config && config.groups) {
+            for (const group of config.groups) {
+                const dice = match[group.dice] || '';
+                const type = match[group.type] || '';
+                const persistent = !!group.persistent && !!match[group.persistent];
+                const precision = !!group.precision && !!match[group.precision];
+                const splash = !!group.splash && !!match[group.splash];
+                this.addDamageComponent(dice, type, persistent, precision, splash);
+            }
+        } else {
+            // Fallback: try to extract dice and type from match
+            const dice = match[1] || '';
+            const type = match[2] || '';
+            this.addDamageComponent(dice, type);
+        }
+    }
+    addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false) {
+        this.damageComponents.push(new DamageComponent(dice, damageType, persistent, precision, splash));
+    }
+    render() {
+        if (this.damageComponents.length === 1) {
+            return `@Damage[${this.damageComponents[0].render()}]`;
+        } else {
+            const componentStrings = this.damageComponents.map(comp => comp.render());
+            return `@Damage[${componentStrings.join(',')}]`;
+        }
+    }
+    validate() {
+        return this.damageComponents.length > 0 && this.damageComponents.every(comp => comp.validate());
+    }
+}
+
+// -------------------- Check Replacement --------------------
+class CheckReplacement extends RollReplacement {
+    constructor(match, config) {
+        super(match);
+        this.rollType = 'check';
+        this.priority = 90;
+        this.checkType = '';
+        this.dc = null;
+        this.basic = false;
+        this.secret = false;
+        this.defense = '';
+        this.against = '';
+        this.parseMatch(match, config);
+    }
+    parseMatch(match, config) {
+        // Extract check type, DC, and modifiers
+        if (config && config.groups) {
+            for (const group of config.groups) {
+                if (group.type && match[group.type]) this.checkType = match[group.type].toLowerCase();
+                if (group.dc && match[group.dc]) this.dc = match[group.dc];
+                if (group.basic && match[group.basic]) this.basic = true;
+            }
+        } else {
+            this.checkType = match[2] ? match[2].toLowerCase() : '';
+            this.dc = match[1] || null;
+        }
+    }
+    render() {
+        let params = [`${this.checkType}`];
+        if (this.dc) params.push(`dc:${this.dc}`);
+        if (this.basic) params.push('basic');
+        return `@Check[${params.join('|')}] check`;
+    }
+    validate() {
+        return this.checkType && (this.dc || this.defense || this.against);
+    }
+}
+
+// -------------------- Template Replacement --------------------
+class TemplateReplacement extends RollReplacement {
+    constructor(match, config) {
+        super(match);
+        this.rollType = 'template';
+        this.priority = 80;
+        this.shape = '';
+        this.distance = 0;
+        this.width = 5;
+        this.parseMatch(match, config);
+    }
+    parseMatch(match, config) {
+        this.shape = match[2] ? match[2].toLowerCase() : '';
+        this.distance = match[1] ? parseInt(match[1], 10) : 0;
+    }
+    render() {
+        return `@Template[type:${this.shape}|distance:${this.distance}]`;
+    }
+}
+
+// -------------------- Utility Replacement --------------------
+class UtilityReplacement extends RollReplacement {
+    constructor(match, config) {
+        super(match);
+        this.rollType = 'utility';
+        this.priority = 70;
+        this.expression = '';
+        this.flavor = '';
+        this.gmOnly = false;
+        this.parseMatch(match, config);
+    }
+    parseMatch(match, config) {
+        this.expression = match[1] || '';
+    }
+    render() {
+        return `[[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+    }
+}
+
+// -------------------- Action Replacement --------------------
+class ActionReplacement extends RollReplacement {
+    constructor(match, config) {
+        super(match);
+        this.rollType = 'action';
+        this.priority = 60;
+        this.actionName = '';
+        this.variant = '';
+        this.statistic = '';
+        this.parseMatch(match, config);
+    }
+    parseMatch(match, config) {
+        this.actionName = match[1] || '';
+    }
+    render() {
+        return `[[/act ${this.actionName}]]`;
+    }
+}
+
+// -------------------- Condition Replacement --------------------
+class ConditionReplacement extends Replacement {
+    constructor(matchObj, config) {
+        // matchObj: { match, args }
+        super(matchObj.match); // Pass the regex match array to super
+        this.priority = 50;
+        this.conditionName = '';
+        this.degree = null;
+        this.uuid = '';
+        this.linkedConditions = config && config.linkedConditions ? config.linkedConditions : new Set();
+        this.args = matchObj.args || [];
+        this.parseMatch();
+    }
+    parseMatch() {
+        // args: [condition, value?]
+        const args = this.args;
+        this.conditionName = args[0] || '';
+        this.degree = args[1] || null;
+        this.uuid = getConditionUUID(this.conditionName);
+    }
+    render() {
+        if (!this.uuid) return this.originalText;
+        // Deduplication: only link the first occurrence
+        const key = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
+        if (this.linkedConditions.has(key)) return this.originalText;
+        this.linkedConditions.add(key);
+        const capitalized = this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
+        if (this.degree) {
+            return `@UUID[${this.uuid}]{${capitalized} ${this.degree}}`;
+        } else {
+            return `@UUID[${this.uuid}]{${capitalized}}`;
+        }
+    }
+    validate() {
+        return this.conditionName && this.uuid;
+    }
+}
+
+// Replacement class mapping for pattern types
+const REPLACEMENT_CLASS_MAP = {
+    damage: DamageReplacement,
+    save: CheckReplacement,
+    skill: CheckReplacement,
+    template: TemplateReplacement,
+    utility: UtilityReplacement,
+    action: ActionReplacement,
+    condition: ConditionReplacement,
+    legacy: DamageReplacement // Use DamageReplacement for legacy damage type conversions
+};
+
+class ReplacementFactory {
+    static createFromMatch(match, patternType, patternConfig) {
+        const Cls = REPLACEMENT_CLASS_MAP[patternType];
+        if (!Cls) throw new Error(`Unknown pattern type: ${patternType}`);
+        return new Cls(match, patternConfig);
+    }
+    static getSupportedTypes() {
+        return Object.keys(REPLACEMENT_CLASS_MAP);
+    }
+}
+
+// Pattern priority constants
+const PRIORITY = {
+    SAVE: 1,
+    DAMAGE: 2,
+    HEALING: 2,
+    SKILL: 2,
+    FLAT: 2,
+    UTILITY: 2,
+    BASIC_DAMAGE: 3,
+    BASIC_SKILL: 3,
+    LEGACY: 4,
+    DAMAGE_CONSOLIDATION: 5,
+    LEGACY_CONDITION: 5,
+    CONDITION: 6,
+    TEMPLATE: 7
+};
+
+// Centralized pattern definitions
+const PATTERN_DEFINITIONS = [
+    // Priority 1: Comprehensive save pattern
+    {
+        type: 'save',
+        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?)(?:\)?)/gi,
+        priority: PRIORITY.SAVE,
+        handler: (match, ...args) => {
+            const savePhrase = args[0];
+            const dc1 = args[1], save1 = args[2], dc2 = args[3], save2 = args[4], dc3 = args[5], dc4 = args[6], save3 = args[7], dc5 = args[8], save4 = args[9];
+            const save = (save1 || save2 || save3 || save4).toLowerCase();
+            const normalizedSave = save.startsWith('fort') ? 'fortitude' : save.startsWith('ref') ? 'reflex' : 'will';
+            const dc = dc1 || dc2 || dc3 || dc4 || dc5;
+            const isBasic = /\bbasic\b/i.test(savePhrase);
+            const wasParenthetical = match.startsWith('(') && match.endsWith(')');
+            const hasSavingThrow = /\bsaving\s+throw\b/i.test(savePhrase);
+            const saveTerm = hasSavingThrow ? 'saving throw' : 'save';
+            const basicStr = isBasic ? '|basic' : '';
+            const replacement = `@Check[${normalizedSave}|dc:${dc}${basicStr}] ${saveTerm}`;
+            return wasParenthetical ? `(${replacement})` : replacement;
+        },
+        description: 'Comprehensive save pattern (all variations including parenthetical)'
+    },
+    // Priority 2: Damage and skill patterns
+    {
+        type: 'damage',
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+persistent)`, 'gi'),
+        priority: PRIORITY.DAMAGE,
+        handler: (match, dice, type1, type2) => `@Damage[${dice}[persistent,${type1 || type2}]]`,
+        description: 'Persistent damage'
+    },
+    {
+        type: 'damage',
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(${DAMAGE_TYPE_PATTERN}))`, 'gi'),
+        priority: PRIORITY.DAMAGE,
+        handler: (match, dice, type1, type2) => `@Damage[((${dice})[splash])[${type1 || type2}]] splash`,
+        description: 'Splash damage'
+    },
+    {
+        type: 'damage',
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:precision\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+precision)`, 'gi'),
+        priority: PRIORITY.DAMAGE,
+        handler: (match, dice, type1, type2) => `@Damage[((${dice})[precision])[${type1 || type2}]] precision`,
+        description: 'Precision damage with type'
+    },
+    {
+        type: 'damage',
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+precision/gi,
+        priority: PRIORITY.DAMAGE,
+        handler: (match, dice) => `@Damage[(${dice})[precision]] precision`,
+        description: 'Generic precision damage'
+    },
+    {
+        type: 'healing',
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+(?:hit\s+points?|HP)/gi,
+        priority: PRIORITY.HEALING,
+        handler: (match, dice) => `@Damage[${dice}[healing]] hit points`,
+        description: 'Healing hit points'
+    },
+    {
+        type: 'healing',
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+healing/gi,
+        priority: PRIORITY.HEALING,
+        handler: (match, dice) => `@Damage[${dice}[healing]] healing`,
+        description: 'Generic healing'
+    },
+    {
+        type: 'skill',
+        regex: new RegExp(`DC\\s+(\\d+)\\s+((?:${SKILL_PATTERN})(?:\\s*,\\s*(?:${SKILL_PATTERN}))*\\s*(?:,\\s*)?(?:or\\s+)?(?:${SKILL_PATTERN}))\\s+check`, 'gi'),
+        priority: PRIORITY.SKILL,
+        handler: (match, dc, skillsText) => {
+            const skills = skillsText.replace(/\s+or\s+/gi, ',').split(/\s*,\s*/).map(skill => skill.trim()).filter(skill => skill.length > 0);
+            const checkButtons = skills.map(skill => `@Check[${skill.toLowerCase()}|dc:${dc}]`);
+            if (skills.length === 2) return `${checkButtons[0]} or ${checkButtons[1]} check`;
+            if (skills.length > 2) { const lastSkill = checkButtons.pop(); return `${checkButtons.join(', ')}, or ${lastSkill} check`; }
+            return `${checkButtons[0]} check`;
+        },
+        description: 'Multiple skill checks'
+    },
+    {
+        type: 'skill',
+        regex: /DC\s+(\d+)\s+Perception\s+check/gi,
+        priority: PRIORITY.SKILL,
+        handler: (match, dc) => `@Check[perception|dc:${dc}] check`,
+        description: 'Perception checks'
+    },
+    {
+        type: 'flat',
+        regex: /DC\s+(\d+)\s+flat\s+check/gi,
+        priority: PRIORITY.FLAT,
+        handler: (match, dc) => `@Check[flat|dc:${dc}]`,
+        description: 'Flat checks'
+    },
+    {
+        type: 'utility',
+        regex: /again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        priority: PRIORITY.UTILITY,
+        handler: (match, dice, unit) => `again for [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
+        description: 'Ability recharge pattern'
+    },
+    {
+        type: 'utility',
+        regex: /can't use this (?:ability|action|feature|spell) again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        priority: PRIORITY.UTILITY,
+        handler: (match, dice, unit) => `can't use this ability again for [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
+        description: 'Generic ability recharge'
+    },
+    {
+        type: 'utility',
+        regex: /recharges? (?:in|after) (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        priority: PRIORITY.UTILITY,
+        handler: (match, dice, unit) => `recharges in [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
+        description: 'Recharge timing pattern'
+    },
+    // Priority 3: Basic damage and skill patterns
+    {
+        type: 'damage',
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${DAMAGE_TYPE_PATTERN})`, 'gi'),
+        priority: PRIORITY.BASIC_DAMAGE,
+        handler: (match, dice, type) => `@Damage[(${dice})[${type}]]`,
+        description: 'Basic damage rolls'
+    },
+    {
+        type: 'skill',
+        regex: new RegExp(`DC\\s+(\\d+)\\s+(${SKILL_PATTERN})\\s+check`, 'gi'),
+        priority: PRIORITY.BASIC_SKILL,
+        handler: (match, dc, skill) => `@Check[${skill.toLowerCase()}|dc:${dc}] check`,
+        description: 'Single skill checks'
+    },
+    // Priority 4: Legacy damage type conversions
+    {
+        type: 'legacy',
+        regex: /@Damage\[(.*?\[)([^\]]*?)(chaotic|evil|good|lawful)([^\]]*?)\](.*?)\]/gi,
+        priority: PRIORITY.LEGACY,
+        handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}spirit${after}]${suffix}]`,
+        description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
+    },
+    {
+        type: 'legacy',
+        regex: /@Damage\[(.*?\[)([^\]]*?)(positive)([^\]]*?)\](.*?)\]/gi,
+        priority: PRIORITY.LEGACY,
+        handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}vitality${after}]${suffix}]`,
+        description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
+    },
+    {
+        type: 'legacy',
+        regex: /@Damage\[(.*?\[)([^\]]*?)(negative)([^\]]*?)\](.*?)\]/gi,
+        priority: PRIORITY.LEGACY,
+        handler: (match, prefix, before, legacyType, after, suffix) => `@Damage[${prefix}${before}void${after}]${suffix}]`,
+        description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
+    },
+    // Priority 5: Damage consolidation
+    {
+        type: 'damage',
+        regex: /@Damage\[[^\@]*\](?:\s+(?:(?:splash|precision)\s+)?damage|(?:\s+(?:splash|precision)))?(?:\s*,\s*(?:and\s+)?|\s+and\s+)@Damage\[[^\@]*\](?:\s+(?:splash|precision))?(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)@Damage\[[^\@]*\](?:\s+(?:(?:splash|precision)\s+)?damage|(?:\s+(?:splash|precision)))?)*(?:\s+(?:splash|precision))?/gi,
+        priority: PRIORITY.DAMAGE_CONSOLIDATION,
+        handler: (match) => {
+            const damageRolls = [];
+            const regex = /@Damage\[/g;
+            let startMatch;
+            while ((startMatch = regex.exec(match)) !== null) {
+                const startPos = startMatch.index + startMatch[0].length;
+                let bracketCount = 1;
+                let endPos = startPos;
+                while (endPos < match.length && bracketCount > 0) {
+                    if (match[endPos] === '[') bracketCount++;
+                    else if (match[endPos] === ']') bracketCount--;
+                    if (bracketCount > 0) endPos++;
+                }
+                if (bracketCount === 0) {
+                    const damageContent = match.substring(startPos, endPos);
+                    damageRolls.push(damageContent);
+                }
+            }
+            if (damageRolls.length >= 2) return `@Damage[${damageRolls.join(',')}]`;
+            return match;
+        },
+        description: 'Multiple damage types consolidation'
+    },
+    // Priority 5: Legacy flat-footed
+    {
+        type: 'condition',
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\bflat-footed\b(?!\})/gi,
+        priority: PRIORITY.LEGACY_CONDITION,
+        handler: () => 'off-guard',
+        description: 'Legacy flat-footed to off-guard conversion (before condition linking)'
+    },
+    // Priority 6: Condition linking
+    {
+        type: 'condition',
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\b(clumsy|doomed|drained|dying|enfeebled|frightened|sickened|slowed|stunned|stupefied|wounded)\s+(\d+)\b(?!\})/gi,
+        priority: PRIORITY.CONDITION,
+        handler: function(match) { return { match, args: match.slice(1) }; },
+        description: 'Condition linking with values (only for conditions that support values)'
+    },
+    {
+        type: 'condition',
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\b(blinded|broken|concealed|confused|controlled|dazzled|deafened|fascinated|fatigued|fleeing|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|unconscious|undetected)\b(?!\s+\d+)(?!\})/gi,
+        priority: PRIORITY.CONDITION,
+        handler: function(match) { return { match, args: [match[1]] }; },
+        description: 'Condition linking without values (conditions that cannot have values)'
+    },
+    {
+        type: 'condition',
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\b(stunned)\b(?!\s+\d+)(?!\})/gi,
+        priority: PRIORITY.CONDITION,
+        handler: function(match) { return { match, args: [match[1]] }; },
+        description: 'Stunned condition without value (special case)'
+    },
+    // Priority 7: Area effects
+    {
+        type: 'template',
+        regex: /(\d+)-foot\s+(burst|cone|line|emanation)/gi,
+        priority: PRIORITY.TEMPLATE,
+        handler: (match, dist, shape) => `@Template[type:${shape}|distance:${dist}]`,
+        description: 'Basic area effects'
+    },
+    {
+        type: 'template',
+        regex: /(\d+)-foot\s+radius/gi,
+        priority: PRIORITY.TEMPLATE,
+        handler: (match, dist) => `@Template[type:burst|distance:${dist}]`,
+        description: 'Radius area effects'
+    }
+];
+
+// Update all patterns in PATTERN_DEFINITIONS to use a handler function
+// (Most already do, but ensure all do, including those with static replacements)
+PATTERN_DEFINITIONS.forEach(def => {
+    if (typeof def.handler !== 'function') {
+        // If the handler is a string, wrap it in a function
+        const staticValue = def.handler;
+        def.handler = () => staticValue;
+    }
+});
+
+// Update condition pattern handlers in PATTERN_DEFINITIONS to just return match data
+PATTERN_DEFINITIONS.forEach(def => {
+    if (def.type === 'condition') {
+        def.handler = function(match) {
+            // Return the original RegExp match object and arguments for ConditionReplacement
+            return { match, args: match.slice(1) };
+        };
+    }
+});
+
+class PatternDetector {
+    constructor() {
+        this.patterns = [];
+        this.initializePatterns();
+    }
+    initializePatterns() {
+        for (const def of PATTERN_DEFINITIONS) {
+            this.registerPattern(def.type, def.regex, def.priority, { handler: def.handler, description: def.description });
+        }
+    }
+    registerPattern(type, regex, priority, config = {}) {
+        this.patterns.push({ type, regex, priority, config });
+    }
+    detectAll(text) {
+        const allMatches = [];
+        for (const pattern of this.patterns) {
+            let match;
+            while ((match = pattern.regex.exec(text)) !== null) {
+                const handler = pattern.config && pattern.config.handler;
+                const handlerResult = handler ? handler(match) : match;
+                // Defensive: skip undefined or malformed handler results
+                if (!handlerResult || (typeof handlerResult !== 'string' && typeof handlerResult !== 'object')) {
+                    console.warn('[PatternDetector] Skipping malformed handler result:', handlerResult, 'for pattern', pattern);
+                    continue;
+                }
+                // For condition patterns, handlerResult should be { match, args }
+                // For others, it should be a string or match array
+                console.log('[PatternDetector] Pattern matched:', pattern.type, pattern.regex, 'Match:', match, 'Handler result:', handlerResult);
+                allMatches.push({
+                    match: handlerResult,
+                    type: pattern.type,
+                    config: pattern.config,
+                    priority: pattern.priority,
+                    index: match.index
+                });
+            }
+        }
+        console.log('[PatternDetector] All matches:', allMatches);
+        return this.resolveConflicts(allMatches);
+    }
+    resolveConflicts(matches) {
+        // Remove overlaps: keep highest priority, then leftmost
+        matches.sort((a, b) => a.priority !== b.priority ? b.priority - a.priority : a.index - b.index);
+        const result = [];
+        const covered = new Array();
+        for (const m of matches) {
+            let matchArr = m.match && m.match.match ? m.match.match : m.match;
+            if (!matchArr || typeof matchArr[0] !== 'string' || typeof matchArr.index !== 'number') {
+                console.warn('[PatternDetector] Skipping match in resolveConflicts due to invalid matchArr:', matchArr, m);
+                continue;
+            }
+            const start = matchArr.index;
+            const end = start + matchArr[0].length;
+            if (!covered.some(([s, e]) => (start < e && end > s))) {
+                result.push(m);
+                covered.push([start, end]);
+            }
+        }
+        console.log('[PatternDetector] Non-overlapping matches:', result);
+        return result;
+    }
+}
+
+// -------------------- Condition Detector --------------------
+class ConditionDetector {
+    constructor() {
+        this.conditions = new Map();
+        this.initializeConditions();
+    }
+    initializeConditions() {
+        // Build condition map from fallback (could use game.pf2e.conditions if available)
+        for (const [name, obj] of conditionMap.entries()) {
+            this.conditions.set(name, obj);
+        }
+    }
+    detectConditions(text) {
+        const found = [];
+        const processed = new Set();
+        for (const [key, condition] of this.conditions) {
+            if (!processed.has(key)) {
+                const regex = new RegExp(`\\b${key}\\b(\\s+\\d+)?`, 'gi');
+                let match;
+                while ((match = regex.exec(text)) !== null) {
+                    found.push(match);
+                    processed.add(key);
+                }
+            }
+        }
+        return found;
+    }
+}
+
+// -------------------- Text Processor --------------------
+class TextProcessor {
+    constructor() {
+        this.detector = new PatternDetector();
+        this.conditionDetector = new ConditionDetector();
+        this.linkedConditions = new Set();
+    }
+    process(inputText) {
+        console.log('[TextProcessor] Input text:', inputText);
+        const rollMatches = this.detector.detectAll(inputText);
+        const replacements = this.createReplacements(rollMatches);
+        console.log('[TextProcessor] Replacements created:', replacements);
+        const result = this.applyReplacements(inputText, replacements);
+        console.log('[TextProcessor] Final converted text:', result);
+        return result;
+    }
+    createReplacements(rollMatches) {
+        const replacements = [];
+        rollMatches.forEach(matchObj => {
+            try {
+                if (matchObj.type === 'condition') {
+                    const rep = ReplacementFactory.createFromMatch(matchObj.match, matchObj.type, { linkedConditions: this.linkedConditions });
+                    console.log('[TextProcessor] Created ConditionReplacement:', rep);
+                    replacements.push(rep);
+                } else {
+                    const rep = ReplacementFactory.createFromMatch(matchObj.match, matchObj.type, matchObj.config);
+                    console.log('[TextProcessor] Created Replacement:', rep);
+                    replacements.push(rep);
+                }
+            } catch (err) {
+                console.error('[TextProcessor] Error creating replacement:', err, matchObj);
+            }
+        });
+        return this.sortByPriority(replacements);
+    }
+    sortByPriority(replacements) {
+        return replacements.sort((a, b) => b.priority - a.priority || a.startPos - b.startPos);
+    }
+    applyReplacements(text, replacements) {
+        // Apply all replacements in reverse position order
+        const sorted = replacements.sort((a, b) => b.startPos - a.startPos);
+        let result = text;
+        for (const replacement of sorted) {
+            if (replacement.enabled && replacement.validate()) {
+                result = this.applyReplacement(result, replacement);
+            }
+        }
+        return result;
+    }
+    applyReplacement(text, replacement) {
+        const before = text.substring(0, replacement.startPos);
+        const after = text.substring(replacement.endPos);
+        return before + replacement.render() + after;
+    }
+}
+
+// -------------------- Macro Interface --------------------
+class MacroInterface {
+    constructor() {
+        this.processor = new TextProcessor();
+    }
+    showDialog() {
+        showConverterDialog();
+    }
+    processText(input) {
+        try {
+            return this.processor.process(input);
+        } catch (error) {
+            ui.notifications.error(`Conversion failed: ${error.message}`);
+            return input;
+        }
+    }
+}
+
+// ===================== END OOP PIPELINE ARCHITECTURE =====================
 
 /**
  * Validate damage types in text
@@ -742,7 +1003,7 @@ function showConverterDialog() {
                     rows="6" 
                     placeholder="Paste your spell, ability, or feat description here..."
                     style="width: 100%; resize: vertical; font-family: monospace; font-size: 12px;"
-                ></textarea>
+                    >${DEFAULT_TEST_INPUT}</textarea>
             </div>
             
             <div class="form-group">
@@ -891,6 +1152,11 @@ function showConverterDialog() {
                 }
             });
             
+            // Trigger initial conversion for the default test input
+            setTimeout(() => {
+                inputTextarea.trigger('input');
+            }, 0);
+            
             // Copy output button handler
             html.find('#copy-output').click((event) => {
                 event.preventDefault();
@@ -979,4 +1245,20 @@ try {
 } catch (error) {
     console.error('PF2e Converter: Failed to initialize:', error);
     ui.notifications.error("Failed to start PF2e Inline Roll Converter. Check console for details.");
+}
+
+// Provide a global convertText function for compatibility with UI and tests
+function convertText(inputText) {
+    const macro = new MacroInterface();
+    const converted = macro.processText(inputText);
+    // For compatibility, wrap in the expected result object if needed
+    if (typeof converted === 'string') {
+        return {
+            convertedText: converted,
+            conversionsCount: 0,
+            errors: [],
+            patternMatches: {}
+        };
+    }
+    return converted;
 }
