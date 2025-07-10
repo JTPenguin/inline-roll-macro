@@ -484,6 +484,7 @@ class ActionReplacement extends RollReplacement {
 class ConditionReplacement extends Replacement {
     constructor(matchObj, config) {
         // matchObj: { match, args }
+        // Use the original match object for startPos/endPos, but allow overriding the replacement text
         super(matchObj.match); // Pass the regex match array to super
         this.priority = 50;
         this.conditionName = '';
@@ -492,12 +493,14 @@ class ConditionReplacement extends Replacement {
         this.linkedConditions = config && config.linkedConditions ? config.linkedConditions : new Set();
         this.args = matchObj.args || [];
         this.parseMatch();
-        // Deduplication: only link the first occurrence
-        const key = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
-        if (this.linkedConditions.has(key)) {
+        // Always deduplicate using the *final* condition name (e.g., 'off-guard')
+        let dedupKey = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
+        // Special case: treat 'flat-footed' as 'off-guard' for deduplication
+        if (dedupKey === 'flat-footed') dedupKey = 'off-guard';
+        if (this.linkedConditions.has(dedupKey)) {
             this.enabled = false;
         } else {
-            this.linkedConditions.add(key);
+            this.linkedConditions.add(dedupKey);
             this.enabled = true;
         }
     }
@@ -790,7 +793,10 @@ const PATTERN_DEFINITIONS = [
         type: 'condition',
         regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\bflat-footed\b(?!\})/gi,
         priority: PRIORITY.LEGACY_CONDITION,
-        handler: () => 'off-guard',
+        handler: function(match) {
+            // Pass the original match object for correct span, but set args to 'off-guard'
+            return { match, args: ['off-guard'] };
+        },
         description: 'Legacy flat-footed to off-guard conversion (before condition linking)'
     },
     // Priority 6: Condition linking
@@ -844,7 +850,7 @@ PATTERN_DEFINITIONS.forEach(def => {
 
 // Update condition pattern handlers in PATTERN_DEFINITIONS to just return match data
 PATTERN_DEFINITIONS.forEach(def => {
-    if (def.type === 'condition') {
+    if (def.type === 'condition' && def.description !== 'Legacy flat-footed to off-guard conversion (before condition linking)') {
         def.handler = function(match) {
             // Return the original RegExp match object and arguments for ConditionReplacement
             return { match, args: match.slice(1) };
@@ -961,6 +967,12 @@ class TextProcessor {
         return result;
     }
     createReplacements(rollMatches) {
+        // Sort by startPos so deduplication always enables the first occurrence
+        rollMatches.sort((a, b) => {
+            const aPos = a.match && a.match.match && typeof a.match.match.index === 'number' ? a.match.match.index : a.match.index;
+            const bPos = b.match && b.match.match && typeof b.match.match.index === 'number' ? b.match.match.index : b.match.index;
+            return aPos - bPos;
+        });
         const replacements = [];
         rollMatches.forEach(matchObj => {
             try {
@@ -991,6 +1003,8 @@ class TextProcessor {
                 result = this.applyReplacement(result, replacement);
             }
         }
+        // After all replacements, replace any remaining 'flat-footed' with 'off-guard'
+        result = result.replace(/\bflat-footed\b/gi, 'off-guard');
         return result;
     }
     applyReplacement(text, replacement) {
