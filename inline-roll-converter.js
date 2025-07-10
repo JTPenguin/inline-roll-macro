@@ -467,6 +467,24 @@ class TemplateReplacement extends RollReplacement {
     }
 }
 
+// -------------------- Within Replacement --------------------
+class WithinReplacement extends RollReplacement {
+    constructor(match, config) {
+        super(match);
+        this.rollType = 'within';
+        this.priority = 80;
+        this.distance = 0;
+        this.parseMatch(match, config);
+    }
+    parseMatch(match, config) {
+        this.distance = match[1] ? parseInt(match[1], 10) : 0;
+    }
+    render() {
+        // Create the inline template format as requested: "within [inline template here]{30 feet}"
+        return `within @Template[type:emanation|distance:${this.distance}]{${this.distance} feet}`;
+    }
+}
+
 // -------------------- Utility Replacement --------------------
 class UtilityReplacement extends RollReplacement {
     constructor(match, config) {
@@ -556,6 +574,7 @@ const REPLACEMENT_CLASS_MAP = {
     save: CheckReplacement,
     skill: CheckReplacement,
     template: TemplateReplacement,
+    within: WithinReplacement,
     utility: UtilityReplacement,
     action: ActionReplacement,
     condition: ConditionReplacement,
@@ -876,6 +895,23 @@ const PATTERN_DEFINITIONS = [
             };
         },
         description: 'Consolidated area effects (standard and alternate shape names, with optional hyphen) - accepts both foot and feet'
+    },
+    // Priority 7: "within X feet" pattern
+    {
+        type: 'within',
+        regex: /within\s+(\d+)\s+(?:foot|feet)/gi,
+        priority: PRIORITY.TEMPLATE,
+        handler: function(match) {
+            const distance = match[1];
+            
+            return {
+                0: match[0],
+                index: match.index,
+                length: match[0].length,
+                1: distance
+            };
+        },
+        description: '"within X feet" pattern for inline template generation'
     }
 ];
 

@@ -107,26 +107,26 @@ The spell creates a 20-foot burst centered on a point you choose.
 You can cast this as either a 30 foot cone or a 60 foot line.
 The fireball explodes in a 20-foot burst, dealing 6d6 fire damage to all creatures in the area.
 The dragon's breath weapon creates a 40 foot cone of poison.
-The spell emanates in a 15-foot radius.
 The lightning bolt travels in a 120 foot line.
-The spell affects all creatures within a 30 foot radius.
 The dragon's breath creates a 50-foot cone of fire.
-The spell emanates from the caster in a 10 foot burst.
-The area of effect is a 25 foot cone.
-The spell affects all creatures within a 30-foot radius.
-The dragon's breath creates a 50 foot cone of fire.
-The lightning bolt travels in a 120-foot line.
-The spell emanates from the caster in a 10 foot burst.
-The area of effect is a 25-foot cone.
 The spell creates a 40 foot line of force.
-The effect emanates in a 35 foot burst.
 The breath weapon creates a 45 foot cone of acid.
-The spell affects a 15 foot radius around the target.
 The area extends in a 80 foot line from the caster.
-The spell creates a 20 foot sphere of energy.
-The effect emanates in a 30 foot cylinder around the caster.
-The attack creates a 25 foot wedge of destruction.
 The barrier extends in a 40 foot wall of force.
+The spell affects all creatures within 30 feet.
+The aura extends within 15 feet of the caster.
+The effect targets creatures within 25 feet.
+The ability works within 10 feet of the target.
+The spell affects allies within 20 feet.
+The aura protects creatures within 35 feet.
+The effect damages enemies within 40 feet.
+The ability heals allies within 12 feet.
+The spell targets creatures within 50 feet.
+The aura affects all within 18 feet.
+The spell emanates in a 15-foot emanation.
+The spell emanates from the caster in a 10 foot emanation.
+The effect emanates in a 35 foot emanation.
+The effect emanates in a 30 foot emanation around the caster.
 ```
 
 ## Condition Tests
