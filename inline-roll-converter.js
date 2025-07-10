@@ -210,7 +210,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The weapon deals 1d8+4 slashing damage and 1d6 persistent bleed damage.";
+const DEFAULT_TEST_INPUT = "You can attempt a DC 20 Deception or Intimidation check to distract the guard.";
 
 // Utility for unique IDs
 function generateId() {
@@ -363,6 +363,8 @@ class CheckReplacement extends RollReplacement {
         this.defense = '';
         this.against = '';
         this.match = match; // Save the match object for render()
+        this.multipleSkills = false;
+        this.skills = [];
         this.parseMatch(match, config);
     }
     parseMatch(match, config) {
@@ -376,8 +378,16 @@ class CheckReplacement extends RollReplacement {
         } else {
             // Defensive: if match.replacement exists, skip parsing (already replaced)
             if (match && match.replacement) return;
-            this.checkType = match[2] ? match[2].toLowerCase() : '';
-            this.dc = match[1] || null;
+            
+            // Check if this is a multiple skills match
+            if (match.multipleSkills && match.skills) {
+                this.multipleSkills = true;
+                this.skills = match.skills;
+                this.dc = match.dc || match[1] || null;
+            } else {
+                this.checkType = match[2] ? match[2].toLowerCase() : '';
+                this.dc = match[1] || null;
+            }
         }
     }
     render() {
@@ -385,6 +395,19 @@ class CheckReplacement extends RollReplacement {
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
+        
+        // Handle multiple skills
+        if (this.multipleSkills && this.skills.length > 0) {
+            const skillChecks = this.skills.map(skill => {
+                const params = [skill.toLowerCase()];
+                if (this.dc) params.push(`dc:${this.dc}`);
+                if (this.basic) params.push('basic');
+                return `@Check[${params.join('|')}]`;
+            });
+            return skillChecks.join(' or ') + ' check';
+        }
+        
+        // Handle single skill
         let params = [`${this.checkType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
         if (this.basic) params.push('basic');
@@ -392,6 +415,9 @@ class CheckReplacement extends RollReplacement {
     }
     validate() {
         if (this.match && this.match.replacement) return true;
+        if (this.multipleSkills) {
+            return this.skills.length > 0 && this.dc;
+        }
         return this.checkType && (this.dc || this.defense || this.against);
     }
 }
@@ -635,8 +661,25 @@ const PATTERN_DEFINITIONS = [
         type: 'skill',
         regex: new RegExp(`DC\\s+(\\d+)\\s+((?:${SKILL_PATTERN})(?:\\s*,\\s*(?:${SKILL_PATTERN}))*\\s*(?:,\\s*)?(?:or\\s+)?(?:${SKILL_PATTERN}))\\s+check`, 'gi'),
         priority: PRIORITY.SKILL,
-        handler: (match) => match,
-        description: 'Multiple skill checks'
+        handler: function(match) {
+            // Check if this contains "or" separators for multiple skills
+            const skillText = match[2];
+            if (skillText.includes(' or ')) {
+                // Split by "or" and create multiple matches
+                const skills = skillText.split(/\s+or\s+/).map(s => s.trim());
+                const dc = match[1];
+                
+                // Create a special match object that indicates multiple skills
+                return {
+                    ...match,
+                    multipleSkills: true,
+                    skills: skills,
+                    dc: dc
+                };
+            }
+            return match;
+        },
+        description: 'Multiple skill checks with "or" separators'
     },
     {
         type: 'skill',
