@@ -56,35 +56,33 @@ The PF2e Inline Roll Converter is a Foundry VTT macro that automatically convert
 #### 3.1.3 Condition Linking
 - **FR-016**: Automatically detect standard PF2e conditions in text
 - **FR-017**: Convert first occurrence of each condition to clickable link
-- **FR-018**: Support both singular and plural condition forms
-- **FR-019**: Maintain original capitalization in linked conditions
-- **FR-020**: Validate conditions against PF2e system condition list
-- **FR-021**: Handle condition names with multiple words (e.g., "off-guard")
-- **FR-022**: Support conditions with degrees (e.g., "enfeebled 2")
+- **FR-018**: Capitalize linked conditions for consistency
+- **FR-019**: Validate conditions against PF2e system condition list
+- **FR-020**: Support conditions with degrees (e.g., "enfeebled 2")
 
 #### 3.1.4 User Interface
-- **FR-023**: Simple dialog interface with input/output text areas
-- **FR-024**: Show real-time preview of conversions
-- **FR-025**: Provide copy-to-clipboard functionality
-- **FR-026**: Allow selective conversion enabling/disabling
-- **FR-027**: Visual indicators for condition links in preview
+- **FR-021**: Simple dialog interface with input/output text areas
+- **FR-022**: Show real-time preview of conversions
+- **FR-023**: Provide copy-to-clipboard functionality
+- **FR-024**: Allow selective conversion enabling/disabling
+- **FR-025**: Visual indicators for condition links in preview
 
 ### 3.2 Advanced Features (Future Enhancement)
 
 #### 3.2.1 Configuration Options
-- **FR-028**: Enable/disable specific conversion types
-- **FR-029**: Adjust conversion sensitivity settings
-- **FR-030**: Set preferred flavor text formats
+- **FR-026**: Enable/disable specific conversion types
+- **FR-027**: Adjust conversion sensitivity settings
+- **FR-028**: Set preferred flavor text formats
 
 #### 3.2.2 Quality Assurance
-- **FR-031**: Highlight converted text for review
-- **FR-032**: Provide conversion confidence indicators
-- **FR-033**: Offer manual override for edge cases
-- **FR-034**: Show statistics on conditions found and linked
+- **FR-029**: Highlight converted text for review
+- **FR-030**: Provide conversion confidence indicators
+- **FR-031**: Offer manual override for edge cases
+- **FR-032**: Show statistics on conditions found and linked
 
 #### 3.2.3 Utility Features
-- **FR-035**: Import text from clipboard automatically
-- **FR-036**: Process multiple text blocks simultaneously
+- **FR-033**: Import text from clipboard automatically
+- **FR-034**: Process multiple text blocks simultaneously
 
 ## 4. Technical Requirements
 
@@ -145,12 +143,11 @@ Support for all core PF2e conditions including but not limited to:
 
 ### 7.2 Condition Detection Rules
 - **CD-001**: Case-insensitive detection (e.g., "Blinded", "blinded", "BLINDED")
-- **CD-002**: Support plural forms (e.g., "frightened" and "frightened creatures")
-- **CD-003**: Support conditions with numeric values (e.g., "enfeebled 2", "drained 3")
-- **CD-004**: Handle hyphenated conditions (e.g., "off-guard")
-- **CD-005**: Only link first occurrence of each condition per text block
-- **CD-006**: Preserve original capitalization in linked text
-- **CD-007**: Use proper PF2e condition UUID format for links
+- **CD-002**: Support conditions with numeric values (e.g., "enfeebled 2", "drained 3")
+- **CD-003**: Handle hyphenated conditions (e.g., "off-guard")
+- **CD-004**: Only link first occurrence of each condition per text block
+- **CD-005**: Capitalize linked conditions for consistency
+- **CD-006**: Use proper PF2e condition UUID format for links
 
 ### 7.3 Condition Link Format
 Conditions should be converted to Foundry's condition link format:
