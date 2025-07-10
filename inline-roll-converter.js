@@ -1052,6 +1052,7 @@ class PatternDetector {
         this.patterns.push({ type, regex, priority, config });
     }
     detectAll(text) {
+        console.log('[PatternDetector] Input:', text);
         const allMatches = [];
         for (const pattern of this.patterns) {
             let match;
@@ -1063,9 +1064,7 @@ class PatternDetector {
                     console.warn('[PatternDetector] Skipping malformed handler result:', handlerResult, 'for pattern', pattern);
                     continue;
                 }
-                // For condition patterns, handlerResult should be { match, args }
-                // For others, it should be a string or match array
-                console.log('[PatternDetector] Pattern matched:', pattern.type, pattern.regex, 'Match:', match, 'Handler result:', handlerResult);
+                console.log(`[PatternDetector] ${pattern.type}:`, handlerResult);
                 allMatches.push({
                     match: handlerResult,
                     type: pattern.type,
@@ -1075,8 +1074,10 @@ class PatternDetector {
                 });
             }
         }
-        console.log('[PatternDetector] All matches:', allMatches);
-        return this.resolveConflicts(allMatches);
+        console.log('[PatternDetector] Before conflicts:', allMatches.length, 'matches');
+        const resolvedMatches = this.resolveConflicts(allMatches);
+        console.log('[PatternDetector] After conflicts:', resolvedMatches.length, 'matches');
+        return resolvedMatches;
     }
     resolveConflicts(matches) {
         // Remove overlaps: keep highest priority, then leftmost
@@ -1086,7 +1087,7 @@ class PatternDetector {
         for (const m of matches) {
             let matchArr = m.match && m.match.match ? m.match.match : m.match;
             if (!matchArr || typeof matchArr[0] !== 'string' || typeof matchArr.index !== 'number') {
-                console.warn('[PatternDetector] Skipping match in resolveConflicts due to invalid matchArr:', matchArr, m);
+                console.warn('[PatternDetector] Skipping invalid match:', matchArr, m);
                 continue;
             }
             const start = matchArr.index;
@@ -1094,9 +1095,10 @@ class PatternDetector {
             if (!covered.some(([s, e]) => (start < e && end > s))) {
                 result.push(m);
                 covered.push([start, end]);
+            } else {
+                console.log(`[PatternDetector] Overlap: ${m.type} at [${start},${end}]`);
             }
         }
-        console.log('[PatternDetector] Non-overlapping matches:', result);
         return result;
     }
 }
@@ -1138,12 +1140,11 @@ class TextProcessor {
         this.linkedConditions = new Set();
     }
     process(inputText) {
-        console.log('[TextProcessor] Input text:', inputText);
+        console.log('[TextProcessor] Input:', inputText);
         const rollMatches = this.detector.detectAll(inputText);
         const replacements = this.createReplacements(rollMatches);
-        console.log('[TextProcessor] Replacements created:', replacements);
         const result = this.applyReplacements(inputText, replacements);
-        console.log('[TextProcessor] Final converted text:', result);
+        console.log('[TextProcessor] Output:', result);
         return result;
     }
     createReplacements(rollMatches) {
@@ -1154,15 +1155,13 @@ class TextProcessor {
             return aPos - bPos;
         });
         const replacements = [];
-        rollMatches.forEach(matchObj => {
+        rollMatches.forEach((matchObj, index) => {
             try {
                 if (matchObj.type === 'condition') {
                     const rep = ReplacementFactory.createFromMatch(matchObj.match, matchObj.type, { linkedConditions: this.linkedConditions });
-                    console.log('[TextProcessor] Created ConditionReplacement:', rep);
                     replacements.push(rep);
                 } else {
                     const rep = ReplacementFactory.createFromMatch(matchObj.match, matchObj.type, matchObj.config);
-                    console.log('[TextProcessor] Created Replacement:', rep);
                     replacements.push(rep);
                 }
             } catch (err) {
@@ -1178,13 +1177,19 @@ class TextProcessor {
         // Apply all replacements in reverse position order
         const sorted = replacements.sort((a, b) => b.startPos - a.startPos);
         let result = text;
-        for (const replacement of sorted) {
+        for (let i = 0; i < sorted.length; i++) {
+            const replacement = sorted[i];
             if (replacement.enabled && replacement.validate()) {
                 result = this.applyReplacement(result, replacement);
+                console.log(`[TextProcessor] Applied: "${replacement.originalText}" -> "${replacement.render()}"`);
             }
         }
         // After all replacements, replace any remaining 'flat-footed' with 'off-guard'
+        const beforeFlatFooted = result;
         result = result.replace(/\bflat-footed\b/gi, 'off-guard');
+        if (beforeFlatFooted !== result) {
+            console.log('[TextProcessor] flat-footed -> off-guard');
+        }
         return result;
     }
     applyReplacement(text, replacement) {
@@ -1204,8 +1209,10 @@ class MacroInterface {
     }
     processText(input) {
         try {
-            return this.processor.process(input);
+            const result = this.processor.process(input);
+            return result;
         } catch (error) {
+            console.error('[MacroInterface] Error:', error);
             ui.notifications.error(`Conversion failed: ${error.message}`);
             return input;
         }
@@ -1493,12 +1500,14 @@ function showConverterDialog() {
 try {
     // Verify we're in a PF2e game
     if (game.system.id !== 'pf2e') {
+        console.error('[PF2e Converter] Wrong system:', game.system.id);
         ui.notifications.error("This macro is designed for the Pathfinder 2e system only.");
         return;
     }
     
     // Verify minimum Foundry version
     if (!game.version || parseInt(game.version.split('.')[0]) < 12) {
+        console.warn('[PF2e Converter] Foundry version may be too old:', game.version);
         ui.notifications.warn("This macro is designed for Foundry VTT v12+. Some features may not work properly.");
     }
     
@@ -1509,7 +1518,7 @@ try {
     showConverterDialog();
     
 } catch (error) {
-    console.error('PF2e Converter: Failed to initialize:', error);
+    console.error('[PF2e Converter] Init error:', error);
     ui.notifications.error("Failed to start PF2e Inline Roll Converter. Check console for details.");
 }
 
