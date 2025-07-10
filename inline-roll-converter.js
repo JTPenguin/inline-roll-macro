@@ -1149,18 +1149,6 @@ function showConverterDialog() {
     dialog.render(true);
 }
 
-/**
- * Test condition linking functionality
- */
-function testConditionLinking() {
-    // Test various condition types: with values, without values, and stunned (special case)
-    const testText = "The target becomes frightened 2 and off-guard. The poison causes enfeebled 1. The creature is stunned 3, then becomes stunned. The spell makes them blinded and prone.";
-    
-    const result = convertText(testText);
-    
-    return result;
-}
-
 // Main execution
 try {
     // Verify we're in a PF2e game
@@ -1176,9 +1164,6 @@ try {
     
     // Initialize condition mapping
     initializeConditionMap();
-    
-    // Test condition linking
-    testConditionLinking();
     
     // Show the converter dialog
     showConverterDialog();
