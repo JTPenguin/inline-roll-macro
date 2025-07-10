@@ -132,66 +132,75 @@ The barrier extends in a 40 foot wall of force.
 ## Condition Tests
 
 ```
-The target becomes frightened 1 for 1 minute.<br>
-On a critical failure, the creature is blinded and deafened for 1 round.<br>
-The poison causes the target to become sickened 2, or sickened 1 on a successful save.<br>
-While stunned, the creature is also off-guard and takes a -2 penalty to AC.<br>
-The target becomes blinded for 1 round.<br>
-On a failure, the creature is frightened 2.<br>
-The target is off-guard until the end of their next turn.<br>
-The poison causes the target to become sickened 2.<br>
-While stunned, the creature is also off-guard.<br>
-The target becomes paralyzed for 1d4 rounds.<br>
-The spell causes the target to become confused for 1 minute.<br>
-The effect makes the target invisible for 1 hour.<br>
-The target becomes prone and grabbed.<br>
+The target becomes frightened 1 for 1 minute.
+On a critical failure, the creature is blinded and deafened for 1 round.
+The poison causes the target to become sickened 2, or sickened 1 on a successful save.
+While stunned, the creature is also off-guard and takes a -2 penalty to AC.
+The target becomes blinded for 1 round.
+On a failure, the creature is frightened 2.
+The target is off-guard until the end of their next turn.
+The poison causes the target to become sickened 2.
+While stunned, the creature is also off-guard.
+The target becomes paralyzed for 1d4 rounds.
+The spell causes the target to become confused for 1 minute.
+The effect makes the target invisible for 1 hour.
+The target becomes prone and grabbed.
 The creature is slowed 1 and enfeebled 2.
 ```
 
 ## Duration and Utility Roll Tests
 
 ```
-The effect lasts for 1d4 rounds.<br>
-The ability recharges on a roll of 5-6 on a d6.<br>
-The potion restores 2d4+2 hit points when consumed.<br>
-The effect lasts for 1d4 rounds.<br>
-The ability recharges on a roll of 1d6 (5-6).<br>
-The potion restores 2d4+2 hit points.<br>
-The spell has a 1d6 round duration.<br>
-The creature recovers in 1d4+1 minutes.<br>
-The effect persists for 1d8 hours.<br>
-The ability can be used again after 1d3 days.<br>
-The spell's duration is 1d10+5 rounds.<br>
-The potion's effects last for 2d6 minutes.<br>
+The effect lasts for 1d4 rounds.
+The ability recharges on a roll of 5-6 on a d6.
+The potion restores 2d4+2 hit points when consumed.
+The effect lasts for 1d4 rounds.
+The ability recharges on a roll of 1d6 (5-6).
+The potion restores 2d4+2 hit points.
+The spell has a 1d6 round duration.
+The creature recovers in 1d4+1 minutes.
+The effect persists for 1d8 hours.
+The ability can be used again after 1d3 days.
+The spell's duration is 1d10+5 rounds.
+The potion's effects last for 2d6 minutes.
 The creature awakens in 1d4 rounds.
 ```
 
 ## Healing Tests
 
 ```
-The spell restores 3d8+5 hit points.<br>
-The potion provides 2d4+2 healing.<br>
-The ability grants 1d6 hit points to all allies.<br>
-The spell heals 4d6+8 hit points.<br>
-The potion restores 1d8+3 hit points.<br>
-The ability provides 2d6+4 healing.<br>
-The spell grants 5d8+10 hit points.<br>
-The potion heals 3d4+6 hit points.<br>
-The ability restores 1d10+5 hit points.<br>
+The spell restores 3d8+5 hit points.
+The potion provides 2d4+2 healing.
+The ability grants 1d6 hit points to all allies.
+The spell heals 4d6+8 hit points.
+The potion restores 1d8+3 hit points.
+The ability provides 2d6+4 healing.
+The spell grants 5d8+10 hit points.
+The potion heals 3d4+6 hit points.
+The ability restores 1d10+5 hit points.
 The spell provides 2d8+7 healing.
 ```
 
 ## Complex Multi-Pattern Tests
 
 ```
-Fireball: You launch a ball of fire. The ball explodes in a 20-foot burst, dealing 6d6 fire damage to all creatures in the area (basic Reflex save, DC 25). Creatures that critically fail are also stunned 1.<br><br>
-Breath Weapon (recharge 1d4 rounds): The dragon breathes poison in a 40-foot cone. Each creature in the area takes 12d6 poison damage and must make a DC 28 Fortitude saving throw. On a failure, they take 2d6 persistent poison damage and become sickened 2. On a critical failure, they are also paralyzed for 1 round.<br><br>
-Frenzy: The creature makes three claw attacks. Each attack deals 2d6+8 slashing damage. Any creature hit by at least two attacks must make a DC 22 Fortitude save or be grabbed and take 1d6 persistent bleed damage.<br><br>
-Power Attack: You make a melee Strike with a -5 penalty. If you hit, you deal an additional 2d6 damage, or 3d6 damage if you're using a two-handed weapon. On a critical hit, the target must make a DC 20 Fortitude saving throw or be stunned 1.<br><br>
-Lightning Bolt: A stroke of lightning deals 8d6 electricity damage to all creatures in a 60-foot line (basic Reflex saving throw, DC 26).<br>
-Poison Cloud: The spell creates a 15-foot burst of poisonous gas. Each creature in the area takes 4d6 poison damage and must make a DC 24 Fortitude save. On a failure, they take 1d6 persistent poison damage and become sickened 1.<br><br>
-Healing Word: The spell restores 1d8+5 hit points to the target and grants them 1d4 temporary hit points for 1 minute.<br>
-Mass Cure Wounds: All allies within a 30-foot burst regain 3d8+5 hit points and are no longer frightened.<br><br>
-Chromatic Orb: Range 120 feet. Make a ranged spell attack against the target. On a hit, the target takes 3d8 acid, cold, fire, electricity, or poison damage (your choice). On a critical hit, the target must make a DC 18 Fortitude saving throw or be blinded for 1 round.<br><br>
+Fireball: You launch a ball of fire. The ball explodes in a 20-foot burst, dealing 6d6 fire damage to all creatures in the area (basic Reflex save, DC 25). Creatures that critically fail are also stunned 1.
+
+Breath Weapon (recharge 1d4 rounds): The dragon breathes poison in a 40-foot cone. Each creature in the area takes 12d6 poison damage and must make a DC 28 Fortitude saving throw. On a failure, they take 2d6 persistent poison damage and become sickened 2. On a critical failure, they are also paralyzed for 1 round.
+
+Frenzy: The creature makes three claw attacks. Each attack deals 2d6+8 slashing damage. Any creature hit by at least two attacks must make a DC 22 Fortitude save or be grabbed and take 1d6 persistent bleed damage.
+
+Power Attack: You make a melee Strike with a -5 penalty. If you hit, you deal an additional 2d6 damage, or 3d6 damage if you're using a two-handed weapon. On a critical hit, the target must make a DC 20 Fortitude saving throw or be stunned 1.
+
+Lightning Bolt: A stroke of lightning deals 8d6 electricity damage to all creatures in a 60-foot line (basic Reflex saving throw, DC 26).
+
+Poison Cloud: The spell creates a 15-foot burst of poisonous gas. Each creature in the area takes 4d6 poison damage and must make a DC 24 Fortitude save. On a failure, they take 1d6 persistent poison damage and become sickened 1.
+
+Healing Word: The spell restores 1d8+5 hit points to the target and grants them 1d4 temporary hit points for 1 minute.
+
+Mass Cure Wounds: All allies within a 30-foot burst regain 3d8+5 hit points and are no longer frightened.
+
+Chromatic Orb: Range 120 feet. Make a ranged spell attack against the target. On a hit, the target takes 3d8 acid, cold, fire, electricity, or poison damage (your choice). On a critical hit, the target must make a DC 18 Fortitude saving throw or be blinded for 1 round.
+
 The attack deals 1d8+2 slashing damage and 1d4 persistent bleed damage. The target becomes frightened 1 and off-guard until the end of their next turn.
 ```
