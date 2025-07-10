@@ -34,6 +34,32 @@ const LEGACY_ALIGNMENT_PATTERN = 'chaotic|evil|good|lawful';
 const LEGACY_POSITIVE = 'positive';
 const LEGACY_NEGATIVE = 'negative';
 
+// Condition patterns for regexes
+const CONDITIONS_WITH_VALUES = [
+    'clumsy', 'doomed', 'drained', 'dying', 'enfeebled', 'frightened', 
+    'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
+];
+const CONDITIONS_WITHOUT_VALUES = [
+    'blinded', 'broken', 'concealed', 'confused', 'controlled', 'dazzled', 
+    'deafened', 'fascinated', 'fatigued', 'fleeing', 'grabbed', 'immobilized', 
+    'invisible', 'off-guard', 'paralyzed', 'petrified', 'prone', 'quickened', 
+    'restrained', 'unconscious', 'undetected'
+];
+const CONDITIONS_WITH_VALUES_PATTERN = CONDITIONS_WITH_VALUES.join('|');
+const CONDITIONS_WITHOUT_VALUES_PATTERN = CONDITIONS_WITHOUT_VALUES.join('|');
+
+// Template patterns
+const TEMPLATE_SHAPES = ['burst', 'cone', 'line', 'emanation'];
+const TEMPLATE_SHAPES_PATTERN = TEMPLATE_SHAPES.join('|');
+
+// Time unit patterns
+const TIME_UNITS = ['rounds?', 'minutes?', 'hours?', 'days?'];
+const TIME_UNITS_PATTERN = TIME_UNITS.join('|');
+
+// Ability type patterns
+const ABILITY_TYPES = ['ability', 'action', 'feature', 'spell'];
+const ABILITY_TYPES_PATTERN = ABILITY_TYPES.join('|');
+
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
 
@@ -77,19 +103,12 @@ function buildConditionMap() {
     
     // List of all conditions we want to support
     const conditionNames = [
-        'blinded', 'broken', 'clumsy', 'concealed', 'confused', 'controlled', 
-        'dazzled', 'deafened', 'doomed', 'drained', 'dying', 'enfeebled', 
-        'fascinated', 'fatigued', 'fleeing', 'frightened', 'grabbed', 'immobilized', 
-        'invisible', 'off-guard', 'paralyzed', 'petrified', 'prone', 'quickened', 
-        'restrained', 'sickened', 'slowed', 'stunned', 'stupefied', 'unconscious', 
-        'undetected', 'wounded'
+        ...CONDITIONS_WITHOUT_VALUES,
+        ...CONDITIONS_WITH_VALUES
     ];
     
     // Conditions that can have values (for validation and documentation)
-    const conditionsWithValues = [
-        'clumsy', 'doomed', 'drained', 'dying', 'enfeebled', 'frightened', 
-        'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
-    ];
+    const conditionsWithValues = CONDITIONS_WITH_VALUES;
     
     // Try to get all conditions from the compendium
     for (const conditionName of conditionNames) {
@@ -636,21 +655,21 @@ const PATTERN_DEFINITIONS = [
     },
     {
         type: 'utility',
-        regex: /again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        regex: new RegExp(`again for (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
         priority: PRIORITY.UTILITY,
         handler: (match, dice, unit) => `again for [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
         description: 'Ability recharge pattern'
     },
     {
         type: 'utility',
-        regex: /can't use this (?:ability|action|feature|spell) again for (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        regex: new RegExp(`can't use this (?:${ABILITY_TYPES_PATTERN}) again for (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
         priority: PRIORITY.UTILITY,
         handler: (match, dice, unit) => `can't use this ability again for [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
         description: 'Generic ability recharge'
     },
     {
         type: 'utility',
-        regex: /recharges? (?:in|after) (\d+(?:d\d+)?(?:[+-]\d+)?)\s+(rounds?|minutes?|hours?|days?)/gi,
+        regex: new RegExp(`recharges? (?:in|after) (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
         priority: PRIORITY.UTILITY,
         handler: (match, dice, unit) => `recharges in [[/gmr ${dice} #Recharge]]{${dice} ${unit}}`,
         description: 'Recharge timing pattern'
@@ -731,21 +750,21 @@ const PATTERN_DEFINITIONS = [
     // Priority 6: Condition linking
     {
         type: 'condition',
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\b(clumsy|doomed|drained|dying|enfeebled|frightened|sickened|slowed|stunned|stupefied|wounded)\s+(\d+)\b(?!\})/gi,
+        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${CONDITIONS_WITH_VALUES_PATTERN})\\s+(\\d+)\\b(?!\\})`, 'gi'),
         priority: PRIORITY.CONDITION,
         handler: function(match) { return { match, args: match.slice(1) }; },
         description: 'Condition linking with values (only for conditions that support values)'
     },
     {
         type: 'condition',
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\b(blinded|broken|concealed|confused|controlled|dazzled|deafened|fascinated|fatigued|fleeing|grabbed|immobilized|invisible|off-guard|paralyzed|petrified|prone|quickened|restrained|unconscious|undetected)\b(?!\s+\d+)(?!\})/gi,
+        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${CONDITIONS_WITHOUT_VALUES_PATTERN})\\b(?!\\s+\\d+)(?!\\})`, 'gi'),
         priority: PRIORITY.CONDITION,
         handler: function(match) { return { match, args: [match[1]] }; },
         description: 'Condition linking without values (conditions that cannot have values)'
     },
     {
         type: 'condition',
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\b(stunned)\b(?!\s+\d+)(?!\})/gi,
+        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(stunned)\\b(?!\\s+\\d+)(?!\\})`, 'gi'),
         priority: PRIORITY.CONDITION,
         handler: function(match) { return { match, args: [match[1]] }; },
         description: 'Stunned condition without value (special case)'
@@ -753,7 +772,7 @@ const PATTERN_DEFINITIONS = [
     // Priority 7: Area effects
     {
         type: 'template',
-        regex: /(\d+)-foot\s+(burst|cone|line|emanation)/gi,
+        regex: new RegExp(`(\\d+)-foot\\s+(${TEMPLATE_SHAPES_PATTERN})`, 'gi'),
         priority: PRIORITY.TEMPLATE,
         handler: (match) => match,
         description: 'Basic area effects'
