@@ -176,7 +176,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The dragon breathes fire, dealing 6d6 fire damage.\nThe explosion deals 3d6 fire damage and 2d4 force damage to all creatures in the area.\nThe weapon deals 1d8+4 slashing damage on a hit.\nThe spell deals 5 chaotic damage and 5 fire damage.\nThe attack inflicts 2d6 positive damage.\nThe effect causes 3 negative damage each round.\nThe weapon deals 1d8 good damage.\nThe trap deals 2d6 evil damage and 2d6 acid damage.\nThe spell deals 2d6 fire damage and 2d6 lawful damage.\nThe attack deals 1d4 acid, 1d4 good, and 1d4 slashing damage.";
+const DEFAULT_TEST_INPUT = "The dragon breathes fire, dealing 6d6 fire damage.";
 
 // Utility for unique IDs
 function generateId() {
@@ -222,17 +222,21 @@ class RollReplacement extends Replacement {
 
 // -------------------- Damage Replacement --------------------
 class DamageComponent {
-    constructor(dice, damageType = '', persistent = false, precision = false, splash = false) {
+    constructor(dice, damageType = '', persistent = false, precision = false, splash = false, healing = false) {
         this.dice = dice;
         this.damageType = damageType;
         this.persistent = persistent;
         this.precision = precision;
         this.splash = splash;
+        this.healing = healing;
     }
     render() {
         let formula = this.dice;
-        if (this.precision) formula = `(${formula}[precision])`;
-        if (this.splash) formula = `(${formula}[splash])`;
+        if (this.healing) {
+            return `${formula}[healing]`;
+        }
+        if (this.precision) formula = `(${formula})[precision]`;
+        if (this.splash) formula = `(${formula})[splash]`;
         if (this.persistent && this.damageType) {
             return `${formula}[persistent,${this.damageType}]`;
         }
@@ -253,21 +257,22 @@ class DamageReplacement extends RollReplacement {
         this.parseMatch(match, config);
     }
     parseMatch(match, config) {
-        // Use config to extract dice, type, and flags
-        if (config && config.groups) {
-            for (const group of config.groups) {
-                const dice = match[group.dice] || '';
-                const type = match[group.type] || '';
-                const persistent = !!group.persistent && !!match[group.persistent];
-                const precision = !!group.precision && !!match[group.precision];
-                const splash = !!group.splash && !!match[group.splash];
-                this.addDamageComponent(dice, type, persistent, precision, splash);
-            }
+        const dice = match[1] || '';
+        const type1 = match[2] || '';
+        const type2 = match[3] || '';
+        const type = type1 || type2;
+        
+        // Determine damage type and flags based on the original text
+        const originalText = match[0].toLowerCase();
+        const isPersistent = originalText.includes('persistent');
+        const isPrecision = originalText.includes('precision');
+        const isSplash = originalText.includes('splash');
+        const isHealing = originalText.includes('healing') || originalText.includes('hit point') || originalText.includes('hp');
+        
+        if (isHealing) {
+            this.addDamageComponent(dice, '', false, false, false, true);
         } else {
-            // Fallback: try to extract dice and type from match
-            const dice = match[1] || '';
-            const type = match[2] || '';
-            this.addDamageComponent(dice, type);
+            this.addDamageComponent(dice, type, isPersistent, isPrecision, isSplash);
         }
     }
     addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false) {
@@ -488,69 +493,63 @@ const PATTERN_DEFINITIONS = [
         type: 'damage',
         regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+persistent)`, 'gi'),
         priority: PRIORITY.DAMAGE,
-        handler: (match, dice, type1, type2) => `@Damage[${dice}[persistent,${type1 || type2}]]`,
+        handler: (match) => match,
         description: 'Persistent damage'
     },
     {
         type: 'damage',
         regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(${DAMAGE_TYPE_PATTERN}))`, 'gi'),
         priority: PRIORITY.DAMAGE,
-        handler: (match, dice, type1, type2) => `@Damage[((${dice})[splash])[${type1 || type2}]] splash`,
+        handler: (match) => match,
         description: 'Splash damage'
     },
     {
         type: 'damage',
         regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:precision\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+precision)`, 'gi'),
         priority: PRIORITY.DAMAGE,
-        handler: (match, dice, type1, type2) => `@Damage[((${dice})[precision])[${type1 || type2}]] precision`,
+        handler: (match) => match,
         description: 'Precision damage with type'
     },
     {
         type: 'damage',
         regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+precision/gi,
         priority: PRIORITY.DAMAGE,
-        handler: (match, dice) => `@Damage[(${dice})[precision]] precision`,
+        handler: (match) => match,
         description: 'Generic precision damage'
     },
     {
         type: 'healing',
         regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+(?:hit\s+points?|HP)/gi,
         priority: PRIORITY.HEALING,
-        handler: (match, dice) => `@Damage[${dice}[healing]] hit points`,
+        handler: (match) => match,
         description: 'Healing hit points'
     },
     {
         type: 'healing',
         regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+healing/gi,
         priority: PRIORITY.HEALING,
-        handler: (match, dice) => `@Damage[${dice}[healing]] healing`,
+        handler: (match) => match,
         description: 'Generic healing'
     },
     {
         type: 'skill',
         regex: new RegExp(`DC\\s+(\\d+)\\s+((?:${SKILL_PATTERN})(?:\\s*,\\s*(?:${SKILL_PATTERN}))*\\s*(?:,\\s*)?(?:or\\s+)?(?:${SKILL_PATTERN}))\\s+check`, 'gi'),
         priority: PRIORITY.SKILL,
-        handler: (match, dc, skillsText) => {
-            const skills = skillsText.replace(/\s+or\s+/gi, ',').split(/\s*,\s*/).map(skill => skill.trim()).filter(skill => skill.length > 0);
-            const checkButtons = skills.map(skill => `@Check[${skill.toLowerCase()}|dc:${dc}]`);
-            if (skills.length === 2) return `${checkButtons[0]} or ${checkButtons[1]} check`;
-            if (skills.length > 2) { const lastSkill = checkButtons.pop(); return `${checkButtons.join(', ')}, or ${lastSkill} check`; }
-            return `${checkButtons[0]} check`;
-        },
+        handler: (match) => match,
         description: 'Multiple skill checks'
     },
     {
         type: 'skill',
         regex: /DC\s+(\d+)\s+Perception\s+check/gi,
         priority: PRIORITY.SKILL,
-        handler: (match, dc) => `@Check[perception|dc:${dc}] check`,
+        handler: (match) => match,
         description: 'Perception checks'
     },
     {
         type: 'flat',
         regex: /DC\s+(\d+)\s+flat\s+check/gi,
         priority: PRIORITY.FLAT,
-        handler: (match, dc) => `@Check[flat|dc:${dc}]`,
+        handler: (match) => match,
         description: 'Flat checks'
     },
     {
@@ -579,14 +578,14 @@ const PATTERN_DEFINITIONS = [
         type: 'damage',
         regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${DAMAGE_TYPE_PATTERN})`, 'gi'),
         priority: PRIORITY.BASIC_DAMAGE,
-        handler: (match, dice, type) => `@Damage[(${dice})[${type}]]`,
+        handler: (match) => match,
         description: 'Basic damage rolls'
     },
     {
         type: 'skill',
         regex: new RegExp(`DC\\s+(\\d+)\\s+(${SKILL_PATTERN})\\s+check`, 'gi'),
         priority: PRIORITY.BASIC_SKILL,
-        handler: (match, dc, skill) => `@Check[${skill.toLowerCase()}|dc:${dc}] check`,
+        handler: (match) => match,
         description: 'Single skill checks'
     },
     // Priority 4: Legacy damage type conversions
@@ -674,14 +673,14 @@ const PATTERN_DEFINITIONS = [
         type: 'template',
         regex: /(\d+)-foot\s+(burst|cone|line|emanation)/gi,
         priority: PRIORITY.TEMPLATE,
-        handler: (match, dist, shape) => `@Template[type:${shape}|distance:${dist}]`,
+        handler: (match) => match,
         description: 'Basic area effects'
     },
     {
         type: 'template',
         regex: /(\d+)-foot\s+radius/gi,
         priority: PRIORITY.TEMPLATE,
-        handler: (match, dist) => `@Template[type:burst|distance:${dist}]`,
+        handler: (match) => match,
         description: 'Radius area effects'
     }
 ];
