@@ -223,7 +223,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "The spell restores 3d8+5 hit points.\nThe potion provides 2d4+2 healing.\nThe ability grants 1d6 hit points to all allies.\nThe spell heals 4d6+8 hit points.\nThe potion restores 1d8+3 hit points.\nThe ability provides 2d6+4 healing.\nThe spell grants 5d8+10 hit points.\nThe potion heals 3d4+6 hit points.";
+const DEFAULT_TEST_INPUT = "3d6 fire damage and 2d4 force damage\n3d6 fire damage and 4 force damage\n3 fire damage and 2d4 force damage";
 
 // Utility for unique IDs
 function generateId() {
@@ -818,12 +818,14 @@ const PATTERN_DEFINITIONS = [
     {
         type: 'damage',
         // Comprehensive regex: matches a sequence of dice/type pairs including persistent, splash, precision, and basic damage
-        regex: new RegExp(`((?:\\d+d\\d+(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s+and\\s+))*\\d+d\\d+(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?)`, 'gi'),
+        // Updated to handle both dice expressions (3d6) and fixed numbers (4)
+        regex: new RegExp(`((?:\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s+and\\s+))*\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?)`, 'gi'),
         priority: PRIORITY.DAMAGE + 10, // Higher than all other damage patterns
         handler: function(match) {
             // Find all dice/type pairs in the match[0] string
             // Accepts: '1d4 acid, 1d6 persistent bleed, and 1d4 slashing damage' (with or without 'damage' after each type)
-            const singlePattern = new RegExp(`(\\d+d\\d+(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${DAMAGE_TYPE_PATTERN}))(?:\\s+persistent)?|(?:(${DAMAGE_TYPE_PATTERN}))\\s+splash|splash\\s+(?:(${DAMAGE_TYPE_PATTERN}))|(?:(${DAMAGE_TYPE_PATTERN}))\\s+precision|precision\\s+(?:(${DAMAGE_TYPE_PATTERN}))|precision|(?:(${DAMAGE_TYPE_PATTERN})))(?:\\s+damage)?`, 'gi');
+            // Updated to handle both dice expressions (3d6) and fixed numbers (4)
+            const singlePattern = new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${DAMAGE_TYPE_PATTERN}))(?:\\s+persistent)?|(?:(${DAMAGE_TYPE_PATTERN}))\\s+splash|splash\\s+(?:(${DAMAGE_TYPE_PATTERN}))|(?:(${DAMAGE_TYPE_PATTERN}))\\s+precision|precision\\s+(?:(${DAMAGE_TYPE_PATTERN}))|precision|(?:(${DAMAGE_TYPE_PATTERN})))(?:\\s+damage)?`, 'gi');
             let m;
             const multiMatches = [];
             while ((m = singlePattern.exec(match[0])) !== null) {
@@ -833,7 +835,7 @@ const PATTERN_DEFINITIONS = [
             match.multiMatches = multiMatches;
             return match;
         },
-        description: 'Multi-damage grouping (comma, and, or both separated, trailing damage allowed) - includes persistent, splash, precision'
+        description: 'Multi-damage grouping (comma, and, or both separated, trailing damage allowed) - includes persistent, splash, precision - now handles both dice and fixed numbers'
     },
     // Priority 1: Comprehensive save pattern
     {
