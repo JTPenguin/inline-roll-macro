@@ -223,7 +223,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "3d6 fire damage and 2d4 force damage\n3d6 fire damage and 4 force damage\n3 fire damage and 2d4 force damage";
+const DEFAULT_TEST_INPUT = "Make a DC 25 Athletics check.";
 
 // Utility for unique IDs
 function generateId() {
@@ -232,6 +232,9 @@ function generateId() {
 
 // At the top, after other globals:
 if (!window.pf2eInteractiveElements) window.pf2eInteractiveElements = {};
+
+// === 1. Persistent Replacement List ===
+if (!window.pf2eReplacements) window.pf2eReplacements = [];
 
 // -------------------- Base Classes --------------------
 class Replacement {
@@ -474,7 +477,6 @@ class CheckReplacement extends RollReplacement {
         this.priority = 90;
         this.checkType = '';
         this.dc = null;
-        this.basic = false;
         this.secret = false;
         this.defense = '';
         this.against = '';
@@ -489,7 +491,6 @@ class CheckReplacement extends RollReplacement {
             for (const group of config.groups) {
                 if (group.type && match[group.type]) this.checkType = match[group.type].toLowerCase();
                 if (group.dc && match[group.dc]) this.dc = match[group.dc];
-                if (group.basic && match[group.basic]) this.basic = true;
             }
         } else {
             // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -524,7 +525,16 @@ class CheckReplacement extends RollReplacement {
             const skillChecks = this.skills.map(skill => {
                 const params = [skill.toLowerCase()];
                 if (this.dc) params.push(`dc:${this.dc}`);
-                if (this.basic) params.push('basic');
+                // Add secret trait if enabled
+                if (this.secret) {
+                    const traits = this.traits || [];
+                    if (!traits.includes('secret')) {
+                        traits.push('secret');
+                    }
+                    params.push(`traits:${traits.join(',')}`);
+                } else if (this.traits && this.traits.length > 0) {
+                    params.push(`traits:${this.traits.join(',')}`);
+                }
                 return `@Check[${params.join('|')}]`;
             });
             return skillChecks.join(' or ') + ' check';
@@ -533,7 +543,16 @@ class CheckReplacement extends RollReplacement {
         // Handle single skill
         let params = [`${this.checkType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
-        if (this.basic) params.push('basic');
+        // Add secret trait if enabled
+        if (this.secret) {
+            const traits = this.traits || [];
+            if (!traits.includes('secret')) {
+                traits.push('secret');
+            }
+            params.push(`traits:${traits.join(',')}`);
+        } else if (this.traits && this.traits.length > 0) {
+            params.push(`traits:${this.traits.join(',')}`);
+        }
         return `@Check[${params.join('|')}] check`;
     }
     validate() {
@@ -548,7 +567,6 @@ class CheckReplacement extends RollReplacement {
             ...super.getInteractiveParams(),
             checkType: this.checkType,
             dc: this.dc,
-            basic: this.basic,
             secret: this.secret,
             defense: this.defense,
             against: this.against,
@@ -1250,17 +1268,13 @@ class TextProcessor {
         this.conditionDetector = new ConditionDetector();
         this.linkedConditions = new Set();
     }
-    process(inputText, { interactive = false } = {}) {
-        if (interactive && window.pf2eInteractiveElements) window.pf2eInteractiveElements = {};
-        console.log('[TextProcessor] Input:', inputText);
+    process(inputText) {
+        // Parse and create new replacements from scratch
         const rollMatches = this.detector.detectAll(inputText);
         const replacements = this.createReplacements(rollMatches);
-        const result = this.applyReplacements(inputText, replacements, interactive);
-        console.log('[TextProcessor] Output:', result);
-        return result;
+        return replacements;
     }
     createReplacements(rollMatches) {
-        // Sort by startPos so deduplication always enables the first occurrence
         rollMatches.sort((a, b) => {
             const aPos = a.match && a.match.match && typeof a.match.match.index === 'number' ? a.match.match.index : a.match.index;
             const bPos = b.match && b.match.match && typeof b.match.match.index === 'number' ? b.match.match.index : b.match.index;
@@ -1269,13 +1283,13 @@ class TextProcessor {
         const replacements = [];
         rollMatches.forEach((matchObj, index) => {
             try {
+                let rep;
                 if (matchObj.type === 'condition') {
-                    const rep = ReplacementFactory.createFromMatch(matchObj.match, matchObj.type, { linkedConditions: this.linkedConditions });
-                    replacements.push(rep);
+                    rep = ReplacementFactory.createFromMatch(matchObj.match, matchObj.type, { linkedConditions: this.linkedConditions });
                 } else {
-                    const rep = ReplacementFactory.createFromMatch(matchObj.match, matchObj.type, matchObj.config);
-                    replacements.push(rep);
+                    rep = ReplacementFactory.createFromMatch(matchObj.match, matchObj.type, matchObj.config);
                 }
+                replacements.push(rep);
             } catch (err) {
                 console.error('[TextProcessor] Error creating replacement:', err, matchObj);
             }
@@ -1285,23 +1299,19 @@ class TextProcessor {
     sortByPriority(replacements) {
         return replacements.sort((a, b) => b.priority - a.priority || a.startPos - b.startPos);
     }
-    applyReplacements(text, replacements, interactive = false) {
+    // New: render from a list of replacements
+    renderFromReplacements(text, replacements, interactive = false) {
         // Apply all replacements in reverse position order
-        const sorted = replacements.sort((a, b) => b.startPos - a.startPos);
+        const sorted = replacements.slice().sort((a, b) => b.startPos - a.startPos);
         let result = text;
         for (let i = 0; i < sorted.length; i++) {
             const replacement = sorted[i];
             if (replacement.enabled && replacement.validate()) {
                 result = this.applyReplacement(result, replacement, interactive);
-                console.log(`[TextProcessor] Applied: "${replacement.originalText}" -> "${replacement.render()}"`);
             }
         }
         // After all replacements, replace any remaining 'flat-footed' with 'off-guard'
-        const beforeFlatFooted = result;
         result = result.replace(/\bflat-footed\b/gi, 'off-guard');
-        if (beforeFlatFooted !== result) {
-            console.log('[TextProcessor] flat-footed -> off-guard');
-        }
         return result;
     }
     applyReplacement(text, replacement, interactive = false) {
@@ -1574,54 +1584,129 @@ function showConverterDialog() {
         content: dialogContent,
         buttons: {},
         render: (html) => {
-            // Add real-time conversion on input change
             const inputTextarea = html.find('#input-text');
             const outputHtmlDiv = html.find('#output-html')[0];
             const livePreview = html.find('#live-preview')[0];
             const modifierPanelContent = html.find('#modifier-panel-content')[0];
-
             let lastRawConvertedText = '';
+            let lastInputText = '';
+            let selectedElementId = null; // Track selected element
+            const processor = new TextProcessor();
 
-            inputTextarea.on('input', async () => {
+            // === 2. Input Handler ===
+            function handleInputChange() {
                 const inputText = inputTextarea.val();
+                lastInputText = inputText;
+                selectedElementId = null; // Clear selection on input change
                 if (inputText.trim()) {
-                    const result = convertText(inputText, { interactive: true });
-                    lastRawConvertedText = convertText(inputText, { interactive: false }).convertedText;
-                    const htmlOutput = result.convertedText.replace(/\r?\n/g, '<br>');
-                    outputHtmlDiv.innerHTML = htmlOutput;
-                    const interactiveEls = outputHtmlDiv.querySelectorAll('.pf2e-interactive');
-                    interactiveEls.forEach(el => {
-                        el.addEventListener('click', (event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            interactiveEls.forEach(e => e.classList.remove('selected'));
-                            el.classList.add('selected');
-                            const id = el.getAttribute('data-id');
-                            const type = el.getAttribute('data-type');
-                            let params = {};
-                            try {
-                                params = JSON.parse(el.getAttribute('data-params'));
-                            } catch {}
-                            // Update modifier panel with type and params as JSON
-                            modifierPanelContent.innerHTML = `<div><strong>Type:</strong> ${type}</div><div><strong>Parameters:</strong><pre style="background:#f0f0f0; border-radius:4px; padding:6px; font-size:12px;">${JSON.stringify(params, null, 2)}</pre></div>`;
-                            if (typeof el.scrollIntoView === 'function') {
-                                el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                            }
-                        });
-                    });
-                    await createLivePreview(lastRawConvertedText, livePreview);
+                    // Parse and create new replacements
+                    window.pf2eReplacements = processor.process(inputText);
+                    renderAll();
                 } else {
-                    lastRawConvertedText = '';
+                    window.pf2eReplacements = [];
                     outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                     livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                     modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
                 }
-            });
+            }
 
+            // === 3. Modifier Panel Handler ===
+            function handleModifierChange(rep) {
+                // rep is the replacement object to update
+                renderAll();
+            }
+
+            // === 4. Rendering ===
+            function renderAll() {
+                // Render output and preview from pf2eReplacements
+                if (!window.pf2eReplacements || !lastInputText.trim()) return;
+                // Render interactive output
+                const htmlOutput = processor.renderFromReplacements(lastInputText, window.pf2eReplacements, true).replace(/\r?\n/g, '<br>');
+                outputHtmlDiv.innerHTML = htmlOutput;
+                // Add click handlers for interactive elements
+                const interactiveEls = outputHtmlDiv.querySelectorAll('.pf2e-interactive');
+                interactiveEls.forEach(el => {
+                    el.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        interactiveEls.forEach(e => e.classList.remove('selected'));
+                        el.classList.add('selected');
+                        selectedElementId = el.getAttribute('data-id'); // Track selected element
+                        const id = el.getAttribute('data-id');
+                        const type = el.getAttribute('data-type');
+                        let rep = window.pf2eReplacements.find(r => r.id === id);
+                        if (!rep) return;
+                        // Context-sensitive modifier panel for skill/check
+                        if (type === 'skill' || type === 'check') {
+                            const skills = [
+                                'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
+                                'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
+                                'Society', 'Stealth', 'Survival', 'Thievery'
+                            ];
+                            const selectedSkill = rep.checkType
+                                ? rep.checkType.charAt(0).toUpperCase() + rep.checkType.slice(1)
+                                : (rep.skills && rep.skills[0]) || '';
+                            const dc = rep.dc || '';
+                            const basic = !!rep.basic;
+                            const secret = !!rep.secret;
+                            const traits = (rep.traits && rep.traits.join(',')) || '';
+                            modifierPanelContent.innerHTML = `
+                                <form id="skill-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div>
+                                        <label><strong>Skill:</strong></label>
+                                        <select id="skill-select" style="width: 100%;">
+                                            ${skills.map(skill => `<option value="${skill}" ${skill === selectedSkill ? 'selected' : ''}>${skill}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label><strong>DC:</strong></label>
+                                        <input id="skill-dc" type="number" min="0" value="${dc}" style="width: 100%;" />
+                                    </div>
+                                    <div>
+                                        <label><input id="skill-secret" type="checkbox" ${secret ? 'checked' : ''}/> Secret</label>
+                                    </div>
+                                    <div>
+                                        <label><strong>Traits:</strong></label>
+                                        <input id="skill-traits" type="text" value="${traits}" placeholder="comma,separated" style="width: 100%;" />
+                                    </div>
+                                </form>
+                            `;
+                            // Add change listeners
+                            const form = modifierPanelContent.querySelector('#skill-modifier-form');
+                            form.addEventListener('input', () => {
+                                // Update the replacement object directly
+                                rep.checkType = form.querySelector('#skill-select').value.toLowerCase();
+                                rep.dc = form.querySelector('#skill-dc').value;
+                                rep.secret = form.querySelector('#skill-secret').checked;
+                                rep.traits = form.querySelector('#skill-traits').value.split(',').map(s => s.trim()).filter(Boolean);
+                                handleModifierChange(rep);
+                            });
+                        } else {
+                            // Default: show JSON
+                            modifierPanelContent.innerHTML = `<div><strong>Type:</strong> ${type}</div><div><strong>Parameters:</strong><pre style="background:#f0f0f0; border-radius:4px; padding:6px; font-size:12px;">${JSON.stringify(rep, null, 2)}</pre></div>`;
+                        }
+                        if (typeof el.scrollIntoView === 'function') {
+                            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                        }
+                    });
+                });
+                // Re-apply selection if there was a selected element
+                if (selectedElementId) {
+                    const selectedEl = outputHtmlDiv.querySelector(`[data-id="${selectedElementId}"]`);
+                    if (selectedEl) {
+                        selectedEl.classList.add('selected');
+                    }
+                }
+                // Render non-interactive preview
+                lastRawConvertedText = processor.renderFromReplacements(lastInputText, window.pf2eReplacements, false);
+                createLivePreview(lastRawConvertedText, livePreview);
+            }
+
+            // === 5. Hook up events ===
+            inputTextarea.on('input', handleInputChange);
             setTimeout(() => {
                 inputTextarea.trigger('input');
             }, 0);
-
             html.find('#copy-output').click((event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1632,12 +1717,12 @@ function showConverterDialog() {
                     ui.notifications.warn("No converted text to copy.");
                 }
             });
-
             html.find('#clear-all').click((event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 inputTextarea.val('');
                 lastRawConvertedText = '';
+                window.pf2eReplacements = [];
                 outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                 livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                 modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
@@ -1648,7 +1733,6 @@ function showConverterDialog() {
         height: 700,
         resizable: true
     });
-
     dialog.render(true);
 }
 
