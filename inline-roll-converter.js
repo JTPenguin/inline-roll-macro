@@ -1544,6 +1544,24 @@ function showConverterDialog() {
             .pf2e-preview-content .inline-roll.healing:hover {
                 background: #007800;
             }
+            /* --- Added for interactive selection --- */
+            .pf2e-interactive {
+                cursor: pointer;
+                transition: background 0.2s, outline 0.2s, box-shadow 0.2s, color 0.2s;
+                background: #dddddd;
+                padding: 1px 3px;
+                color: inherit;
+                border-radius: 2px;
+            }
+            .pf2e-interactive:hover {
+                background: #bbbbbb;
+            }
+            .pf2e-interactive.selected {
+                outline: none;
+                background: #1976d2;
+                color: #fff;
+                box-shadow: 0 0 6px 1px #90caf9;
+            }
         </style>
     `;
 
@@ -1568,6 +1586,31 @@ function showConverterDialog() {
                     // Replace newlines with <br> for HTML output
                     const htmlOutput = result.convertedText.replace(/\r?\n/g, '<br>');
                     outputHtmlDiv.innerHTML = htmlOutput; // Render HTML directly
+                    // --- Add click handlers for interactive elements (Task 2.1) ---
+                    const interactiveEls = outputHtmlDiv.querySelectorAll('.pf2e-interactive');
+                    interactiveEls.forEach(el => {
+                        el.addEventListener('click', (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            // Deselect all
+                            interactiveEls.forEach(e => e.classList.remove('selected'));
+                            // Select this one
+                            el.classList.add('selected');
+                            // Log ID and params
+                            const id = el.getAttribute('data-id');
+                            const type = el.getAttribute('data-type');
+                            let params = {};
+                            try {
+                                params = JSON.parse(el.getAttribute('data-params'));
+                            } catch {}
+                            console.log('[PF2e Converter] Selected element:', { id, type, params });
+                            // --- Scroll into view if needed ---
+                            if (typeof el.scrollIntoView === 'function') {
+                                el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                            }
+                        });
+                    });
+                    // --- End Task 2.1 ---
                     // Update live preview with the raw PF2e syntax
                     await createLivePreview(lastRawConvertedText, livePreview);
                 } else {

@@ -13,11 +13,11 @@ Check off tasks as they are completed.
     - [x] 1.2.2. Clear or update the global state object (e.g., window.pf2eInteractiveElements) on each re-render to avoid memory leaks or stale data.
 
 ### 2. Implement Element Selection Logic
-- [ ] 2.1. **Add Click Handlers**
-    - [ ] 2.1.1. Add event listeners to interactive elements in the output panel so that clicking an element selects it.
-- [ ] 2.2. **Visual Feedback for Selection**
-    - [ ] 2.2.1. Highlight the selected element (e.g., border, background color).
-    - [ ] 2.2.2. Deselect previously selected elements.
+- [x] 2.1. **Add Click Handlers**
+    - [x] 2.1.1. Add event listeners to interactive elements in the output panel so that clicking an element selects it.
+- [x] 2.2. **Visual Feedback for Selection**
+    - [x] 2.2.1. Highlight the selected element (e.g., border, background color).
+    - [x] 2.2.2. Deselect previously selected elements.
 
 ### 3. Build the Modifier Panel (Right Side)
 - [ ] 3.1. **Create Modifier Panel UI**
