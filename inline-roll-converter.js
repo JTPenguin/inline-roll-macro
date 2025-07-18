@@ -230,6 +230,9 @@ function generateId() {
     return '_' + Math.random().toString(36).substr(2, 9);
 }
 
+// At the top, after other globals:
+if (!window.pf2eInteractiveElements) window.pf2eInteractiveElements = {};
+
 // -------------------- Base Classes --------------------
 class Replacement {
     constructor(match) {
@@ -244,6 +247,19 @@ class Replacement {
         this.priority = 0;
     }
     render() { throw new Error('Must implement render()'); }
+    renderInteractive() {
+        const type = this.constructor.name.replace('Replacement', '').toLowerCase();
+        const params = { type, id: this.id };
+        // Register in global state for interactive lookup
+        window.pf2eInteractiveElements[this.id] = {
+            type,
+            id: this.id,
+            params: { ...params },
+            // TODO: Add more detailed parameters for each type as needed
+            // TODO: Support two-way binding and cleanup on re-render
+        };
+        return `<span class="pf2e-interactive" data-id="${this.id}" data-type="${type}" data-params='${JSON.stringify(params)}'>${this.render()}</span>`;
+    }
     validate() { return true; }
     getText() { return this.originalText; }
     getLength() { return this.endPos - this.startPos; }
@@ -1136,11 +1152,11 @@ class TextProcessor {
         this.conditionDetector = new ConditionDetector();
         this.linkedConditions = new Set();
     }
-    process(inputText) {
+    process(inputText, { interactive = false } = {}) {
         console.log('[TextProcessor] Input:', inputText);
         const rollMatches = this.detector.detectAll(inputText);
         const replacements = this.createReplacements(rollMatches);
-        const result = this.applyReplacements(inputText, replacements);
+        const result = this.applyReplacements(inputText, replacements, interactive);
         console.log('[TextProcessor] Output:', result);
         return result;
     }
@@ -1170,14 +1186,14 @@ class TextProcessor {
     sortByPriority(replacements) {
         return replacements.sort((a, b) => b.priority - a.priority || a.startPos - b.startPos);
     }
-    applyReplacements(text, replacements) {
+    applyReplacements(text, replacements, interactive = false) {
         // Apply all replacements in reverse position order
         const sorted = replacements.sort((a, b) => b.startPos - a.startPos);
         let result = text;
         for (let i = 0; i < sorted.length; i++) {
             const replacement = sorted[i];
             if (replacement.enabled && replacement.validate()) {
-                result = this.applyReplacement(result, replacement);
+                result = this.applyReplacement(result, replacement, interactive);
                 console.log(`[TextProcessor] Applied: "${replacement.originalText}" -> "${replacement.render()}"`);
             }
         }
@@ -1189,10 +1205,11 @@ class TextProcessor {
         }
         return result;
     }
-    applyReplacement(text, replacement) {
+    applyReplacement(text, replacement, interactive = false) {
         const before = text.substring(0, replacement.startPos);
         const after = text.substring(replacement.endPos);
-        return before + replacement.render() + after;
+        const rendered = interactive ? replacement.renderInteractive() : replacement.render();
+        return before + rendered + after;
     }
 }
 
@@ -1204,9 +1221,9 @@ class MacroInterface {
     showDialog() {
         showConverterDialog();
     }
-    processText(input) {
+    processText(input, opts) {
         try {
-            const result = this.processor.process(input);
+            const result = this.processor.process(input, opts);
             return result;
         } catch (error) {
             console.error('[MacroInterface] Error:', error);
@@ -1269,16 +1286,10 @@ async function createLivePreview(text, container) {
         // Create a styled container for the preview
         const previewContent = `
             <div class="pf2e-preview-content" style="
-                background: white;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 10px;
                 font-family: 'Signika', sans-serif;
                 font-size: 14px;
                 line-height: 1.4;
                 color: #191813;
-                max-height: 200px;
-                overflow-y: auto;
             ">
                 ${processedHTML}
             </div>
@@ -1352,39 +1363,43 @@ function showConverterDialog() {
                     style="width: 100%; resize: vertical; font-family: monospace; font-size: 12px;"
                     >${DEFAULT_TEST_INPUT}</textarea>
             </div>
-            
             <div class="form-group">
                 <label for="output-text"><strong>Converted Text:</strong></label>
-                <textarea 
-                    id="output-text" 
-                    name="outputText" 
-                    rows="6" 
-                    readonly
-                    style="width: 100%; resize: vertical; font-family: monospace; font-size: 12px; background-color: #f0f0f0;"
-                ></textarea>
+                <div id="output-html" style="
+                    width: 100%; 
+                    height: 150px;
+                    max-height: 150px;
+                    overflow-y: auto;
+                    border: 1px solid #ddd; 
+                    border-radius: 4px; 
+                    background-color: #fafafa;
+                    padding: 8px;
+                    font-family: 'Signika', sans-serif;
+                    font-size: 13px;
+                ">
+                    <em style="color: #999;">Live preview will appear here...</em>
+                </div>
             </div>
-            
             <div class="form-group">
                 <label for="live-preview"><strong>Live Preview:</strong> <small>(Click inline rolls to test them)</small></label>
                 <div 
                     id="live-preview" 
                     style="
                         width: 100%; 
-                        min-height: 100px; 
+                        height: 150px;
+                        max-height: 150px;
+                        overflow-y: auto;
                         border: 1px solid #ddd; 
                         border-radius: 4px; 
                         background-color: #fafafa;
                         padding: 8px;
                         font-family: 'Signika', sans-serif;
                         font-size: 13px;
-                        overflow-y: auto;
-                        max-height: 500px;
                     "
                 >
                     <em style="color: #999;">Live preview will appear here...</em>
                 </div>
             </div>
-            
             <div class="converter-controls" style="display: flex; gap: 10px; margin-top: 15px;">
                 <button type="button" id="copy-output" style="flex: 1; padding: 8px;">Copy Output</button>
                 <button type="button" id="clear-all" style="flex: 1; padding: 8px;">Clear All</button>
@@ -1440,18 +1455,25 @@ function showConverterDialog() {
         render: (html) => {
             // Add real-time conversion on input change
             const inputTextarea = html.find('#input-text');
-            const outputTextarea = html.find('#output-text');
-            const livePreview = html.find('#live-preview')[0];
+            const outputHtmlDiv = html.find('#output-html')[0];
+            const livePreview = html.find('#live-preview')[0]; // This will be removed
+
+            // In showConverterDialog, add a variable to track the last raw converted text
+            let lastRawConvertedText = '';
 
             inputTextarea.on('input', async () => {
                 const inputText = inputTextarea.val();
                 if (inputText.trim()) {
-                    const result = convertText(inputText);
-                    outputTextarea.val(result.convertedText);
-                    // Update live preview
-                    await createLivePreview(result.convertedText, livePreview);
+                    const result = convertText(inputText, { interactive: true }); // Pass interactive: true for output panel
+                    lastRawConvertedText = convertText(inputText, { interactive: false }).convertedText; // Store raw PF2e syntax
+                    // Replace newlines with <br> for HTML output
+                    const htmlOutput = result.convertedText.replace(/\r?\n/g, '<br>');
+                    outputHtmlDiv.innerHTML = htmlOutput; // Render HTML directly
+                    // Update live preview with the raw PF2e syntax
+                    await createLivePreview(lastRawConvertedText, livePreview);
                 } else {
-                    outputTextarea.val('');
+                    lastRawConvertedText = '';
+                    outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                     livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                 }
             });
@@ -1466,7 +1488,7 @@ function showConverterDialog() {
                 event.preventDefault();
                 event.stopPropagation();
 
-                const outputText = outputTextarea.val();
+                const outputText = lastRawConvertedText; // Copy raw PF2e syntax
                 if (outputText.trim()) {
                     copyToClipboard(outputText);
                 } else {
@@ -1480,7 +1502,8 @@ function showConverterDialog() {
                 event.stopPropagation();
 
                 inputTextarea.val('');
-                outputTextarea.val('');
+                lastRawConvertedText = '';
+                outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                 livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
             });
         }
@@ -1520,9 +1543,9 @@ try {
 }
 
 // Provide a global convertText function for compatibility with UI and tests
-function convertText(inputText) {
+function convertText(inputText, opts = {}) {
     const macro = new MacroInterface();
-    const converted = macro.processText(inputText);
+    const converted = macro.processText(inputText, opts);
     // For compatibility, wrap in the expected result object if needed
     if (typeof converted === 'string') {
         return {
