@@ -982,25 +982,20 @@ const PATTERN_DEFINITIONS = [
     },
     // Priority 6: Condition linking
     {
+        // Value-conditions: match name, optionally followed by a value
         type: 'condition',
-        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${CONDITIONS_WITH_VALUES_PATTERN})\\s+(\\d+)\\b(?!\\})`, 'gi'),
+        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${CONDITIONS_WITH_VALUES_PATTERN})(?:\\s+(\\d+))?\\b(?!\\})`, 'gi'),
         priority: PRIORITY.CONDITION,
-        handler: function(match) { return { match, args: match.slice(1) }; },
-        description: 'Condition linking with values (only for conditions that support values)'
+        handler: match => ({ match, args: [match[1], match[2]] }),
+        description: 'Condition (with or without value) for value-conditions'
     },
     {
+        // Value-less conditions: match name, but not if followed by a value
         type: 'condition',
         regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${CONDITIONS_WITHOUT_VALUES_PATTERN})\\b(?!\\s+\\d+)(?!\\})`, 'gi'),
         priority: PRIORITY.CONDITION,
-        handler: function(match) { return { match, args: [match[1]] }; },
-        description: 'Condition linking without values (conditions that cannot have values)'
-    },
-    {
-        type: 'condition',
-        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(stunned)\\b(?!\\s+\\d+)(?!\\})`, 'gi'),
-        priority: PRIORITY.CONDITION,
-        handler: function(match) { return { match, args: [match[1]] }; },
-        description: 'Stunned condition without value (special case)'
+        handler: match => ({ match, args: [match[1]] }),
+        description: 'Condition (no value allowed) for value-less conditions'
     },
     // Priority 7: Area effects (consolidated)
     {
