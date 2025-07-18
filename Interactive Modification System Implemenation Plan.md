@@ -8,9 +8,9 @@ Check off tasks as they are completed.
 - [x] 1.1. **Wrap Converted Elements**
     - [x] 1.1.1. Update the text processing pipeline to wrap each converted element (inline roll, condition, link, etc.) in a uniquely identifiable, clickable container (e.g., `<span class="pf2e-interactive" data-id="..."></span>`).
     - [x] 1.1.2. Assign a unique ID and store element type and parameters as data attributes or in a JS state object.
-- [ ] 1.2. **Store Element State**
-    - [ ] 1.2.1. Maintain a mapping of element IDs to their current parameters (type, DC, traits, etc.) for later modification.
-    - [ ] 1.2.2. Clear or update the global state object (e.g., window.pf2eInteractiveElements) on each re-render to avoid memory leaks or stale data.
+- [x] 1.2. **Store Element State**
+    - [x] 1.2.1. Maintain a mapping of element IDs to their current parameters (type, DC, traits, etc.) for later modification.
+    - [x] 1.2.2. Clear or update the global state object (e.g., window.pf2eInteractiveElements) on each re-render to avoid memory leaks or stale data.
 
 ### 2. Implement Element Selection Logic
 - [ ] 2.1. **Add Click Handlers**

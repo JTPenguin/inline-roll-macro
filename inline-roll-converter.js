@@ -247,18 +247,20 @@ class Replacement {
         this.priority = 0;
     }
     render() { throw new Error('Must implement render()'); }
-    renderInteractive() {
+    getInteractiveParams() {
+        // Base: just type and id
         const type = this.constructor.name.replace('Replacement', '').toLowerCase();
-        const params = { type, id: this.id };
+        return { type, id: this.id };
+    }
+    renderInteractive() {
+        const params = this.getInteractiveParams();
         // Register in global state for interactive lookup
         window.pf2eInteractiveElements[this.id] = {
-            type,
-            id: this.id,
-            params: { ...params },
-            // TODO: Add more detailed parameters for each type as needed
-            // TODO: Support two-way binding and cleanup on re-render
+            ...params
         };
-        return `<span class="pf2e-interactive" data-id="${this.id}" data-type="${type}" data-params='${JSON.stringify(params)}'>${this.render()}</span>`;
+        // Logging for debugging parameter saving
+        console.log(`[PF2e Converter] Registered interactive element:`, this.id, params);
+        return `<span class="pf2e-interactive" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${this.render()}</span>`;
     }
     validate() { return true; }
     getText() { return this.originalText; }
@@ -280,6 +282,15 @@ class RollReplacement extends Replacement {
         if (this.traits.length > 0) params.push(`traits:${this.traits.join(',')}`);
         if (this.options.length > 0) params.push(`options:${this.options.join(',')}`);
         return params;
+    }
+    getInteractiveParams() {
+        // Add traits and options to base params
+        return {
+            ...super.getInteractiveParams(),
+            traits: this.traits,
+            options: this.options,
+            rollType: this.rollType
+        };
     }
 }
 
@@ -439,6 +450,20 @@ class DamageReplacement extends RollReplacement {
         if (this.match && this.match.replacement) return true;
         return this.damageComponents.length > 0 && this.damageComponents.every(comp => comp.validate());
     }
+    getInteractiveParams() {
+        // Return all damage components and rollType
+        return {
+            ...super.getInteractiveParams(),
+            damageComponents: this.damageComponents.map(dc => ({
+                dice: dc.dice,
+                damageType: dc.damageType,
+                persistent: dc.persistent,
+                precision: dc.precision,
+                splash: dc.splash
+            })),
+            originalText: this.originalText
+        };
+    }
 }
 
 // -------------------- Check Replacement --------------------
@@ -518,6 +543,20 @@ class CheckReplacement extends RollReplacement {
         }
         return this.checkType && (this.dc || this.defense || this.against);
     }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            checkType: this.checkType,
+            dc: this.dc,
+            basic: this.basic,
+            secret: this.secret,
+            defense: this.defense,
+            against: this.against,
+            multipleSkills: this.multipleSkills,
+            skills: this.skills,
+            originalText: this.originalText
+        };
+    }
 }
 
 // -------------------- Save Replacement --------------------
@@ -580,6 +619,15 @@ class SaveReplacement extends RollReplacement {
         if (this.match && this.match.replacement) return true;
         return this.saveType && this.dc;
     }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            saveType: this.saveType,
+            dc: this.dc,
+            basic: this.basic,
+            originalText: this.originalText
+        };
+    }
 }
 
 // -------------------- Template Replacement --------------------
@@ -622,6 +670,15 @@ class TemplateReplacement extends RollReplacement {
             return `@Template[type:${this.shape}|distance:${this.distance}]`;
         }
     }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            shape: this.shape,
+            distance: this.distance,
+            width: this.width,
+            originalText: this.originalText
+        };
+    }
 }
 
 // -------------------- Within Replacement --------------------
@@ -639,6 +696,13 @@ class WithinReplacement extends RollReplacement {
     render() {
         // Create the inline template format as requested: "within [inline template here]{30 feet}"
         return `within @Template[type:emanation|distance:${this.distance}]{${this.distance} feet}`;
+    }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            distance: this.distance,
+            originalText: this.originalText
+        };
     }
 }
 
@@ -684,6 +748,15 @@ class UtilityReplacement extends RollReplacement {
         if (this.match && this.match.replacement) return true;
         return this.expression && this.expression.length > 0;
     }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            expression: this.expression,
+            flavor: this.flavor,
+            gmOnly: this.gmOnly,
+            originalText: this.originalText
+        };
+    }
 }
 
 // -------------------- Healing Replacement --------------------
@@ -717,6 +790,13 @@ class HealingReplacement extends RollReplacement {
         if (this.match && this.match.replacement) return true;
         return this.dice && this.dice.length > 0;
     }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            dice: this.dice,
+            originalText: this.originalText
+        };
+    }
 }
 
 // -------------------- Action Replacement --------------------
@@ -735,6 +815,15 @@ class ActionReplacement extends RollReplacement {
     }
     render() {
         return `[[/act ${this.actionName}]]`;
+    }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            actionName: this.actionName,
+            variant: this.variant,
+            statistic: this.statistic,
+            originalText: this.originalText
+        };
     }
 }
 
@@ -780,6 +869,15 @@ class ConditionReplacement extends Replacement {
     }
     validate() {
         return this.conditionName && this.uuid;
+    }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            conditionName: this.conditionName,
+            degree: this.degree,
+            uuid: this.uuid,
+            originalText: this.originalText
+        };
     }
 }
 
@@ -1153,6 +1251,7 @@ class TextProcessor {
         this.linkedConditions = new Set();
     }
     process(inputText, { interactive = false } = {}) {
+        if (interactive && window.pf2eInteractiveElements) window.pf2eInteractiveElements = {};
         console.log('[TextProcessor] Input:', inputText);
         const rollMatches = this.detector.detectAll(inputText);
         const replacements = this.createReplacements(rollMatches);
