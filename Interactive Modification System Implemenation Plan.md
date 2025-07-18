@@ -20,9 +20,9 @@ Check off tasks as they are completed.
     - [x] 2.2.2. Deselect previously selected elements.
 
 ### 3. Build the Modifier Panel (Right Side)
-- [ ] 3.1. **Create Modifier Panel UI**
-    - [ ] 3.1.1. Add a right-side panel in the dialog for element modification.
-    - [ ] 3.1.2. Make the panel context-sensitive: show controls based on the selected element’s type.
+- [x] 3.1. **Create Modifier Panel UI**
+    - [x] 3.1.1. Add a right-side panel in the dialog for element modification.
+    - [x] 3.1.2. Make the panel context-sensitive: show controls based on the selected element’s type.
 - [ ] 3.2. **Implement Controls for Each Element Type**
     - [ ] 3.2.1. Skill/Check: Dropdown for skill, numeric input for DC, checkboxes for secret/basic, trait input.
     - [ ] 3.2.2. Save: Dropdown for save type, numeric input for DC, basic flag.

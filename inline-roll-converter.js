@@ -1451,39 +1451,21 @@ async function copyToClipboard(text) {
  */
 function showConverterDialog() {
     const dialogContent = `
-        <div class="pf2e-converter-dialog">
-            <div class="form-group">
-                <label for="input-text"><strong>Input Text:</strong></label>
-                <textarea 
-                    id="input-text" 
-                    name="inputText" 
-                    rows="6" 
-                    placeholder="Paste your spell, ability, or feat description here..."
-                    style="width: 100%; resize: vertical; font-family: monospace; font-size: 12px;"
-                    >${DEFAULT_TEST_INPUT}</textarea>
-            </div>
-            <div class="form-group">
-                <label for="output-text"><strong>Converted Text:</strong></label>
-                <div id="output-html" style="
-                    width: 100%; 
-                    height: 150px;
-                    max-height: 150px;
-                    overflow-y: auto;
-                    border: 1px solid #ddd; 
-                    border-radius: 4px; 
-                    background-color: #fafafa;
-                    padding: 8px;
-                    font-family: 'Signika', sans-serif;
-                    font-size: 13px;
-                ">
-                    <em style="color: #999;">Live preview will appear here...</em>
+        <div class="pf2e-converter-dialog" style="display: flex; flex-direction: row; min-width: 900px;">
+            <div style="flex: 2; min-width: 0;">
+                <div class="form-group">
+                    <label for="input-text"><strong>Input Text:</strong></label>
+                    <textarea 
+                        id="input-text" 
+                        name="inputText" 
+                        rows="6" 
+                        placeholder="Paste your spell, ability, or feat description here..."
+                        style="width: 100%; resize: vertical; font-family: monospace; font-size: 12px;"
+                        >${DEFAULT_TEST_INPUT}</textarea>
                 </div>
-            </div>
-            <div class="form-group">
-                <label for="live-preview"><strong>Live Preview:</strong> <small>(Click inline rolls to test them)</small></label>
-                <div 
-                    id="live-preview" 
-                    style="
+                <div class="form-group">
+                    <label for="output-text"><strong>Converted Text:</strong></label>
+                    <div id="output-html" style="
                         width: 100%; 
                         height: 150px;
                         max-height: 150px;
@@ -1494,21 +1476,44 @@ function showConverterDialog() {
                         padding: 8px;
                         font-family: 'Signika', sans-serif;
                         font-size: 13px;
-                    "
-                >
-                    <em style="color: #999;">Live preview will appear here...</em>
+                    ">
+                        <em style="color: #999;">Live preview will appear here...</em>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="live-preview"><strong>Live Preview:</strong> <small>(Click inline rolls to test them)</small></label>
+                    <div 
+                        id="live-preview" 
+                        style="
+                            width: 100%; 
+                            height: 150px;
+                            max-height: 150px;
+                            overflow-y: auto;
+                            border: 1px solid #ddd; 
+                            border-radius: 4px; 
+                            background-color: #fafafa;
+                            padding: 8px;
+                            font-family: 'Signika', sans-serif;
+                            font-size: 13px;
+                        "
+                    >
+                        <em style="color: #999;">Live preview will appear here...</em>
+                    </div>
+                </div>
+                <div class="converter-controls" style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button type="button" id="copy-output" style="flex: 1; padding: 8px;">Copy Output</button>
+                    <button type="button" id="clear-all" style="flex: 1; padding: 8px;">Clear All</button>
                 </div>
             </div>
-            <div class="converter-controls" style="display: flex; gap: 10px; margin-top: 15px;">
-                <button type="button" id="copy-output" style="flex: 1; padding: 8px;">Copy Output</button>
-                <button type="button" id="clear-all" style="flex: 1; padding: 8px;">Clear All</button>
+            <div id="modifier-panel" style="flex: 1; width: 300px; padding: 0; box-sizing: border-box;">
+                <label style="font-weight: bold; display: block; margin: 0 0 4px 12px;">Modifier Panel</label>
+                <div id="modifier-panel-content" style="background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 12px 10px; margin: 0 12px 12px 12px; min-height: 120px; color: #444; font-size: 14px;">
+                    <em>Select an element to modify.</em>
+                </div>
             </div>
         </div>
         
         <style>
-            .pf2e-converter-dialog {
-                min-width: 700px;
-            }
             .pf2e-converter-dialog .form-group {
                 margin-bottom: 15px;
             }
@@ -1544,7 +1549,6 @@ function showConverterDialog() {
             .pf2e-preview-content .inline-roll.healing:hover {
                 background: #007800;
             }
-            /* --- Added for interactive selection --- */
             .pf2e-interactive {
                 cursor: pointer;
                 transition: background 0.2s, outline 0.2s, box-shadow 0.2s, color 0.2s;
@@ -1573,64 +1577,55 @@ function showConverterDialog() {
             // Add real-time conversion on input change
             const inputTextarea = html.find('#input-text');
             const outputHtmlDiv = html.find('#output-html')[0];
-            const livePreview = html.find('#live-preview')[0]; // This will be removed
+            const livePreview = html.find('#live-preview')[0];
+            const modifierPanelContent = html.find('#modifier-panel-content')[0];
 
-            // In showConverterDialog, add a variable to track the last raw converted text
             let lastRawConvertedText = '';
 
             inputTextarea.on('input', async () => {
                 const inputText = inputTextarea.val();
                 if (inputText.trim()) {
-                    const result = convertText(inputText, { interactive: true }); // Pass interactive: true for output panel
-                    lastRawConvertedText = convertText(inputText, { interactive: false }).convertedText; // Store raw PF2e syntax
-                    // Replace newlines with <br> for HTML output
+                    const result = convertText(inputText, { interactive: true });
+                    lastRawConvertedText = convertText(inputText, { interactive: false }).convertedText;
                     const htmlOutput = result.convertedText.replace(/\r?\n/g, '<br>');
-                    outputHtmlDiv.innerHTML = htmlOutput; // Render HTML directly
-                    // --- Add click handlers for interactive elements (Task 2.1) ---
+                    outputHtmlDiv.innerHTML = htmlOutput;
                     const interactiveEls = outputHtmlDiv.querySelectorAll('.pf2e-interactive');
                     interactiveEls.forEach(el => {
                         el.addEventListener('click', (event) => {
                             event.preventDefault();
                             event.stopPropagation();
-                            // Deselect all
                             interactiveEls.forEach(e => e.classList.remove('selected'));
-                            // Select this one
                             el.classList.add('selected');
-                            // Log ID and params
                             const id = el.getAttribute('data-id');
                             const type = el.getAttribute('data-type');
                             let params = {};
                             try {
                                 params = JSON.parse(el.getAttribute('data-params'));
                             } catch {}
-                            console.log('[PF2e Converter] Selected element:', { id, type, params });
-                            // --- Scroll into view if needed ---
+                            // Update modifier panel with type and params as JSON
+                            modifierPanelContent.innerHTML = `<div><strong>Type:</strong> ${type}</div><div><strong>Parameters:</strong><pre style="background:#f0f0f0; border-radius:4px; padding:6px; font-size:12px;">${JSON.stringify(params, null, 2)}</pre></div>`;
                             if (typeof el.scrollIntoView === 'function') {
                                 el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                             }
                         });
                     });
-                    // --- End Task 2.1 ---
-                    // Update live preview with the raw PF2e syntax
                     await createLivePreview(lastRawConvertedText, livePreview);
                 } else {
                     lastRawConvertedText = '';
                     outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                     livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
+                    modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
                 }
             });
 
-            // Trigger initial conversion for the default test input
             setTimeout(() => {
                 inputTextarea.trigger('input');
             }, 0);
 
-            // Copy output button handler
             html.find('#copy-output').click((event) => {
                 event.preventDefault();
                 event.stopPropagation();
-
-                const outputText = lastRawConvertedText; // Copy raw PF2e syntax
+                const outputText = lastRawConvertedText;
                 if (outputText.trim()) {
                     copyToClipboard(outputText);
                 } else {
@@ -1638,19 +1633,18 @@ function showConverterDialog() {
                 }
             });
 
-            // Clear all button handler
             html.find('#clear-all').click((event) => {
                 event.preventDefault();
                 event.stopPropagation();
-
                 inputTextarea.val('');
                 lastRawConvertedText = '';
                 outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                 livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
+                modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
             });
         }
     }, {
-        width: 800,
+        width: 1000,
         height: 700,
         resizable: true
     });
