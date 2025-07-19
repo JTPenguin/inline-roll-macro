@@ -483,6 +483,7 @@ class CheckReplacement extends RollReplacement {
         this.match = match; // Save the match object for render()
         this.multipleSkills = false;
         this.skills = [];
+        this.loreName = ''; // For lore skill checks
         this.parseMatch(match, config);
     }
     parseMatch(match, config) {
@@ -493,31 +494,51 @@ class CheckReplacement extends RollReplacement {
                 if (group.dc && match[group.dc]) this.dc = match[group.dc];
             }
         } else {
-            // Defensive: if match.replacement exists, skip parsing (already replaced)
-            if (match && match.replacement) return;
-            
-            // Check if this is a multiple skills match
-            if (match.multipleSkills && match.skills) {
+                    // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        // Check if this is a lore check
+        if (match.isLoreCheck) {
+            this.checkType = 'lore';
+            this.loreName = match.loreName;
+            this.dc = match[1] || null;
+            return;
+        }
+        
+        // Check if this is a multiple skills match
+        if (match.multipleSkills && match.skills) {
+            this.multipleSkills = true;
+            this.skills = match.skills;
+            this.dc = match.dc || match[1] || null;
+        } else {
+            // Handle multiple skills logic (moved from pattern handler)
+            if (match[2] && match[2].includes(' or ')) {
                 this.multipleSkills = true;
-                this.skills = match.skills;
-                this.dc = match.dc || match[1] || null;
+                this.skills = match[2].split(/\s+or\s+/).map(s => s.trim());
+                this.dc = match[1] || null;
             } else {
-                // Handle multiple skills logic (moved from pattern handler)
-                if (match[2] && match[2].includes(' or ')) {
-                    this.multipleSkills = true;
-                    this.skills = match[2].split(/\s+or\s+/).map(s => s.trim());
-                    this.dc = match[1] || null;
-                } else {
-                    this.checkType = match[2] ? match[2].toLowerCase() : '';
-                    this.dc = match[1] || null;
-                }
+                this.checkType = match[2] ? match[2].toLowerCase() : '';
+                this.dc = match[1] || null;
             }
+        }
         }
     }
     render() {
         // If match.replacement exists, use it directly
         if (this.match && this.match.replacement) {
             return this.match.replacement;
+        }
+        
+        // Handle lore checks
+        if (this.checkType === 'lore' && this.loreName) {
+            let params = [`type:lore`];
+            if (this.dc) params.push(`dc:${this.dc}`);
+            params.push(`name:${this.loreName}`);
+            // Add traits if any exist
+            if (this.traits && this.traits.length > 0) {
+                params.push(`traits:${this.traits.join(',')}`);
+            }
+            return `@Check[${params.join('|')}]{${this.loreName} Lore} check`;
         }
         
         // Handle multiple skills
@@ -560,6 +581,7 @@ class CheckReplacement extends RollReplacement {
             against: this.against,
             multipleSkills: this.multipleSkills,
             skills: this.skills,
+            loreName: this.loreName,
             originalText: this.originalText
         };
     }
@@ -1027,6 +1049,48 @@ const PATTERN_DEFINITIONS = [
         priority: PRIORITY.SKILL,
         handler: (match) => match,
         description: 'Perception checks'
+    },
+    {
+        type: 'skill',
+        regex: /DC\s+(\d+)\s+([^0-9\n]+?)\s+Lore\s+check/gi,
+        priority: PRIORITY.SKILL,
+        handler: (match) => {
+            // Mark this as a lore check for special handling
+            match.isLoreCheck = true;
+            match.loreName = match[2].trim();
+            return match;
+        },
+        description: 'Lore skill checks (DC first)'
+    },
+    {
+        type: 'skill',
+        regex: /([^0-9\n]+?)\s+Lore\s+DC\s+(\d+)\s+check/gi,
+        priority: PRIORITY.SKILL,
+        handler: (match) => {
+            // Mark this as a lore check for special handling  
+            match.isLoreCheck = true;
+            match.loreName = match[1].trim();
+            // Normalize: put DC in position [1] like other patterns
+            match[1] = match[2]; // DC
+            match[2] = match.loreName; // Lore name
+            return match;
+        },
+        description: 'Lore skill checks (lore name first)'
+    },
+    {
+        type: 'skill',
+        regex: /([^0-9\n]+?)\s+Lore\s+check\s+DC\s+(\d+)/gi,
+        priority: PRIORITY.SKILL,
+        handler: (match) => {
+            // Mark this as a lore check for special handling
+            match.isLoreCheck = true;
+            match.loreName = match[1].trim();
+            // Normalize: put DC in position [1] like other patterns
+            match[1] = match[2]; // DC
+            match[2] = match.loreName; // Lore name
+            return match;
+        },
+        description: 'Lore skill checks (DC at end)'
     },
     {
         type: 'flat',
@@ -1576,6 +1640,40 @@ function showConverterDialog() {
                 color: #fff;
                 box-shadow: 0 0 6px 1px #90caf9;
             }
+            
+            /* Enhanced traits input styling */
+            .traits-input-wrapper .trait-option.active {
+                background: #e3f2fd !important;
+            }
+            
+            .traits-input-wrapper .trait-option:hover {
+                background: #f5f5f5;
+            }
+            
+            .traits-input-wrapper .trait-tag {
+                background: var(--color-bg-trait, #e3f2fd) !important;
+                color: var(--color-text-trait, #1976d2) !important;
+                border: solid 1px var(--color-border-trait, #bbdefb);
+                font-weight: 500;
+                text-transform: uppercase;
+                font-size: 10px;
+                letter-spacing: 0.05em;
+            }
+            
+            .traits-input-wrapper .trait-tag .trait-remove {
+                color: inherit;
+                opacity: 0.7;
+            }
+            
+            .traits-input-wrapper .trait-tag .trait-remove:hover {
+                opacity: 1;
+                color: #d32f2f;
+            }
+            
+            .traits-input-wrapper .traits-selected:focus-within {
+                border-color: #1976d2;
+                box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+            }
         </style>
     `;
 
@@ -1742,6 +1840,401 @@ function convertText(inputText, opts = {}) {
 // ===================== MODIFIER PANEL SYSTEM =====================
 
 /**
+ * Get trait options from the PF2e system configuration
+ * @returns {Array} - Array of trait objects with label and value
+ */
+function getTraitOptions() {
+    try {
+        // Get action traits from PF2e CONFIG
+        const actionTraits = CONFIG?.PF2E?.actionTraits || {};
+        const spellTraits = CONFIG?.PF2E?.spellTraits || {};
+        const allTraits = { ...actionTraits, ...spellTraits };
+        
+        return Object.entries(allTraits)
+            .map(([value, label]) => ({
+                label: game.i18n.localize(label), // Always localize since labels are i18n keys
+                value: value
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+    } catch (error) {
+        console.warn('[PF2e Converter] Could not load trait options from system:', error);
+        // Fallback common traits
+        return [
+            { label: 'Arcane', value: 'arcane' },
+            { label: 'Attack', value: 'attack' },
+            { label: 'Divine', value: 'divine' },
+            { label: 'Occult', value: 'occult' },
+            { label: 'Primal', value: 'primal' },
+            { label: 'Secret', value: 'secret' },
+            { label: 'Mental', value: 'mental' },
+            { label: 'Physical', value: 'physical' }
+        ].sort((a, b) => a.label.localeCompare(b.label));
+    }
+}
+
+/**
+ * Enhanced traits input component that mimics pf2e system behavior
+ * Supports typing, filtering, multiple selection, and tab completion
+ */
+class TraitsInput {
+    constructor(containerId, options = {}) {
+        this.containerId = containerId;
+        this.options = {
+            placeholder: 'Type trait name and press Enter...',
+            multiple: true,
+            creatable: true,
+            ...options
+        };
+        this.traitOptions = getTraitOptions();
+        this.selectedTraits = [];
+        this.filteredOptions = [];  // Start empty until user types
+        this.activeIndex = -1;
+        this.isOpen = false;
+        
+        this.createElement();
+        this.bindEvents();
+    }
+    
+    createElement() {
+        const container = document.getElementById(this.containerId);
+        if (!container) return;
+        
+        container.innerHTML = `
+            <div class="traits-input-wrapper" style="position: relative; width: 100%;">
+                <div class="traits-selected" style="
+                    min-height: 32px;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    padding: 4px;
+                    background: white;
+                    cursor: text;
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 4px;
+                    align-items: center;
+                ">
+                    <input 
+                        type="text" 
+                        class="traits-search-input"
+                        placeholder="${this.options.placeholder}"
+                        style="
+                            border: none;
+                            outline: none;
+                            background: transparent;
+                            flex: 1;
+                            min-width: 120px;
+                            font-size: 14px;
+                        "
+                    />
+                </div>
+                <div class="traits-dropdown" style="
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    background: white;
+                    border: 1px solid #ccc;
+                    border-top: none;
+                    border-radius: 0 0 4px 4px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    z-index: 1000;
+                    display: none;
+                "></div>
+            </div>
+        `;
+        
+        this.wrapper = container.querySelector('.traits-input-wrapper');
+        this.selectedContainer = container.querySelector('.traits-selected');
+        this.searchInput = container.querySelector('.traits-search-input');
+        this.dropdown = container.querySelector('.traits-dropdown');
+    }
+    
+    bindEvents() {
+        if (!this.searchInput || !this.dropdown) return;
+        
+        // Input events
+        this.searchInput.addEventListener('input', (e) => {
+            e.stopPropagation();
+            this.handleInput(e);
+        });
+        this.searchInput.addEventListener('focus', (e) => {
+            e.stopPropagation();
+            this.openDropdown();
+        });
+        this.searchInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        this.searchInput.addEventListener('blur', (e) => setTimeout(() => this.closeDropdown(), 150));
+        
+        // Container click to focus input
+        this.selectedContainer.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.searchInput.focus();
+        });
+        
+        // Click outside to close
+        document.addEventListener('click', (e) => {
+            if (!this.wrapper.contains(e.target)) {
+                this.closeDropdown();
+            }
+        });
+    }
+    
+    handleInput(e) {
+        const query = e.target.value.toLowerCase();
+        this.filterOptions(query);
+        this.openDropdown();
+    }
+    
+    handleKeyDown(e) {
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                e.stopPropagation();
+                this.navigateDown();
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                e.stopPropagation();
+                this.navigateUp();
+                break;
+            case 'Enter':
+            case 'Tab':
+                e.preventDefault();
+                e.stopPropagation();
+                this.selectActiveOption();
+                break;
+            case 'Escape':
+                e.preventDefault();
+                e.stopPropagation();
+                this.closeDropdown();
+                break;
+            case 'Backspace':
+                if (e.target.value === '' && this.selectedTraits.length > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.removeTrait(this.selectedTraits[this.selectedTraits.length - 1].value);
+                }
+                break;
+        }
+    }
+    
+    filterOptions(query) {
+        const normalizedQuery = query.toLowerCase().trim();
+        this.filteredOptions = this.traitOptions.filter(trait => 
+            trait.label.toLowerCase().includes(normalizedQuery) &&
+            !this.selectedTraits.some(selected => selected.value === trait.value)
+        );
+        
+        // Auto-select first option if we have results and query is not empty
+        if (this.filteredOptions.length > 0 && normalizedQuery) {
+            this.activeIndex = 0;
+        } else {
+            this.activeIndex = -1;
+        }
+        
+        this.renderDropdown();
+    }
+    
+    navigateDown() {
+        this.activeIndex = Math.min(this.activeIndex + 1, this.filteredOptions.length - 1);
+        this.updateActiveOption();
+    }
+    
+    navigateUp() {
+        this.activeIndex = Math.max(this.activeIndex - 1, -1);
+        this.updateActiveOption();
+    }
+    
+    updateActiveOption() {
+        const options = this.dropdown.querySelectorAll('.trait-option');
+        options.forEach((option, index) => {
+            option.classList.toggle('active', index === this.activeIndex);
+        });
+        
+        // Scroll active option into view
+        if (this.activeIndex >= 0 && options[this.activeIndex]) {
+            options[this.activeIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }
+    
+    selectActiveOption() {
+        if (this.activeIndex >= 0 && this.filteredOptions[this.activeIndex]) {
+            // Use selected option from dropdown
+            this.addTrait(this.filteredOptions[this.activeIndex]);
+        } else if (this.searchInput.value.trim()) {
+            // Try to add based on typed text
+            this.addTraitFromText(this.searchInput.value.trim());
+        }
+    }
+    
+    addTraitFromText(text) {
+        const normalizedText = text.toLowerCase().trim();
+        
+        // First, try to find exact match by label
+        let matchedTrait = this.traitOptions.find(trait => 
+            trait.label.toLowerCase() === normalizedText
+        );
+        
+        // If no exact match, try partial match
+        if (!matchedTrait) {
+            matchedTrait = this.traitOptions.find(trait => 
+                trait.label.toLowerCase().includes(normalizedText)
+            );
+        }
+        
+        // If we found a match, use it, otherwise create a custom trait
+        if (matchedTrait) {
+            this.addTrait(matchedTrait);
+        } else {
+            // Create custom trait (allows for user-defined traits)
+            const customTrait = {
+                label: text.charAt(0).toUpperCase() + text.slice(1).toLowerCase(),
+                value: normalizedText.replace(/\s+/g, '-')
+            };
+            this.addTrait(customTrait);
+        }
+    }
+    
+    openDropdown() {
+        this.isOpen = true;
+        this.dropdown.style.display = 'block';
+        const query = this.searchInput.value;
+        
+        // Only show options if user has typed something or if there are no selected traits
+        if (query.trim() || this.selectedTraits.length === 0) {
+            this.filterOptions(query);
+        } else {
+            this.filteredOptions = [];
+            this.renderDropdown();
+        }
+    }
+    
+    closeDropdown() {
+        this.isOpen = false;
+        this.dropdown.style.display = 'none';
+        this.activeIndex = -1;
+    }
+    
+    renderDropdown() {
+        if (this.filteredOptions.length === 0) {
+            const query = this.searchInput.value.trim();
+            if (query) {
+                this.dropdown.innerHTML = `
+                    <div style="padding: 8px; color: #666; font-style: italic;">
+                        No matching traits found. Press Enter to add "${query}" as custom trait.
+                    </div>
+                `;
+            } else {
+                this.dropdown.innerHTML = '';
+            }
+            return;
+        }
+        
+        this.dropdown.innerHTML = this.filteredOptions.map((trait, index) => `
+            <div class="trait-option" data-value="${trait.value}" style="
+                padding: 6px 12px;
+                cursor: pointer;
+                border-bottom: 1px solid #eee;
+                ${index === this.activeIndex ? 'background: #e3f2fd;' : ''}
+            ">
+                ${trait.label}
+            </div>
+        `).join('');
+        
+        // Add click handlers
+        this.dropdown.querySelectorAll('.trait-option').forEach((option, index) => {
+            option.addEventListener('mouseenter', () => {
+                this.activeIndex = index;
+                this.updateActiveOption();
+            });
+            option.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.addTrait(this.filteredOptions[index]);
+            });
+        });
+    }
+    
+    addTrait(trait) {
+        if (!this.selectedTraits.some(selected => selected.value === trait.value)) {
+            this.selectedTraits.push(trait);
+            this.renderSelected();
+            this.searchInput.value = '';
+            this.filterOptions('');
+            if (this.options.onChange) {
+                this.options.onChange(this.selectedTraits);
+            }
+        }
+        this.searchInput.focus();
+    }
+    
+    removeTrait(value) {
+        this.selectedTraits = this.selectedTraits.filter(trait => trait.value !== value);
+        this.renderSelected();
+        this.filterOptions(this.searchInput.value);
+        if (this.options.onChange) {
+            this.options.onChange(this.selectedTraits);
+        }
+    }
+    
+    renderSelected() {
+        // Remove existing trait tags, but keep the input
+        const existingTags = this.selectedContainer.querySelectorAll('.trait-tag');
+        existingTags.forEach(tag => tag.remove());
+        
+        // Add trait tags before the input
+        this.selectedTraits.forEach(trait => {
+            const tag = document.createElement('div');
+            tag.className = 'trait-tag';
+            tag.style.cssText = `
+                background: #e3f2fd;
+                color: #1976d2;
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: 500;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                white-space: nowrap;
+            `;
+            
+            tag.innerHTML = `
+                ${trait.label}
+                <span class="trait-remove" style="
+                    cursor: pointer;
+                    font-weight: bold;
+                    color: #666;
+                    margin-left: 4px;
+                ">&times;</span>
+            `;
+            
+            tag.querySelector('.trait-remove').addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.removeTrait(trait.value);
+            });
+            
+            this.selectedContainer.insertBefore(tag, this.searchInput);
+        });
+    }
+    
+    setValue(traits) {
+        // Convert string array to trait objects
+        this.selectedTraits = traits.map(value => {
+            const traitOption = this.traitOptions.find(option => option.value === value);
+            return traitOption || { label: value, value: value };
+        });
+        this.renderSelected();
+        this.filterOptions('');
+    }
+    
+    getValue() {
+        return this.selectedTraits.map(trait => trait.value);
+    }
+}
+
+/**
  * Modifier Panel Manager - Handles creation and management of modifier panels for different replacement types
  * 
  * This system provides a flexible, DRY approach to creating modifier panels for different replacement types.
@@ -1754,6 +2247,7 @@ function convertText(inputText, opts = {}) {
  * - text: Single-line text input
  * - textarea: Multi-line text input
  * - multiselect: Multiple selection dropdown
+ * - traits: Enhanced traits input with pf2e system integration
  * 
  * Example usage:
  * ```javascript
@@ -1811,10 +2305,19 @@ class ModifierPanelManager {
                     options: [
                         'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
                         'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
-                        'Society', 'Stealth', 'Survival', 'Thievery'
+                        'Society', 'Stealth', 'Survival', 'Thievery', 'Lore'
                     ],
                     getValue: (rep) => rep.checkType ? rep.checkType.charAt(0).toUpperCase() + rep.checkType.slice(1) : '',
                     setValue: (rep, value) => { rep.checkType = value.toLowerCase(); }
+                },
+                {
+                    id: 'lore-name',
+                    type: 'text',
+                    label: 'Lore Name',
+                    placeholder: 'e.g., Warfare, Local Politics',
+                    getValue: (rep) => rep.loreName || '',
+                    setValue: (rep, value) => { rep.loreName = value; },
+                    hideIfNotLore: true  // Simple flag for CSS visibility
                 },
                 {
                     id: 'skill-dc',
@@ -1898,11 +2401,12 @@ class ModifierPanelManager {
             commonTraitsHTML = traitCheckboxes;
         }
         
-        // Generate traits text field
+        // Generate enhanced traits field
+        const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
         const traitsFieldHTML = `
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <label style="width: 80px; flex-shrink: 0;"><strong>Traits:</strong></label>
-                <input type="text" id="${type}-traits" style="width: 100%;" placeholder="comma,separated" value="${(rep.traits && rep.traits.join(',')) || ''}" />
+            <div style="display: flex; align-items: flex-start; gap: 8px;">
+                <label style="width: 80px; flex-shrink: 0; margin-top: 8px;"><strong>Traits:</strong></label>
+                <div id="${traitsContainerId}" style="flex: 1;"></div>
             </div>
         `;
         
@@ -1923,9 +2427,17 @@ class ModifierPanelManager {
      * @returns {string} - HTML for the field
      */
     generateFieldHTML(field, rep) {
+        // Check if field should be shown (keep for backwards compatibility)
+        if (field.showIf && !field.showIf(rep)) {
+            return '';
+        }
+        
         const value = field.getValue(rep);
         const commonAttrs = `id="${field.id}" style="width: 100%;"`;
         const labelWidth = '80px'; // Uniform width for all labels
+        
+        // Show/hide lore field based on current state
+        const containerStyle = field.hideIfNotLore && rep.checkType !== 'lore' ? 'display: none;' : '';
         
         switch (field.type) {
             case 'select':
@@ -1965,9 +2477,9 @@ class ModifierPanelManager {
             case 'text':
                 const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                 return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
-                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" />
+                    <div id="${field.id}-container" style="display: flex; align-items: center; gap: 8px; ${containerStyle}">
+                        <label style="width: ${labelWidth}; flex-shrink: 0; font-weight: bold;">${field.label}:</label>
+                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                     </div>
                 `;
             
@@ -1995,6 +2507,15 @@ class ModifierPanelManager {
                         <select ${commonAttrs} multiple>
                             ${multiOptions}
                         </select>
+                    </div>
+                `;
+            
+            case 'traits':
+                const uniqueId = `${field.id}-container-${Math.random().toString(36).substr(2, 9)}`;
+                return `
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>${field.label}:</strong></label>
+                        <div id="${uniqueId}" style="flex: 1;"></div>
                     </div>
                 `;
             
@@ -2031,12 +2552,85 @@ class ModifierPanelManager {
         const config = this.panelConfigs.get(type);
         if (!config) return;
 
-        // Add input event listener to the form
-        formElement.addEventListener('input', () => {
+        let traitsInput = null;
+        
+        // Initialize TraitsInput component for traits field
+        const traitsContainer = formElement.querySelector('[id*="traits-container"]');
+        if (traitsContainer) {
+            traitsInput = new TraitsInput(traitsContainer.id, {
+                placeholder: 'Type trait name and press Enter...',
+                onChange: (selectedTraits) => {
+                    // Get traits from TraitsInput
+                    let enhancedTraits = selectedTraits.map(t => t.value);
+                    
+                    // Remove any common traits from enhanced traits (checkboxes control these)
+                    const nonCheckboxTraits = enhancedTraits.filter(trait => 
+                        !config.commonTraits?.includes(trait)
+                    );
+                    
+                    // Get traits from common trait checkboxes (only checked ones)
+                    let checkboxTraits = [];
+                    if (config.commonTraits) {
+                        config.commonTraits.forEach(trait => {
+                            const element = formElement.querySelector(`#${type}-trait-${trait}`);
+                            if (element && element.checked) {
+                                checkboxTraits.push(trait);
+                            }
+                        });
+                    }
+                    
+                    // Combine: non-checkbox traits + checked checkbox traits
+                    const allTraits = [...new Set([...nonCheckboxTraits, ...checkboxTraits])];
+                    rep.traits = allTraits;
+                    
+                    // Trigger callback
+                    if (onChangeCallback) {
+                        onChangeCallback(rep);
+                    }
+                }
+            });
+            
+            // Set initial value for traits input
+            if (rep.traits && Array.isArray(rep.traits)) {
+                traitsInput.setValue(rep.traits);
+            }
+        }
+
+        // Add simple listener for skill select to show/hide lore name field
+        const skillSelect = formElement.querySelector('#skill-select');
+        const loreNameContainer = formElement.querySelector('#lore-name-container');
+        const loreNameField = formElement.querySelector('#lore-name');
+        
+        if (skillSelect && loreNameContainer && loreNameField) {
+            skillSelect.addEventListener('change', () => {
+                const isLore = skillSelect.value.toLowerCase() === 'lore';
+                
+                // Super simple - just show or hide with CSS
+                loreNameContainer.style.display = isLore ? 'flex' : 'none';
+                
+                // Update the rep
+                rep.checkType = skillSelect.value.toLowerCase();
+                
+                // Clear lore name if switching away from lore
+                if (!isLore) {
+                    rep.loreName = '';
+                    loreNameField.value = '';
+                }
+                
+                if (onChangeCallback) {
+                    onChangeCallback(rep);
+                }
+            });
+        }
+
+        // Add input event listener to the form for regular fields
+        formElement.addEventListener('input', (event) => {
+            let shouldTriggerCallback = false;
+            
             // Update all regular fields
             config.fields.forEach(field => {
                 const element = formElement.querySelector(`#${field.id}`);
-                if (element) {
+                if (element && element === event.target) {
                     let value;
                     switch (field.type) {
                         case 'checkbox':
@@ -2054,33 +2648,58 @@ class ModifierPanelManager {
                             value = element.value;
                     }
                     field.setValue(rep, value);
+                    shouldTriggerCallback = true;
                 }
             });
             
-            // Initialize traits array if it doesn't exist
-            if (!rep.traits) rep.traits = [];
-            
-            // Get traits from text field
-            const traitsElement = formElement.querySelector(`#${type}-traits`);
-            let textTraits = [];
-            if (traitsElement) {
-                textTraits = traitsElement.value.split(',').map(s => s.trim()).filter(Boolean);
+            if (shouldTriggerCallback && onChangeCallback) {
+                onChangeCallback(rep);
             }
             
-            // Get traits from common trait checkboxes
-            let checkboxTraits = [];
+            // Handle common trait checkboxes
             if (config.commonTraits) {
+                // Initialize traits array if it doesn't exist
+                if (!rep.traits) rep.traits = [];
+                
+                // Get traits from TraitsInput component
+                let enhancedTraits = [];
+                if (traitsInput) {
+                    enhancedTraits = traitsInput.getValue();
+                }
+                
+                // Remove any common traits from the enhanced traits (checkboxes will control these)
+                const nonCheckboxTraits = enhancedTraits.filter(trait => 
+                    !config.commonTraits.includes(trait)
+                );
+                
+                // Get traits from common trait checkboxes (only checked ones)
+                let checkboxTraits = [];
                 config.commonTraits.forEach(trait => {
                     const element = formElement.querySelector(`#${type}-trait-${trait}`);
                     if (element && element.checked) {
                         checkboxTraits.push(trait);
                     }
                 });
+                
+                // Combine: non-checkbox traits + checked checkbox traits
+                const allTraits = [...new Set([...nonCheckboxTraits, ...checkboxTraits])];
+                rep.traits = allTraits;
+                
+                // Always sync the TraitsInput with the combined traits (handles both adding and removing)
+                if (traitsInput) {
+                    const currentValues = traitsInput.getValue();
+                    // Check if the trait lists are different
+                    const currentSet = new Set(currentValues);
+                    const newSet = new Set(allTraits);
+                    const hasChanged = currentSet.size !== newSet.size || 
+                        [...currentSet].some(trait => !newSet.has(trait)) ||
+                        [...newSet].some(trait => !currentSet.has(trait));
+                    
+                    if (hasChanged) {
+                        traitsInput.setValue(allTraits);
+                    }
+                }
             }
-            
-            // Combine both sources with deduplication
-            const allTraits = [...new Set([...textTraits, ...checkboxTraits])];
-            rep.traits = allTraits;
             
             // Trigger callback
             if (onChangeCallback) {
