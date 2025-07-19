@@ -2219,7 +2219,7 @@ class TraitsInput {
         });
     }
     
-    setValue(traits) {
+    setValue(traits, triggerChange = false) {
         // Convert string array to trait objects
         this.selectedTraits = traits.map(value => {
             const traitOption = this.traitOptions.find(option => option.value === value);
@@ -2227,6 +2227,11 @@ class TraitsInput {
         });
         this.renderSelected();
         this.filterOptions('');
+        
+        // Optionally trigger onChange callback
+        if (triggerChange && this.options.onChange) {
+            this.options.onChange(this.selectedTraits);
+        }
     }
     
     getValue() {
@@ -2777,28 +2782,36 @@ class ModifierPanelManager {
             traitsInput = new TraitsInput(traitsContainer.id, {
                 placeholder: 'Type trait name and press Enter...',
                 onChange: (selectedTraits) => {
-                    // Get traits from TraitsInput
+                    // Get traits from TraitsInput only
                     let enhancedTraits = selectedTraits.map(t => t.value);
                     
-                    // Remove any common traits from enhanced traits (checkboxes control these)
-                    const nonCheckboxTraits = enhancedTraits.filter(trait => 
-                        !config.commonTraits?.includes(trait)
-                    );
+                    // Update the replacement object directly with TraitsInput traits
+                    rep.traits = enhancedTraits;
                     
-                    // Get traits from common trait checkboxes (only checked ones)
-                    let checkboxTraits = [];
+                    // Update all common trait checkboxes to reflect the current traits
                     if (config.commonTraits) {
                         config.commonTraits.forEach(trait => {
-                            const element = formElement.querySelector(`#${type}-trait-${trait}`);
-                            if (element && element.checked) {
-                                checkboxTraits.push(trait);
+                            const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
+                            if (traitCheckbox) {
+                                const hasTrait = enhancedTraits.includes(trait);
+                                if (traitCheckbox.checked !== hasTrait) {
+                                    traitCheckbox.checked = hasTrait;
+                                }
                             }
                         });
                     }
                     
-                    // Combine: non-checkbox traits + checked checkbox traits
-                    const allTraits = [...new Set([...nonCheckboxTraits, ...checkboxTraits])];
-                    rep.traits = allTraits;
+                    // Also update dedicated secret field if it exists
+                    const secretField = config.fields.find(field => field.id.includes('secret'));
+                    if (secretField) {
+                        const secretElement = formElement.querySelector(`#${secretField.id}`);
+                        if (secretElement) {
+                            const hasSecret = enhancedTraits.includes('secret');
+                            if (secretElement.checked !== hasSecret) {
+                                secretElement.checked = hasSecret;
+                            }
+                        }
+                    }
                     
                     // Trigger callback
                     if (onChangeCallback) {
@@ -2842,6 +2855,8 @@ class ModifierPanelManager {
 
         // Add input event listener to the form
         formElement.addEventListener('input', (event) => {
+            let shouldTriggerCallback = false;
+            
             // Update all regular fields
             config.fields.forEach(field => {
                 const element = formElement.querySelector(`#${field.id}`);
@@ -2882,11 +2897,6 @@ class ModifierPanelManager {
                     enhancedTraits = traitsInput.getValue();
                 }
                 
-                // Remove any common traits from the enhanced traits (checkboxes will control these)
-                const nonCheckboxTraits = enhancedTraits.filter(trait => 
-                    !config.commonTraits.includes(trait)
-                );
-                
                 // Get traits from common trait checkboxes (only checked ones)
                 let checkboxTraits = [];
                 config.commonTraits.forEach(trait => {
@@ -2896,11 +2906,11 @@ class ModifierPanelManager {
                     }
                 });
                 
-                // Combine: non-checkbox traits + checked checkbox traits
-                const allTraits = [...new Set([...nonCheckboxTraits, ...checkboxTraits])];
+                // When checkboxes change, update the replacement object and sync TraitsInput
+                const allTraits = [...new Set([...enhancedTraits, ...checkboxTraits])];
                 rep.traits = allTraits;
                 
-                // Always sync the TraitsInput with the combined traits (handles both adding and removing)
+                // Sync the TraitsInput with the combined traits
                 if (traitsInput) {
                     const currentValues = traitsInput.getValue();
                     // Check if the trait lists are different
@@ -2911,13 +2921,64 @@ class ModifierPanelManager {
                         [...newSet].some(trait => !currentSet.has(trait));
                     
                     if (hasChanged) {
-                        traitsInput.setValue(allTraits);
+                        traitsInput.setValue(allTraits, false); // Don't trigger onChange to avoid loop
                     }
                 }
             }
             
             // Trigger callback
             if (onChangeCallback) {
+                onChangeCallback(rep);
+            }
+        });
+
+        // Add change event listener for checkboxes (since they don't trigger input events)
+        formElement.addEventListener('change', (event) => {
+            let shouldTriggerCallback = false;
+            
+            // Check if the changed element is a regular field
+            config.fields.forEach(field => {
+                const element = formElement.querySelector(`#${field.id}`);
+                if (element && element === event.target && field.type === 'checkbox') {
+                    field.setValue(rep, element.checked);
+                    shouldTriggerCallback = true;
+                }
+            });
+            
+            // Check if the changed element is a common trait checkbox
+            if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
+                // Handle common trait checkbox changes
+                const traitName = event.target.id.replace(`${type}-trait-`, '');
+                const isChecked = event.target.checked;
+                
+                // Initialize traits array if it doesn't exist
+                if (!rep.traits) rep.traits = [];
+                
+                // Get current traits from TraitsInput
+                let currentTraits = [];
+                if (traitsInput) {
+                    currentTraits = traitsInput.getValue();
+                }
+                
+                // Add or remove the trait based on checkbox state
+                if (isChecked && !currentTraits.includes(traitName)) {
+                    currentTraits.push(traitName);
+                } else if (!isChecked && currentTraits.includes(traitName)) {
+                    currentTraits = currentTraits.filter(trait => trait !== traitName);
+                }
+                
+                // Update the replacement object
+                rep.traits = currentTraits;
+                
+                // Sync the TraitsInput with the updated traits
+                if (traitsInput) {
+                    traitsInput.setValue(currentTraits, false); // Don't trigger onChange to avoid loop
+                }
+                
+                shouldTriggerCallback = true;
+            }
+            
+            if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep);
             }
         });
@@ -2983,6 +3044,19 @@ class ModifierPanelManager {
             const allTraits = [...new Set([...textTraits, ...checkboxTraits])];
             rep.traits = allTraits;
             
+            // Update all common trait checkboxes to reflect the current traits
+            if (config.commonTraits) {
+                config.commonTraits.forEach(trait => {
+                    const traitCheckbox = formElement.querySelector(`#damage-trait-${trait}`);
+                    if (traitCheckbox) {
+                        const hasTrait = allTraits.includes(trait);
+                        if (traitCheckbox.checked !== hasTrait) {
+                            traitCheckbox.checked = hasTrait;
+                        }
+                    }
+                });
+            }
+            
             // Trigger callback
             if (onChangeCallback) {
                 onChangeCallback(rep);
@@ -2991,6 +3065,28 @@ class ModifierPanelManager {
 
         // Add input event listener to the form
         formElement.addEventListener('input', updateComponents);
+
+        // Add change event listener for checkboxes (since they don't trigger input events)
+        formElement.addEventListener('change', (event) => {
+            // Check if the changed element is a component checkbox
+            const componentCheckboxMatch = event.target.id.match(/^damage-(\d+)-(persistent|precision|splash)$/);
+            if (componentCheckboxMatch) {
+                const componentIndex = parseInt(componentCheckboxMatch[1]);
+                const fieldName = componentCheckboxMatch[2];
+                const component = rep.damageComponents[componentIndex];
+                if (component) {
+                    component[fieldName] = event.target.checked;
+                    if (onChangeCallback) {
+                        onChangeCallback(rep);
+                    }
+                }
+            }
+            
+            // Check if the changed element is a common trait checkbox
+            if (config.commonTraits && config.commonTraits.includes(event.target.id.replace('damage-trait-', ''))) {
+                updateComponents();
+            }
+        });
 
         // Add "Add Component" button listener
         const addButton = formElement.querySelector('#add-damage-component');
@@ -3116,23 +3212,6 @@ class ModifierPanelManager {
         };
 
         config.fields.push(traitsField);
-    }
-
-    /**
-     * Get common trait options for different replacement types
-     * @param {string} type - The replacement type
-     * @returns {Array} - Array of common trait options
-     */
-    getCommonTraits(type) {
-        const commonTraits = {
-            'save': ['basic', 'mental', 'physical'],
-            'skill': ['mental', 'physical', 'social'],
-            'damage': ['precision', 'splash', 'persistent', 'mental', 'physical'],
-            'healing': ['mental', 'physical', 'positive'],
-            'template': ['visual', 'auditory', 'olfactory']
-        };
-
-        return commonTraits[type] || [];
     }
 
     /**
