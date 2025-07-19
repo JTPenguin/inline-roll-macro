@@ -299,26 +299,154 @@ class RollReplacement extends Replacement {
 
 // -------------------- Damage Replacement --------------------
 class DamageComponent {
-    constructor(dice, damageType = '', persistent = false, precision = false, splash = false) {
+    constructor(dice = '', damageType = '', category = '') {
         this.dice = dice;
         this.damageType = damageType;
-        this.persistent = persistent;
-        this.precision = precision;
-        this.splash = splash;
+        this.setCategory(category);
     }
+
+    /**
+     * Set the category (persistent, precision, or splash)
+     * @param {string} category - The category to set
+     */
+    setCategory(category) {
+        this.persistent = category === 'persistent';
+        this.precision = category === 'precision';
+        this.splash = category === 'splash';
+    }
+
+    /**
+     * Get the current category
+     * @returns {string} - The current category or empty string if none
+     */
+    getCategory() {
+        if (this.persistent) return 'persistent';
+        if (this.precision) return 'precision';
+        if (this.splash) return 'splash';
+        return '';
+    }
+
+    /**
+     * Check if the component has a specific category
+     * @param {string} category - The category to check
+     * @returns {boolean} - True if the component has this category
+     */
+    hasCategory(category) {
+        return this.getCategory() === category;
+    }
+
+    /**
+     * Clear all categories
+     */
+    clearCategory() {
+        this.persistent = false;
+        this.precision = false;
+        this.splash = false;
+    }
+
+    /**
+     * Set the dice expression
+     * @param {string} dice - The dice expression
+     */
+    setDice(dice) {
+        this.dice = dice;
+    }
+
+    /**
+     * Set the damage type
+     * @param {string} damageType - The damage type
+     */
+    setDamageType(damageType) {
+        this.damageType = damageType;
+    }
+
+    /**
+     * Check if the component has a damage type
+     * @returns {boolean} - True if the component has a damage type
+     */
+    hasDamageType() {
+        return this.damageType && this.damageType.length > 0;
+    }
+
+    /**
+     * Check if the component has dice
+     * @returns {boolean} - True if the component has dice
+     */
+    hasDice() {
+        return this.dice && this.dice.length > 0;
+    }
+
+    /**
+     * Render the component as a PF2e damage expression
+     * @returns {string} - The rendered damage expression
+     */
     render() {
         let formula = this.dice;
+        
+        // Handle precision and splash (they wrap the formula)
         if (this.precision) formula = `(${formula})[precision]`;
         if (this.splash) formula = `(${formula})[splash]`;
+        
+        // Handle persistent damage (special case with damage type)
         if (this.persistent && this.damageType) {
-            return `${formula}[persistent,${this.damageType}]`;
+            return `(${formula})[persistent,${this.damageType}]`;
         }
+        
+        // Handle regular damage type
         if (this.damageType) {
             formula = `(${formula})[${this.damageType}]`;
         }
+        
         return formula;
     }
-    validate() { return this.dice && this.dice.length > 0; }
+
+    /**
+     * Validate the component
+     * @returns {boolean} - True if the component is valid
+     */
+    validate() {
+        return this.hasDice();
+    }
+
+    /**
+     * Convert the component to a plain object
+     * @returns {object} - The component as a plain object
+     */
+    toJSON() {
+        return {
+            dice: this.dice,
+            damageType: this.damageType,
+            category: this.getCategory()
+        };
+    }
+
+    /**
+     * Create a copy of this component
+     * @returns {DamageComponent} - A new DamageComponent with the same values
+     */
+    clone() {
+        return new DamageComponent(this.dice, this.damageType, this.getCategory());
+    }
+
+    /**
+     * Check if this component equals another component
+     * @param {DamageComponent} other - The component to compare with
+     * @returns {boolean} - True if the components are equal
+     */
+    equals(other) {
+        if (!(other instanceof DamageComponent)) return false;
+        return this.dice === other.dice &&
+               this.damageType === other.damageType &&
+               this.getCategory() === other.getCategory();
+    }
+
+    /**
+     * Get a string representation of the component
+     * @returns {string} - A string representation
+     */
+    toString() {
+        return `DamageComponent(${this.dice}, ${this.damageType}, ${this.getCategory()})`;
+    }
 }
 
 class DamageReplacement extends RollReplacement {
@@ -327,6 +455,7 @@ class DamageReplacement extends RollReplacement {
         this.rollType = 'damage';
         this.priority = 100;
         this.damageComponents = [];
+        this.areaDamage = false;
         this.match = match; // Save the match object for render()
         this.parseMatch(match, config);
     }
@@ -371,7 +500,14 @@ class DamageReplacement extends RollReplacement {
         if (damageType && LEGACY_TO_REMASTER_DAMAGE_TYPE[damageType]) {
             remasterType = LEGACY_TO_REMASTER_DAMAGE_TYPE[damageType];
         }
-        this.damageComponents.push(new DamageComponent(dice, remasterType, persistent, precision, splash));
+        
+        // Determine category from boolean flags
+        let category = '';
+        if (persistent) category = 'persistent';
+        else if (precision) category = 'precision';
+        else if (splash) category = 'splash';
+        
+        this.damageComponents.push(new DamageComponent(dice, remasterType, category));
     }
     render() {
         // If match.replacement exists, use it directly
@@ -395,6 +531,15 @@ class DamageReplacement extends RollReplacement {
         } else {
             const componentStrings = this.damageComponents.map(comp => comp.render());
             roll = `@Damage[${componentStrings.join(',')}]`;
+        }
+        
+        // Add area-damage option if enabled
+        if (this.areaDamage) {
+            // Find the last closing bracket of the @Damage expression
+            const lastBracketIndex = roll.lastIndexOf(']');
+            if (lastBracketIndex !== -1) {
+                roll = roll.slice(0, lastBracketIndex) + '|options:area-damage' + roll.slice(lastBracketIndex);
+            }
         }
         
         return roll + ' damage';
@@ -457,13 +602,8 @@ class DamageReplacement extends RollReplacement {
         // Return all damage components and rollType
         return {
             ...super.getInteractiveParams(),
-            damageComponents: this.damageComponents.map(dc => ({
-                dice: dc.dice,
-                damageType: dc.damageType,
-                persistent: dc.persistent,
-                precision: dc.precision,
-                splash: dc.splash
-            })),
+            damageComponents: this.damageComponents.map(dc => dc.toJSON()),
+            areaDamage: this.areaDamage,
             originalText: this.originalText
         };
     }
@@ -2289,6 +2429,85 @@ class TraitsInput {
  * modifierPanelManager.addSecretField('damage');
  * ```
  */
+
+// Field configuration constants
+const DAMAGE_TYPE_OPTIONS = [
+    { value: '', label: 'None' },
+    { value: 'acid', label: 'Acid' },
+    { value: 'bludgeoning', label: 'Bludgeoning' },
+    { value: 'cold', label: 'Cold' },
+    { value: 'electricity', label: 'Electricity' },
+    { value: 'fire', label: 'Fire' },
+    { value: 'force', label: 'Force' },
+    { value: 'mental', label: 'Mental' },
+    { value: 'piercing', label: 'Piercing' },
+    { value: 'slashing', label: 'Slashing' },
+    { value: 'sonic', label: 'Sonic' },
+    { value: 'spirit', label: 'Spirit' },
+    { value: 'vitality', label: 'Vitality' },
+    { value: 'void', label: 'Void' },
+    { value: 'bleed', label: 'Bleed' },
+    { value: 'poison', label: 'Poison' }
+];
+
+const DAMAGE_CATEGORY_OPTIONS = [
+    { value: '', label: '' },
+    { value: 'persistent', label: 'Persistent' },
+    { value: 'precision', label: 'Precision' },
+    { value: 'splash', label: 'Splash' }
+];
+
+const DAMAGE_COMPONENT_FIELDS = [
+    {
+        id: 'dice',
+        type: 'text',
+        label: 'Damage',
+        placeholder: 'e.g., 2d6+3',
+        getValue: (component) => component.dice || '',
+        setValue: (component, value) => { component.dice = value; }
+    },
+    {
+        id: 'damage-type',
+        type: 'select',
+        label: 'Type',
+        options: DAMAGE_TYPE_OPTIONS,
+        getValue: (component) => component.damageType || '',
+        setValue: (component, value) => { component.damageType = value; }
+    },
+    {
+        id: 'category',
+        type: 'select',
+        label: 'Category',
+        options: DAMAGE_CATEGORY_OPTIONS,
+        getValue: (component) => {
+            if (component.persistent) return 'persistent';
+            if (component.precision) return 'precision';
+            if (component.splash) return 'splash';
+            return '';
+        },
+        setValue: (component, value) => {
+            // Reset all to false first
+            component.persistent = false;
+            component.precision = false;
+            component.splash = false;
+            // Set the selected one to true
+            if (value) {
+                component[value] = true;
+            }
+        }
+    }
+];
+
+const DAMAGE_ADDITIONAL_FIELDS = [
+    {
+        id: 'area-damage',
+        type: 'checkbox',
+        label: 'Area Damage',
+        getValue: (rep) => !!rep.areaDamage,
+        setValue: (rep, value) => { rep.areaDamage = value; }
+    }
+];
+
 class ModifierPanelManager {
     constructor() {
         this.panelConfigs = new Map();
@@ -2378,63 +2597,8 @@ class ModifierPanelManager {
         this.panelConfigs.set('damage', {
             title: 'Damage Roll',
             isMultiComponent: true, // Special flag for damage components
-            componentFields: [
-                {
-                    id: 'dice',
-                    type: 'text',
-                    label: 'Dice Expression',
-                    placeholder: 'e.g., 2d6+3',
-                    getValue: (component) => component.dice || '',
-                    setValue: (component, value) => { component.dice = value; }
-                },
-                {
-                    id: 'damage-type',
-                    type: 'select',
-                    label: 'Damage Type',
-                    options: [
-                        { value: '', label: 'None' },
-                        { value: 'acid', label: 'Acid' },
-                        { value: 'bludgeoning', label: 'Bludgeoning' },
-                        { value: 'cold', label: 'Cold' },
-                        { value: 'electricity', label: 'Electricity' },
-                        { value: 'fire', label: 'Fire' },
-                        { value: 'force', label: 'Force' },
-                        { value: 'mental', label: 'Mental' },
-                        { value: 'piercing', label: 'Piercing' },
-                        { value: 'slashing', label: 'Slashing' },
-                        { value: 'sonic', label: 'Sonic' },
-                        { value: 'spirit', label: 'Spirit' },
-                        { value: 'vitality', label: 'Vitality' },
-                        { value: 'void', label: 'Void' },
-                        { value: 'bleed', label: 'Bleed' },
-                        { value: 'poison', label: 'Poison' }
-                    ],
-                    getValue: (component) => component.damageType || '',
-                    setValue: (component, value) => { component.damageType = value; }
-                },
-                {
-                    id: 'persistent',
-                    type: 'checkbox',
-                    label: 'Persistent',
-                    getValue: (component) => !!component.persistent,
-                    setValue: (component, value) => { component.persistent = value; }
-                },
-                {
-                    id: 'precision',
-                    type: 'checkbox',
-                    label: 'Precision',
-                    getValue: (component) => !!component.precision,
-                    setValue: (component, value) => { component.precision = value; }
-                },
-                {
-                    id: 'splash',
-                    type: 'checkbox',
-                    label: 'Splash',
-                    getValue: (component) => !!component.splash,
-                    setValue: (component, value) => { component.splash = value; }
-                }
-            ],
-            commonTraits: ['secret']
+            componentFields: DAMAGE_COMPONENT_FIELDS,
+            fields: DAMAGE_ADDITIONAL_FIELDS
         });
     }
 
@@ -2520,44 +2684,17 @@ class ModifierPanelManager {
                     background: #f9f9f9;
                 ">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <div style="font-weight: bold; color: #1976d2;">Component ${index + 1}</div>
-                        <button type="button" class="remove-component" data-component-index="${index}" style="
-                            background: #d32f2f; 
-                            color: white; 
-                            border: none; 
-                            border-radius: 3px; 
-                            padding: 2px 6px; 
-                            font-size: 11px;
-                            cursor: pointer;
-                        ">Remove</button>
+                        <div style="font-weight: bold; color: #1976d2;">Damage Partial ${index + 1}</div>
                     </div>
                     ${componentFields}
                 </div>
             `;
         }).join('');
 
-        // Generate common trait checkboxes
-        let commonTraitsHTML = '';
-        if (config.commonTraits && config.commonTraits.length > 0) {
-            const traitCheckboxes = config.commonTraits.map(trait => {
-                const isChecked = rep.traits && rep.traits.includes(trait);
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label style="width: 80px; flex-shrink: 0;"><strong>${trait.charAt(0).toUpperCase() + trait.slice(1)}:</strong></label>
-                        <input type="checkbox" id="damage-trait-${trait}" style="width: auto; margin: 0;" ${isChecked ? 'checked' : ''} />
-                    </div>
-                `;
-            }).join('');
-            commonTraitsHTML = traitCheckboxes;
-        }
-        
-        // Generate traits text field
-        const traitsFieldHTML = `
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <label style="width: 80px; flex-shrink: 0;"><strong>Traits:</strong></label>
-                <input type="text" id="damage-traits" style="width: 100%;" placeholder="comma,separated" value="${(rep.traits && rep.traits.join(',')) || ''}" />
-            </div>
-        `;
+        // Generate additional fields
+        const additionalFieldsHTML = config.fields ? config.fields.map(field => 
+            this.generateFieldHTML(field, rep)
+        ).join('') : '';
 
         return `
             <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
@@ -2567,18 +2704,7 @@ class ModifierPanelManager {
                     ${componentSections}
                 </div>
                 
-                <button type="button" id="add-damage-component" style="
-                    background: #4caf50; 
-                    color: white; 
-                    border: none; 
-                    border-radius: 4px; 
-                    padding: 8px 12px; 
-                    cursor: pointer;
-                    font-size: 12px;
-                ">+ Add Damage Component</button>
-                
-                ${commonTraitsHTML}
-                ${traitsFieldHTML}
+                ${additionalFieldsHTML}
             </form>
         `;
     }
@@ -2605,7 +2731,7 @@ class ModifierPanelManager {
                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
                 }).join('');
                 return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
                         <select ${commonAttrs}>
                             ${options}
@@ -2616,7 +2742,7 @@ class ModifierPanelManager {
             case 'text':
                 const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                 return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
                         <input type="text" ${commonAttrs} ${placeholder} value="${value}" />
                     </div>
@@ -2625,7 +2751,7 @@ class ModifierPanelManager {
             case 'checkbox':
                 const checked = value ? 'checked' : '';
                 return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
                         <input type="checkbox" id="${fieldId}" ${checked} style="width: auto; margin: 0;" />
                     </div>
@@ -3019,40 +3145,22 @@ class ModifierPanelManager {
                 });
             });
             
-            // Update traits
-            if (!rep.traits) rep.traits = [];
-            
-            // Get traits from text field
-            const traitsElement = formElement.querySelector('#damage-traits');
-            let textTraits = [];
-            if (traitsElement) {
-                textTraits = traitsElement.value.split(',').map(s => s.trim()).filter(Boolean);
-            }
-            
-            // Get traits from common trait checkboxes
-            let checkboxTraits = [];
-            if (config.commonTraits) {
-                config.commonTraits.forEach(trait => {
-                    const element = formElement.querySelector(`#damage-trait-${trait}`);
-                    if (element && element.checked) {
-                        checkboxTraits.push(trait);
-                    }
-                });
-            }
-            
-            // Combine both sources with deduplication
-            const allTraits = [...new Set([...textTraits, ...checkboxTraits])];
-            rep.traits = allTraits;
-            
-            // Update all common trait checkboxes to reflect the current traits
-            if (config.commonTraits) {
-                config.commonTraits.forEach(trait => {
-                    const traitCheckbox = formElement.querySelector(`#damage-trait-${trait}`);
-                    if (traitCheckbox) {
-                        const hasTrait = allTraits.includes(trait);
-                        if (traitCheckbox.checked !== hasTrait) {
-                            traitCheckbox.checked = hasTrait;
+            // Update additional fields
+            if (config.fields) {
+                config.fields.forEach(field => {
+                    const element = formElement.querySelector(`#${field.id}`);
+                    if (element) {
+                        let value;
+                        switch (field.type) {
+                            case 'checkbox':
+                                value = element.checked;
+                                break;
+                            case 'select':
+                            case 'text':
+                            default:
+                                value = element.value;
                         }
+                        field.setValue(rep, value);
                     }
                 });
             }
@@ -3066,58 +3174,38 @@ class ModifierPanelManager {
         // Add input event listener to the form
         formElement.addEventListener('input', updateComponents);
 
-        // Add change event listener for checkboxes (since they don't trigger input events)
+        // Add change event listener for select elements (since they don't trigger input events)
         formElement.addEventListener('change', (event) => {
-            // Check if the changed element is a component checkbox
-            const componentCheckboxMatch = event.target.id.match(/^damage-(\d+)-(persistent|precision|splash)$/);
-            if (componentCheckboxMatch) {
-                const componentIndex = parseInt(componentCheckboxMatch[1]);
-                const fieldName = componentCheckboxMatch[2];
+            // Check if the changed element is a component select field
+            const componentSelectMatch = event.target.id.match(/^damage-(\d+)-(category|damage-type)$/);
+            if (componentSelectMatch) {
+                const componentIndex = parseInt(componentSelectMatch[1]);
+                const fieldName = componentSelectMatch[2];
                 const component = rep.damageComponents[componentIndex];
                 if (component) {
-                    component[fieldName] = event.target.checked;
+                    if (fieldName === 'category') {
+                        // Handle category field specifically
+                        const field = config.componentFields.find(f => f.id === 'category');
+                        if (field) {
+                            field.setValue(component, event.target.value);
+                        }
+                    } else {
+                        // Handle other select fields
+                        component[fieldName] = event.target.value;
+                    }
                     if (onChangeCallback) {
                         onChangeCallback(rep);
                     }
                 }
             }
             
-            // Check if the changed element is a common trait checkbox
-            if (config.commonTraits && config.commonTraits.includes(event.target.id.replace('damage-trait-', ''))) {
+            // Check if the changed element is an additional field
+            if (config.fields && config.fields.some(field => field.id === event.target.id)) {
                 updateComponents();
             }
         });
 
-        // Add "Add Component" button listener
-        const addButton = formElement.querySelector('#add-damage-component');
-        if (addButton) {
-            addButton.addEventListener('click', () => {
-                // Create new damage component using the DamageComponent class
-                const newComponent = new DamageComponent('', '', false, false, false);
-                
-                rep.damageComponents.push(newComponent);
-                
-                // Trigger callback to re-render
-                if (onChangeCallback) {
-                    onChangeCallback(rep);
-                }
-            });
-        }
 
-        // Add "Remove Component" button listeners
-        formElement.addEventListener('click', (event) => {
-            if (event.target.classList.contains('remove-component')) {
-                const componentIndex = parseInt(event.target.getAttribute('data-component-index'));
-                
-                // Remove the component
-                rep.damageComponents.splice(componentIndex, 1);
-                
-                // Trigger callback to re-render
-                if (onChangeCallback) {
-                    onChangeCallback(rep);
-                }
-            }
-        });
     }
 
     /**
@@ -3274,13 +3362,7 @@ class ModifierPanelManager {
         return ['save', 'skill', 'check', 'damage', 'healing', 'template'];
     }
 
-    /**
-     * Create a new damage component with default values
-     * @returns {DamageComponent} - A new damage component
-     */
-    createNewDamageComponent() {
-        return new DamageComponent('', '', false, false, false);
-    }
+
 }
 
 // ===================== END MODIFIER PANEL SYSTEM =====================

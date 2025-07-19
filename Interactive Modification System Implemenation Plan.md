@@ -26,7 +26,7 @@ Check off tasks as they are completed.
 - [ ] 3.2. **Implement Controls for Each Element Type**
     - [x] 3.2.1. Skill/Check: Dropdown for skill, numeric input for DC, checkboxes for secret/basic, trait input.
     - [x] 3.2.2. Save: Dropdown for save type, numeric input for DC, basic flag.
-    - [ ] 3.2.3. Damage: Dice expression input, dropdown for damage type, checkboxes for persistent/splash/precision, notes.
+    - [x] 3.2.3. Damage: Dice expression input, dropdown for damage type, checkboxes for persistent/splash/precision, notes.
     - [ ] 3.2.4. Condition: Dropdown for condition, numeric input for value (if applicable), display text.
     - [ ] 3.2.5. Compendium Link: Text input for display text, UUID (advanced).
     - [ ] 3.2.6. (Expand as needed for other types.)
