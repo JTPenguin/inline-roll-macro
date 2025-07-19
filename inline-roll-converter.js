@@ -223,7 +223,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "Make a DC 25 Athletics check.";
+const DEFAULT_TEST_INPUT = "Make a DC 25 Athletics check. Make a DC 20 Will save.";
 
 // Utility for unique IDs
 function generateId() {
@@ -525,14 +525,8 @@ class CheckReplacement extends RollReplacement {
             const skillChecks = this.skills.map(skill => {
                 const params = [skill.toLowerCase()];
                 if (this.dc) params.push(`dc:${this.dc}`);
-                // Add secret trait if enabled
-                if (this.secret) {
-                    const traits = this.traits || [];
-                    if (!traits.includes('secret')) {
-                        traits.push('secret');
-                    }
-                    params.push(`traits:${traits.join(',')}`);
-                } else if (this.traits && this.traits.length > 0) {
+                // Add traits if any exist
+                if (this.traits && this.traits.length > 0) {
                     params.push(`traits:${this.traits.join(',')}`);
                 }
                 return `@Check[${params.join('|')}]`;
@@ -543,14 +537,8 @@ class CheckReplacement extends RollReplacement {
         // Handle single skill
         let params = [`${this.checkType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
-        // Add secret trait if enabled
-        if (this.secret) {
-            const traits = this.traits || [];
-            if (!traits.includes('secret')) {
-                traits.push('secret');
-            }
-            params.push(`traits:${traits.join(',')}`);
-        } else if (this.traits && this.traits.length > 0) {
+        // Add traits if any exist
+        if (this.traits && this.traits.length > 0) {
             params.push(`traits:${this.traits.join(',')}`);
         }
         return `@Check[${params.join('|')}] check`;
@@ -624,11 +612,21 @@ class SaveReplacement extends RollReplacement {
         const basicStr = this.basic ? '|basic' : '';
         const saveTerm = 'save';
         
+        // Build parameters array
+        let params = [`${this.saveType}`];
+        if (this.dc) params.push(`dc:${this.dc}`);
+        if (this.basic) params.push('basic');
+        
+        // Add traits if any exist
+        if (this.traits && this.traits.length > 0) {
+            params.push(`traits:${this.traits.join(',')}`);
+        }
+        
         // Check if the entire save phrase is wrapped in parentheses
         const originalText = this.match[0];
         const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
         
-        const replacement = `@Check[${this.saveType}${this.dc ? `|dc:${this.dc}` : ''}${basicStr}] ${saveTerm}`;
+        const replacement = `@Check[${params.join('|')}] ${saveTerm}`;
         
         // If the original text was wrapped in parentheses, preserve them
         return hasWrappingParentheses ? `(${replacement})` : replacement;
@@ -643,6 +641,8 @@ class SaveReplacement extends RollReplacement {
             saveType: this.saveType,
             dc: this.dc,
             basic: this.basic,
+            secret: this.secret,
+            traits: this.traits,
             originalText: this.originalText
         };
     }
@@ -1592,6 +1592,7 @@ function showConverterDialog() {
             let lastInputText = '';
             let selectedElementId = null; // Track selected element
             const processor = new TextProcessor();
+            const modifierPanelManager = new ModifierPanelManager();
 
             // === 2. Input Handler ===
             function handleInputChange() {
@@ -1636,54 +1637,14 @@ function showConverterDialog() {
                         const type = el.getAttribute('data-type');
                         let rep = window.pf2eReplacements.find(r => r.id === id);
                         if (!rep) return;
-                        // Context-sensitive modifier panel for skill/check
-                        if (type === 'skill' || type === 'check') {
-                            const skills = [
-                                'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
-                                'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
-                                'Society', 'Stealth', 'Survival', 'Thievery'
-                            ];
-                            const selectedSkill = rep.checkType
-                                ? rep.checkType.charAt(0).toUpperCase() + rep.checkType.slice(1)
-                                : (rep.skills && rep.skills[0]) || '';
-                            const dc = rep.dc || '';
-                            const basic = !!rep.basic;
-                            const secret = !!rep.secret;
-                            const traits = (rep.traits && rep.traits.join(',')) || '';
-                            modifierPanelContent.innerHTML = `
-                                <form id="skill-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                                    <div>
-                                        <label><strong>Skill:</strong></label>
-                                        <select id="skill-select" style="width: 100%;">
-                                            ${skills.map(skill => `<option value="${skill}" ${skill === selectedSkill ? 'selected' : ''}>${skill}</option>`).join('')}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label><strong>DC:</strong></label>
-                                        <input id="skill-dc" type="number" min="0" value="${dc}" style="width: 100%;" />
-                                    </div>
-                                    <div>
-                                        <label><input id="skill-secret" type="checkbox" ${secret ? 'checked' : ''}/> Secret</label>
-                                    </div>
-                                    <div>
-                                        <label><strong>Traits:</strong></label>
-                                        <input id="skill-traits" type="text" value="${traits}" placeholder="comma,separated" style="width: 100%;" />
-                                    </div>
-                                </form>
-                            `;
-                            // Add change listeners
-                            const form = modifierPanelContent.querySelector('#skill-modifier-form');
-                            form.addEventListener('input', () => {
-                                // Update the replacement object directly
-                                rep.checkType = form.querySelector('#skill-select').value.toLowerCase();
-                                rep.dc = form.querySelector('#skill-dc').value;
-                                rep.secret = form.querySelector('#skill-secret').checked;
-                                rep.traits = form.querySelector('#skill-traits').value.split(',').map(s => s.trim()).filter(Boolean);
-                                handleModifierChange(rep);
-                            });
-                        } else {
-                            // Default: show JSON
-                            modifierPanelContent.innerHTML = `<div><strong>Type:</strong> ${type}</div><div><strong>Parameters:</strong><pre style="background:#f0f0f0; border-radius:4px; padding:6px; font-size:12px;">${JSON.stringify(rep, null, 2)}</pre></div>`;
+                        
+                        // Use the flexible modifier panel system
+                        modifierPanelContent.innerHTML = modifierPanelManager.generatePanelHTML(type, rep);
+                        
+                        // Add event listeners to the form
+                        const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
+                        if (form) {
+                            modifierPanelManager.addFormListeners(form, type, rep, handleModifierChange);
                         }
                         if (typeof el.scrollIntoView === 'function') {
                             el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -1777,3 +1738,528 @@ function convertText(inputText, opts = {}) {
     }
     return converted;
 }
+
+// ===================== MODIFIER PANEL SYSTEM =====================
+
+/**
+ * Modifier Panel Manager - Handles creation and management of modifier panels for different replacement types
+ * 
+ * This system provides a flexible, DRY approach to creating modifier panels for different replacement types.
+ * Each replacement type can have its own configuration with different field types and validation.
+ * 
+ * Supported field types:
+ * - select: Dropdown with options
+ * - number: Numeric input with optional min/max
+ * - checkbox: Boolean checkbox
+ * - text: Single-line text input
+ * - textarea: Multi-line text input
+ * - multiselect: Multiple selection dropdown
+ * 
+ * Example usage:
+ * ```javascript
+ * // Add a new panel configuration
+ * modifierPanelManager.panelConfigs.set('damage', {
+ *     title: 'Damage Roll',
+ *     fields: [
+ *         {
+ *             id: 'damage-dice',
+ *             type: 'text',
+ *             label: 'Dice Expression',
+ *             placeholder: 'e.g., 2d6+3',
+ *             getValue: (rep) => rep.dice || '',
+ *             setValue: (rep, value) => { rep.dice = value; }
+ *         },
+ *         {
+ *             id: 'damage-type',
+ *             type: 'select',
+ *             label: 'Damage Type',
+ *             options: ['bludgeoning', 'piercing', 'slashing', 'fire', 'cold'],
+ *             getValue: (rep) => rep.damageType || '',
+ *             setValue: (rep, value) => { rep.damageType = value; }
+ *         }
+ *     ]
+ * });
+ * 
+ * // Add traits support to any replacement type
+ * modifierPanelManager.addTraitsField('damage');
+ * 
+ * // Or add traits with predefined options
+ * modifierPanelManager.addTraitsFieldWithOptions('damage', ['precision', 'splash', 'persistent']);
+ * 
+ * // Add secret checkbox to any replacement type
+ * modifierPanelManager.addSecretField('damage');
+ * ```
+ */
+class ModifierPanelManager {
+    constructor() {
+        this.panelConfigs = new Map();
+        this.initializePanelConfigs();
+    }
+
+    /**
+     * Initialize panel configurations for all supported replacement types
+     */
+    initializePanelConfigs() {
+        // Skill/Check panel configuration
+        this.panelConfigs.set('skill', {
+            title: 'Skill Check',
+            fields: [
+                {
+                    id: 'skill-select',
+                    type: 'select',
+                    label: 'Skill',
+                    options: [
+                        'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
+                        'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
+                        'Society', 'Stealth', 'Survival', 'Thievery'
+                    ],
+                    getValue: (rep) => rep.checkType ? rep.checkType.charAt(0).toUpperCase() + rep.checkType.slice(1) : '',
+                    setValue: (rep, value) => { rep.checkType = value.toLowerCase(); }
+                },
+                {
+                    id: 'skill-dc',
+                    type: 'number',
+                    label: 'DC',
+                    min: 0,
+                    getValue: (rep) => rep.dc || '',
+                    setValue: (rep, value) => { rep.dc = value; }
+                }
+            ],
+            commonTraits: ['secret']
+        });
+
+        // Save panel configuration
+        this.panelConfigs.set('save', {
+            title: 'Saving Throw',
+            fields: [
+                {
+                    id: 'save-type',
+                    type: 'select',
+                    label: 'Type',
+                    options: [
+                        { value: 'fortitude', label: 'Fortitude' },
+                        { value: 'reflex', label: 'Reflex' },
+                        { value: 'will', label: 'Will' }
+                    ],
+                    getValue: (rep) => rep.saveType || '',
+                    setValue: (rep, value) => { rep.saveType = value; }
+                },
+                {
+                    id: 'save-dc',
+                    type: 'number',
+                    label: 'DC',
+                    min: 0,
+                    getValue: (rep) => rep.dc || '',
+                    setValue: (rep, value) => { rep.dc = value; }
+                },
+                {
+                    id: 'save-basic',
+                    type: 'checkbox',
+                    label: 'Basic',
+                    getValue: (rep) => !!rep.basic,
+                    setValue: (rep, value) => { rep.basic = value; }
+                }
+            ],
+            commonTraits: ['secret']
+        });
+
+        // Check panel configuration (same as skill for now)
+        this.panelConfigs.set('check', this.panelConfigs.get('skill'));
+    }
+
+    /**
+     * Generate HTML for a modifier panel based on replacement type
+     * @param {string} type - The replacement type
+     * @param {object} rep - The replacement object
+     * @returns {string} - HTML for the modifier panel
+     */
+    generatePanelHTML(type, rep) {
+        const config = this.panelConfigs.get(type);
+        if (!config) {
+            // Fallback to JSON display for unknown types
+            return this.generateJSONPanel(type, rep);
+        }
+
+        // Generate regular fields
+        const fieldsHTML = config.fields.map(field => this.generateFieldHTML(field, rep)).join('');
+        
+        // Generate common trait checkboxes if defined
+        let commonTraitsHTML = '';
+        if (config.commonTraits && config.commonTraits.length > 0) {
+            const traitCheckboxes = config.commonTraits.map(trait => {
+                const isChecked = rep.traits && rep.traits.includes(trait);
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: 80px; flex-shrink: 0;"><strong>${trait.charAt(0).toUpperCase() + trait.slice(1)}:</strong></label>
+                        <input type="checkbox" id="${type}-trait-${trait}" style="width: auto; margin: 0;" ${isChecked ? 'checked' : ''} />
+                    </div>
+                `;
+            }).join('');
+            commonTraitsHTML = traitCheckboxes;
+        }
+        
+        // Generate traits text field
+        const traitsFieldHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="width: 80px; flex-shrink: 0;"><strong>Traits:</strong></label>
+                <input type="text" id="${type}-traits" style="width: 100%;" placeholder="comma,separated" value="${(rep.traits && rep.traits.join(',')) || ''}" />
+            </div>
+        `;
+        
+        return `
+            <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${config.title}</div>
+                ${fieldsHTML}
+                ${commonTraitsHTML}
+                ${traitsFieldHTML}
+            </form>
+        `;
+    }
+
+    /**
+     * Generate HTML for a single field
+     * @param {object} field - Field configuration
+     * @param {object} rep - Replacement object
+     * @returns {string} - HTML for the field
+     */
+    generateFieldHTML(field, rep) {
+        const value = field.getValue(rep);
+        const commonAttrs = `id="${field.id}" style="width: 100%;"`;
+        const labelWidth = '80px'; // Uniform width for all labels
+        
+        switch (field.type) {
+            case 'select':
+                const options = field.options.map(option => {
+                    const optionValue = typeof option === 'object' ? option.value : option;
+                    const optionLabel = typeof option === 'object' ? option.label : option;
+                    const selected = optionValue === value ? 'selected' : '';
+                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                }).join('');
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <select ${commonAttrs}>
+                            ${options}
+                        </select>
+                    </div>
+                `;
+            
+            case 'number':
+                const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
+                    </div>
+                `;
+            
+            case 'checkbox':
+                const checked = value ? 'checked' : '';
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <input type="checkbox" id="${field.id}" ${checked} style="width: auto; margin: 0;" />
+                    </div>
+                `;
+            
+            case 'text':
+                const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" />
+                    </div>
+                `;
+            
+            case 'textarea':
+                const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                const rows = field.rows || 3;
+                return `
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}:</strong></label>
+                        <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+                    </div>
+                `;
+            
+            case 'multiselect':
+                const selectedValues = Array.isArray(value) ? value : [value];
+                const multiOptions = field.options.map(option => {
+                    const optionValue = typeof option === 'object' ? option.value : option;
+                    const optionLabel = typeof option === 'object' ? option.label : option;
+                    const selected = selectedValues.includes(optionValue) ? 'selected' : '';
+                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                }).join('');
+                return `
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}:</strong></label>
+                        <select ${commonAttrs} multiple>
+                            ${multiOptions}
+                        </select>
+                    </div>
+                `;
+            
+            default:
+                return `<div>Unknown field type: ${field.type}</div>`;
+        }
+    }
+
+    /**
+     * Generate JSON panel for unknown types
+     * @param {string} type - The replacement type
+     * @param {object} rep - The replacement object
+     * @returns {string} - HTML for JSON panel
+     */
+    generateJSONPanel(type, rep) {
+        return `
+            <div>
+                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
+                <div><strong>Type:</strong> ${type}</div>
+                <div><strong>Parameters:</strong></div>
+                <pre style="background:#f0f0f0; border-radius:4px; padding:6px; font-size:12px; max-height:200px; overflow-y:auto;">${JSON.stringify(rep, null, 2)}</pre>
+            </div>
+        `;
+    }
+
+    /**
+     * Add event listeners to a modifier panel form
+     * @param {HTMLElement} formElement - The form element
+     * @param {string} type - The replacement type
+     * @param {object} rep - The replacement object
+     * @param {function} onChangeCallback - Callback when values change
+     */
+    addFormListeners(formElement, type, rep, onChangeCallback) {
+        const config = this.panelConfigs.get(type);
+        if (!config) return;
+
+        // Add input event listener to the form
+        formElement.addEventListener('input', () => {
+            // Update all regular fields
+            config.fields.forEach(field => {
+                const element = formElement.querySelector(`#${field.id}`);
+                if (element) {
+                    let value;
+                    switch (field.type) {
+                        case 'checkbox':
+                            value = element.checked;
+                            break;
+                        case 'number':
+                            value = element.value;
+                            break;
+                        case 'multiselect':
+                            value = Array.from(element.selectedOptions).map(option => option.value);
+                            break;
+                        case 'textarea':
+                        case 'text':
+                        default:
+                            value = element.value;
+                    }
+                    field.setValue(rep, value);
+                }
+            });
+            
+            // Initialize traits array if it doesn't exist
+            if (!rep.traits) rep.traits = [];
+            
+            // Get traits from text field
+            const traitsElement = formElement.querySelector(`#${type}-traits`);
+            let textTraits = [];
+            if (traitsElement) {
+                textTraits = traitsElement.value.split(',').map(s => s.trim()).filter(Boolean);
+            }
+            
+            // Get traits from common trait checkboxes
+            let checkboxTraits = [];
+            if (config.commonTraits) {
+                config.commonTraits.forEach(trait => {
+                    const element = formElement.querySelector(`#${type}-trait-${trait}`);
+                    if (element && element.checked) {
+                        checkboxTraits.push(trait);
+                    }
+                });
+            }
+            
+            // Combine both sources with deduplication
+            const allTraits = [...new Set([...textTraits, ...checkboxTraits])];
+            rep.traits = allTraits;
+            
+            // Trigger callback
+            if (onChangeCallback) {
+                onChangeCallback(rep);
+            }
+        });
+    }
+
+    /**
+     * Add traits field to any panel configuration
+     * @param {string} type - The replacement type
+     * @param {string} fieldId - The field ID for traits (e.g., 'damage-traits')
+     */
+    addTraitsField(type, fieldId = null) {
+        const config = this.panelConfigs.get(type);
+        if (!config) {
+            console.warn(`Cannot add traits to unknown panel type: ${type}`);
+            return;
+        }
+
+        // Check if traits field already exists
+        const existingTraitsField = config.fields.find(field => field.id.includes('traits'));
+        if (existingTraitsField) {
+            console.warn(`Traits field already exists for panel type: ${type}`);
+            return;
+        }
+
+        const traitsFieldId = fieldId || `${type}-traits`;
+        const traitsField = {
+            id: traitsFieldId,
+            type: 'text',
+            label: 'Traits',
+            placeholder: 'comma,separated',
+            getValue: (rep) => (rep.traits && rep.traits.join(',')) || '',
+            setValue: (rep, value) => { 
+                rep.traits = value.split(',').map(s => s.trim()).filter(Boolean);
+                // Update secret checkbox based on traits if secret field exists
+                if (this.supportsSecret(type)) {
+                    rep.secret = rep.traits.includes('secret');
+                }
+            }
+        };
+
+        config.fields.push(traitsField);
+    }
+
+    /**
+     * Check if a replacement type supports traits
+     * @param {string} type - The replacement type
+     * @returns {boolean} - True if the type supports traits
+     */
+    supportsTraits(type) {
+        const config = this.panelConfigs.get(type);
+        if (!config) return false;
+        
+        return config.fields.some(field => field.id.includes('traits'));
+    }
+
+    /**
+     * Add traits field with predefined options to any panel configuration
+     * @param {string} type - The replacement type
+     * @param {Array} traitOptions - Array of trait options
+     * @param {string} fieldId - The field ID for traits
+     */
+    addTraitsFieldWithOptions(type, traitOptions = [], fieldId = null) {
+        const config = this.panelConfigs.get(type);
+        if (!config) {
+            console.warn(`Cannot add traits to unknown panel type: ${type}`);
+            return;
+        }
+
+        // Check if traits field already exists
+        const existingTraitsField = config.fields.find(field => field.id.includes('traits'));
+        if (existingTraitsField) {
+            console.warn(`Traits field already exists for panel type: ${type}`);
+            return;
+        }
+
+        const traitsFieldId = fieldId || `${type}-traits`;
+        const traitsField = {
+            id: traitsFieldId,
+            type: traitOptions.length > 0 ? 'multiselect' : 'text',
+            label: 'Traits',
+            placeholder: traitOptions.length > 0 ? undefined : 'comma,separated',
+            options: traitOptions,
+            getValue: (rep) => (rep.traits && rep.traits.join(',')) || '',
+            setValue: (rep, value) => { 
+                if (Array.isArray(value)) {
+                    rep.traits = value;
+                } else {
+                    rep.traits = value.split(',').map(s => s.trim()).filter(Boolean);
+                }
+                // Update secret checkbox based on traits if secret field exists
+                if (this.supportsSecret(type)) {
+                    rep.secret = rep.traits.includes('secret');
+                }
+            }
+        };
+
+        config.fields.push(traitsField);
+    }
+
+    /**
+     * Get common trait options for different replacement types
+     * @param {string} type - The replacement type
+     * @returns {Array} - Array of common trait options
+     */
+    getCommonTraits(type) {
+        const commonTraits = {
+            'save': ['basic', 'mental', 'physical'],
+            'skill': ['mental', 'physical', 'social'],
+            'damage': ['precision', 'splash', 'persistent', 'mental', 'physical'],
+            'healing': ['mental', 'physical', 'positive'],
+            'template': ['visual', 'auditory', 'olfactory']
+        };
+
+        return commonTraits[type] || [];
+    }
+
+    /**
+     * Add secret checkbox to any panel configuration
+     * @param {string} type - The replacement type
+     * @param {string} fieldId - The field ID for secret (e.g., 'damage-secret')
+     */
+    addSecretField(type, fieldId = null) {
+        const config = this.panelConfigs.get(type);
+        if (!config) {
+            console.warn(`Cannot add secret field to unknown panel type: ${type}`);
+            return;
+        }
+
+        // Check if secret field already exists
+        const existingSecretField = config.fields.find(field => field.id.includes('secret'));
+        if (existingSecretField) {
+            console.warn(`Secret field already exists for panel type: ${type}`);
+            return;
+        }
+
+        const secretFieldId = fieldId || `${type}-secret`;
+        const secretField = {
+            id: secretFieldId,
+            type: 'checkbox',
+            label: 'Secret',
+            getValue: (rep) => !!rep.secret,
+            setValue: (rep, value) => { 
+                rep.secret = value;
+                // Also update traits array to include/exclude 'secret'
+                if (!rep.traits) rep.traits = [];
+                if (value && !rep.traits.includes('secret')) {
+                    rep.traits.push('secret');
+                } else if (!value && rep.traits.includes('secret')) {
+                    rep.traits = rep.traits.filter(trait => trait !== 'secret');
+                }
+            }
+        };
+
+        config.fields.push(secretField);
+    }
+
+    /**
+     * Check if a replacement type supports secret
+     * @param {string} type - The replacement type
+     * @returns {boolean} - True if the type supports secret
+     */
+    supportsSecret(type) {
+        const config = this.panelConfigs.get(type);
+        if (!config) return false;
+        
+        return config.fields.some(field => field.id.includes('secret'));
+    }
+
+    /**
+     * Get replacement types that commonly support secret
+     * @returns {Array} - Array of replacement types that support secret
+     */
+    getSecretSupportedTypes() {
+        return ['save', 'skill', 'check', 'damage', 'healing', 'template'];
+    }
+}
+
+// ===================== END MODIFIER PANEL SYSTEM =====================
+
