@@ -223,7 +223,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "Make a DC 25 Athletics check. Make a DC 20 Will save.";
+const DEFAULT_TEST_INPUT = "Deal 6d6 fire damage. Deals 3d6 fire damage and 2d4 force damage. Deal 1d6 splash fire damage. Deal 1d8 precision piercing damage.";
 
 // Utility for unique IDs
 function generateId() {
@@ -2368,6 +2368,69 @@ class ModifierPanelManager {
 
         // Check panel configuration (same as skill for now)
         this.panelConfigs.set('check', this.panelConfigs.get('skill'));
+
+        // Damage panel configuration - special handling for multiple components
+        this.panelConfigs.set('damage', {
+            title: 'Damage Roll',
+            isMultiComponent: true, // Special flag for damage components
+            componentFields: [
+                {
+                    id: 'dice',
+                    type: 'text',
+                    label: 'Dice Expression',
+                    placeholder: 'e.g., 2d6+3',
+                    getValue: (component) => component.dice || '',
+                    setValue: (component, value) => { component.dice = value; }
+                },
+                {
+                    id: 'damage-type',
+                    type: 'select',
+                    label: 'Damage Type',
+                    options: [
+                        { value: '', label: 'None' },
+                        { value: 'acid', label: 'Acid' },
+                        { value: 'bludgeoning', label: 'Bludgeoning' },
+                        { value: 'cold', label: 'Cold' },
+                        { value: 'electricity', label: 'Electricity' },
+                        { value: 'fire', label: 'Fire' },
+                        { value: 'force', label: 'Force' },
+                        { value: 'mental', label: 'Mental' },
+                        { value: 'piercing', label: 'Piercing' },
+                        { value: 'slashing', label: 'Slashing' },
+                        { value: 'sonic', label: 'Sonic' },
+                        { value: 'spirit', label: 'Spirit' },
+                        { value: 'vitality', label: 'Vitality' },
+                        { value: 'void', label: 'Void' },
+                        { value: 'bleed', label: 'Bleed' },
+                        { value: 'poison', label: 'Poison' }
+                    ],
+                    getValue: (component) => component.damageType || '',
+                    setValue: (component, value) => { component.damageType = value; }
+                },
+                {
+                    id: 'persistent',
+                    type: 'checkbox',
+                    label: 'Persistent',
+                    getValue: (component) => !!component.persistent,
+                    setValue: (component, value) => { component.persistent = value; }
+                },
+                {
+                    id: 'precision',
+                    type: 'checkbox',
+                    label: 'Precision',
+                    getValue: (component) => !!component.precision,
+                    setValue: (component, value) => { component.precision = value; }
+                },
+                {
+                    id: 'splash',
+                    type: 'checkbox',
+                    label: 'Splash',
+                    getValue: (component) => !!component.splash,
+                    setValue: (component, value) => { component.splash = value; }
+                }
+            ],
+            commonTraits: ['secret']
+        });
     }
 
     /**
@@ -2381,6 +2444,11 @@ class ModifierPanelManager {
         if (!config) {
             // Fallback to JSON display for unknown types
             return this.generateJSONPanel(type, rep);
+        }
+
+        // Special handling for damage components
+        if (type === 'damage' && config.isMultiComponent) {
+            return this.generateDamagePanelHTML(rep, config);
         }
 
         // Generate regular fields
@@ -2418,6 +2486,149 @@ class ModifierPanelManager {
                 ${traitsFieldHTML}
             </form>
         `;
+    }
+
+    /**
+     * Generate HTML for damage panel with multiple components
+     * @param {object} rep - The damage replacement object
+     * @param {object} config - The panel configuration
+     * @returns {string} - HTML for the damage panel
+     */
+    generateDamagePanelHTML(rep, config) {
+        // Ensure damageComponents exists
+        if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
+            rep.damageComponents = [];
+        }
+
+        // Generate component sections
+        const componentSections = rep.damageComponents.map((component, index) => {
+            const componentFields = config.componentFields.map(field => 
+                this.generateComponentFieldHTML(field, component, index)
+            ).join('');
+            
+            return `
+                <div class="damage-component" data-component-index="${index}" style="
+                    border: 1px solid #ddd; 
+                    border-radius: 4px; 
+                    padding: 10px; 
+                    margin-bottom: 10px;
+                    background: #f9f9f9;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div style="font-weight: bold; color: #1976d2;">Component ${index + 1}</div>
+                        <button type="button" class="remove-component" data-component-index="${index}" style="
+                            background: #d32f2f; 
+                            color: white; 
+                            border: none; 
+                            border-radius: 3px; 
+                            padding: 2px 6px; 
+                            font-size: 11px;
+                            cursor: pointer;
+                        ">Remove</button>
+                    </div>
+                    ${componentFields}
+                </div>
+            `;
+        }).join('');
+
+        // Generate common trait checkboxes
+        let commonTraitsHTML = '';
+        if (config.commonTraits && config.commonTraits.length > 0) {
+            const traitCheckboxes = config.commonTraits.map(trait => {
+                const isChecked = rep.traits && rep.traits.includes(trait);
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: 80px; flex-shrink: 0;"><strong>${trait.charAt(0).toUpperCase() + trait.slice(1)}:</strong></label>
+                        <input type="checkbox" id="damage-trait-${trait}" style="width: auto; margin: 0;" ${isChecked ? 'checked' : ''} />
+                    </div>
+                `;
+            }).join('');
+            commonTraitsHTML = traitCheckboxes;
+        }
+        
+        // Generate traits text field
+        const traitsFieldHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="width: 80px; flex-shrink: 0;"><strong>Traits:</strong></label>
+                <input type="text" id="damage-traits" style="width: 100%;" placeholder="comma,separated" value="${(rep.traits && rep.traits.join(',')) || ''}" />
+            </div>
+        `;
+
+        return `
+            <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${config.title}</div>
+                
+                <div id="damage-components-container">
+                    ${componentSections}
+                </div>
+                
+                <button type="button" id="add-damage-component" style="
+                    background: #4caf50; 
+                    color: white; 
+                    border: none; 
+                    border-radius: 4px; 
+                    padding: 8px 12px; 
+                    cursor: pointer;
+                    font-size: 12px;
+                ">+ Add Damage Component</button>
+                
+                ${commonTraitsHTML}
+                ${traitsFieldHTML}
+            </form>
+        `;
+    }
+
+    /**
+     * Generate HTML for a single component field
+     * @param {object} field - Field configuration
+     * @param {object} component - Damage component object
+     * @param {number} componentIndex - Index of the component
+     * @returns {string} - HTML for the component field
+     */
+    generateComponentFieldHTML(field, component, componentIndex) {
+        const value = field.getValue(component);
+        const fieldId = `damage-${componentIndex}-${field.id}`;
+        const commonAttrs = `id="${fieldId}" style="width: 100%;"`;
+        const labelWidth = '80px';
+        
+        switch (field.type) {
+            case 'select':
+                const options = field.options.map(option => {
+                    const optionValue = typeof option === 'object' ? option.value : option;
+                    const optionLabel = typeof option === 'object' ? option.label : option;
+                    const selected = optionValue === value ? 'selected' : '';
+                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                }).join('');
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <select ${commonAttrs}>
+                            ${options}
+                        </select>
+                    </div>
+                `;
+            
+            case 'text':
+                const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" />
+                    </div>
+                `;
+            
+            case 'checkbox':
+                const checked = value ? 'checked' : '';
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <input type="checkbox" id="${fieldId}" ${checked} style="width: auto; margin: 0;" />
+                    </div>
+                `;
+            
+            default:
+                return `<div>Unknown field type: ${field.type}</div>`;
+        }
     }
 
     /**
@@ -2552,6 +2763,12 @@ class ModifierPanelManager {
         const config = this.panelConfigs.get(type);
         if (!config) return;
 
+        // Special handling for damage components
+        if (type === 'damage' && config.isMultiComponent) {
+            this.addDamageFormListeners(formElement, rep, config, onChangeCallback);
+            return;
+        }
+
         let traitsInput = null;
         
         // Initialize TraitsInput component for traits field
@@ -2623,10 +2840,8 @@ class ModifierPanelManager {
             });
         }
 
-        // Add input event listener to the form for regular fields
+        // Add input event listener to the form
         formElement.addEventListener('input', (event) => {
-            let shouldTriggerCallback = false;
-            
             // Update all regular fields
             config.fields.forEach(field => {
                 const element = formElement.querySelector(`#${field.id}`);
@@ -2704,6 +2919,107 @@ class ModifierPanelManager {
             // Trigger callback
             if (onChangeCallback) {
                 onChangeCallback(rep);
+            }
+        });
+    }
+
+    /**
+     * Add event listeners specifically for damage form
+     * @param {HTMLElement} formElement - The form element
+     * @param {object} rep - The damage replacement object
+     * @param {object} config - The panel configuration
+     * @param {function} onChangeCallback - Callback when values change
+     */
+    addDamageFormListeners(formElement, rep, config, onChangeCallback) {
+        // Ensure damageComponents exists
+        if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
+            rep.damageComponents = [];
+        }
+
+        // Add component change listener
+        const updateComponents = () => {
+            // Update all component fields
+            rep.damageComponents.forEach((component, componentIndex) => {
+                config.componentFields.forEach(field => {
+                    const element = formElement.querySelector(`#damage-${componentIndex}-${field.id}`);
+                    if (element) {
+                        let value;
+                        switch (field.type) {
+                            case 'checkbox':
+                                value = element.checked;
+                                break;
+                            case 'select':
+                            case 'text':
+                            default:
+                                value = element.value;
+                        }
+                        field.setValue(component, value);
+                    }
+                });
+            });
+            
+            // Update traits
+            if (!rep.traits) rep.traits = [];
+            
+            // Get traits from text field
+            const traitsElement = formElement.querySelector('#damage-traits');
+            let textTraits = [];
+            if (traitsElement) {
+                textTraits = traitsElement.value.split(',').map(s => s.trim()).filter(Boolean);
+            }
+            
+            // Get traits from common trait checkboxes
+            let checkboxTraits = [];
+            if (config.commonTraits) {
+                config.commonTraits.forEach(trait => {
+                    const element = formElement.querySelector(`#damage-trait-${trait}`);
+                    if (element && element.checked) {
+                        checkboxTraits.push(trait);
+                    }
+                });
+            }
+            
+            // Combine both sources with deduplication
+            const allTraits = [...new Set([...textTraits, ...checkboxTraits])];
+            rep.traits = allTraits;
+            
+            // Trigger callback
+            if (onChangeCallback) {
+                onChangeCallback(rep);
+            }
+        };
+
+        // Add input event listener to the form
+        formElement.addEventListener('input', updateComponents);
+
+        // Add "Add Component" button listener
+        const addButton = formElement.querySelector('#add-damage-component');
+        if (addButton) {
+            addButton.addEventListener('click', () => {
+                // Create new damage component using the DamageComponent class
+                const newComponent = new DamageComponent('', '', false, false, false);
+                
+                rep.damageComponents.push(newComponent);
+                
+                // Trigger callback to re-render
+                if (onChangeCallback) {
+                    onChangeCallback(rep);
+                }
+            });
+        }
+
+        // Add "Remove Component" button listeners
+        formElement.addEventListener('click', (event) => {
+            if (event.target.classList.contains('remove-component')) {
+                const componentIndex = parseInt(event.target.getAttribute('data-component-index'));
+                
+                // Remove the component
+                rep.damageComponents.splice(componentIndex, 1);
+                
+                // Trigger callback to re-render
+                if (onChangeCallback) {
+                    onChangeCallback(rep);
+                }
             }
         });
     }
@@ -2877,6 +3193,14 @@ class ModifierPanelManager {
      */
     getSecretSupportedTypes() {
         return ['save', 'skill', 'check', 'damage', 'healing', 'template'];
+    }
+
+    /**
+     * Create a new damage component with default values
+     * @returns {DamageComponent} - A new damage component
+     */
+    createNewDamageComponent() {
+        return new DamageComponent('', '', false, false, false);
     }
 }
 
