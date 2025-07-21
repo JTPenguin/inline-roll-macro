@@ -1360,7 +1360,7 @@ class ConditionReplacement extends Replacement {
                     min: 1,
                     getValue: (rep) => rep.degree || '',
                     setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
-                    showIf: (rep) => CONDITIONS_WITH_VALUES.includes(rep.conditionName)
+                    hideIfNotValueCondition: true
                 },
                 ...super.panelConfig.fields
             ]
@@ -3005,6 +3005,16 @@ class ModifierPanelManager {
     generatePanelHTML(type, rep) {
         const Cls = REPLACEMENT_CLASS_MAP[type];
         const config = Cls?.panelConfig;
+        console.log('Generating panel HTML:', {
+            type,
+            repState: rep,
+            hasConfig: !!config,
+            fields: config?.fields?.map(f => ({
+                id: f.id,
+                showIf: f.showIf ? f.showIf(rep) : 'no showIf',
+                value: f.getValue ? f.getValue(rep) : 'no getValue'
+            }))
+        });
         if (!config) {
             return this.generateJSONPanel(type, rep);
         }
@@ -3102,13 +3112,23 @@ class ModifierPanelManager {
         }
     }
     generateFieldHTML(field, rep) {
-        if (field.showIf && !field.showIf(rep)) {
-            return '';
-        }
+        console.log('Generating field HTML:', {
+            fieldId: field.id,
+            showIf: field.showIf ? field.showIf(rep) : 'no showIf',
+            repState: rep
+        });
+        
+        // Don't return empty string - instead set display: none
+        const isHidden = field.showIf && !field.showIf(rep);
         const value = field.getValue(rep);
         const commonAttrs = `id="${field.id}" style="width: 100%;"`;
         const labelWidth = '80px';
-        const containerStyle = field.hideIfNotLore && rep.checkType !== 'lore' ? 'display: none;' : '';
+        let containerStyle = '';
+        if (field.hideIfNotLore && rep.checkType !== 'lore') {
+            containerStyle = 'display: none;';
+        } else if (field.hideIfNotValueCondition && !CONDITIONS_WITH_VALUES.includes(rep.conditionName)) {
+            containerStyle = 'display: none;';
+        }
         switch (field.type) {
             case 'select':
                 const options = field.options.map(option => {
@@ -3127,8 +3147,9 @@ class ModifierPanelManager {
                 `;
             case 'number':
                 const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
+                const containerStyle = field.showIf && !field.showIf(rep) ? 'display: none;' : 'display: flex;';
                 const html = `
-                    <div id="${field.id}-container" style="display: flex; align-items: center; gap: 8px;">
+                    <div id="${field.id}-container" class="${rowClass}" style="${containerStyle}; align-items: center; gap: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
                         <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
                     </div>
@@ -3262,25 +3283,27 @@ class ModifierPanelManager {
         }
         const conditionSelect = formElement.querySelector('#condition-select');
         const conditionValueContainer = formElement.querySelector('#condition-value-container');
-        let updateConditionValueVisibility = null;
-        if (conditionSelect && conditionValueContainer) {
-            updateConditionValueVisibility = () => {
-                const selected = conditionSelect.value;
-                const show = CONDITIONS_WITH_VALUES.includes(selected);
-                conditionValueContainer.style.display = show ? 'flex' : 'none';
-                if (!show) {
-                    rep.degree = null;
-                    const valueField = formElement.querySelector('#condition-value');
-                    if (valueField) valueField.value = '';
-                }
-            };
+        const conditionValueField = formElement.querySelector('#condition-value');
+        
+        if (conditionSelect && conditionValueContainer && conditionValueField) {
             conditionSelect.addEventListener('change', () => {
-                updateConditionValueVisibility();
+                const selected = conditionSelect.value;
+                const supportsValue = CONDITIONS_WITH_VALUES.includes(selected);
+                
+                // Update visibility
+                conditionValueContainer.style.display = supportsValue ? 'flex' : 'none';
+                
+                // Update rep state
+                rep.conditionName = selected;
+                if (!supportsValue) {
+                    rep.degree = null;
+                    conditionValueField.value = '';
+                }
+                
                 if (onChangeCallback) {
                     onChangeCallback(rep);
                 }
             });
-            updateConditionValueVisibility();
         }
         formElement.addEventListener('input', (event) => {
             let shouldTriggerCallback = false;
@@ -3307,10 +3330,7 @@ class ModifierPanelManager {
                     shouldTriggerCallback = true;
                 }
             });
-            // After any input, update condition value field visibility if relevant
-            if (type === 'condition' && updateConditionValueVisibility) {
-                updateConditionValueVisibility();
-            }
+            // No need to manually update visibility - it's handled by the showIf property
             if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep);
             }
@@ -3354,10 +3374,7 @@ class ModifierPanelManager {
                     shouldTriggerCallback = true;
                 }
             });
-            // After any change, update condition value field visibility if relevant
-            if (type === 'condition' && updateConditionValueVisibility) {
-                updateConditionValueVisibility();
-            }
+            // No need to manually update visibility - it's handled by the showIf property
             if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
                 const traitName = event.target.id.replace(`${type}-trait-`, '');
                 const isChecked = event.target.checked;
