@@ -236,9 +236,33 @@ if (!window.pf2eInteractiveElements) window.pf2eInteractiveElements = {};
 // === 1. Persistent Replacement List ===
 if (!window.pf2eReplacements) window.pf2eReplacements = [];
 
+// ===================== MODIFIER PANEL SYSTEM: CLASS-BASED CONFIGURATION =====================
+/**
+ * Modifier Panel Configuration Pattern (2024 Refactor)
+ *
+ * Each Replacement subclass (e.g., DamageReplacement, CheckReplacement, etc.) defines its own
+ * modifier panel configuration as a static property or static getter named `panelConfig`.
+ *
+ * - The static `panelConfig` describes the panel's title, fields, and any special options.
+ * - All modifier panel configuration should be done via these static properties, not via registration or mutation.
+ * - Shared field definitions (e.g., DISPLAY_TEXT_FIELD, DAMAGE_COMPONENT_FIELDS) should be referenced for DRYness.
+ * - The ModifierPanelManager and UI always access configs via the static property on the class (e.g., REPLACEMENT_CLASS_MAP[type].panelConfig).
+ *
+ * Example minimal panelConfig:
+ *
+ *   static get panelConfig() {
+ *     return {
+ *       title: 'My Type',
+ *       fields: [DISPLAY_TEXT_FIELD]
+ *     };
+ *   }
+ *
+ * See each Replacement subclass for its specific configuration.
+ */
+
 // -------------------- Base Classes --------------------
 class Replacement {
-    constructor(match) {
+    constructor(match, type) {
         if (!match || typeof match !== 'object' || typeof match[0] !== 'string' || typeof match.index !== 'number') {
             throw new Error('Replacement: Invalid match object passed to constructor.');
         }
@@ -249,35 +273,37 @@ class Replacement {
         this.enabled = true;
         this.priority = 0;
         this.displayText = '';
+        this.type = type; // Store the type string for UI/lookup
     }
     render() { throw new Error('Must implement render()'); }
     getInteractiveParams() {
-        // Base: just type and id
-        const type = this.constructor.name.replace('Replacement', '').toLowerCase();
-        return { type, id: this.id, displayText: this.displayText };
+        const params = { type: this.type, id: this.id, displayText: this.displayText };
+        console.log('[DEBUG] getInteractiveParams:', params);
+        return params;
     }
     renderInteractive() {
         const params = this.getInteractiveParams();
-        // Register in global state for interactive lookup
-        window.pf2eInteractiveElements[this.id] = {
-            ...params
-        };
-        // Logging for debugging parameter saving
+        window.pf2eInteractiveElements[this.id] = { ...params };
         console.log(`[PF2e Converter] Registered interactive element:`, this.id, params);
         return `<span class="pf2e-interactive" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${this.render()}</span>`;
     }
     validate() { return true; }
     getText() { return this.originalText; }
     getLength() { return this.endPos - this.startPos; }
+    static get panelConfig() {
+        return {
+            title: 'Replacement',
+            fields: [DISPLAY_TEXT_FIELD]
+        };
+    }
 }
 
 class RollReplacement extends Replacement {
-    constructor(match) {
-        super(match);
+    constructor(match, type) {
+        super(match, type);
         this.rollType = '';
         this.traits = [];
         this.options = [];
-        // this.displayText is inherited
     }
     addTrait(trait) { if (!this.traits.includes(trait)) this.traits.push(trait); }
     addOption(option) { if (!this.options.includes(option)) this.options.push(option); }
@@ -295,6 +321,15 @@ class RollReplacement extends Replacement {
             traits: this.traits,
             options: this.options,
             rollType: this.rollType
+        };
+    }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            // Most roll replacements support traits, but subclasses can override
+            fields: [
+                ...super.panelConfig.fields
+            ]
         };
     }
 }
@@ -452,15 +487,14 @@ class DamageComponent {
 }
 
 class DamageReplacement extends RollReplacement {
-    constructor(match, config) {
-        super(match);
+    constructor(match, type, config) {
+        super(match, type);
         this.rollType = 'damage';
         this.priority = 100;
         this.damageComponents = [];
         this.areaDamage = false;
-        this.match = match; // Save the match object for render()
+        this.match = match;
         this.parseMatch(match, config);
-        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -614,12 +648,24 @@ class DamageReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Damage Roll',
+            isMultiComponent: true,
+            componentFields: DAMAGE_COMPONENT_FIELDS,
+            fields: [
+                ...DAMAGE_ADDITIONAL_FIELDS,
+                ...super.panelConfig.fields
+            ]
+        };
+    }
 }
 
 // -------------------- Check Replacement --------------------
 class CheckReplacement extends RollReplacement {
-    constructor(match, config) {
-        super(match);
+    constructor(match, type, config) {
+        super(match, type);
         this.rollType = 'check';
         this.priority = 90;
         this.checkType = '';
@@ -627,12 +673,11 @@ class CheckReplacement extends RollReplacement {
         this.secret = false;
         this.defense = '';
         this.against = '';
-        this.match = match; // Save the match object for render()
+        this.match = match;
         this.multipleSkills = false;
         this.skills = [];
-        this.loreName = ''; // For lore skill checks
+        this.loreName = '';
         this.parseMatch(match, config);
-        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Extract check type, DC, and modifiers
@@ -742,20 +787,58 @@ class CheckReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Skill Check',
+            fields: [
+                {
+                    id: 'skill-select',
+                    type: 'select',
+                    label: 'Skill',
+                    options: [
+                        'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
+                        'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
+                        'Society', 'Stealth', 'Survival', 'Thievery', 'Lore'
+                    ],
+                    getValue: (rep) => rep.checkType ? rep.checkType.charAt(0).toUpperCase() + rep.checkType.slice(1) : '',
+                    setValue: (rep, value) => { rep.checkType = value.toLowerCase(); }
+                },
+                {
+                    id: 'lore-name',
+                    type: 'text',
+                    label: 'Lore Name',
+                    placeholder: 'e.g., Warfare, Local Politics',
+                    getValue: (rep) => rep.loreName || '',
+                    setValue: (rep, value) => { rep.loreName = value; },
+                    hideIfNotLore: true
+                },
+                {
+                    id: 'skill-dc',
+                    type: 'number',
+                    label: 'DC',
+                    min: 0,
+                    getValue: (rep) => rep.dc || '',
+                    setValue: (rep, value) => { rep.dc = value; }
+                },
+                ...super.panelConfig.fields
+            ],
+            commonTraits: ['secret']
+        };
+    }
 }
 
 // -------------------- Save Replacement --------------------
 class SaveReplacement extends RollReplacement {
-    constructor(match, config) {
-        super(match);
+    constructor(match, type, config) {
+        super(match, type);
         this.rollType = 'save';
         this.priority = 90;
         this.saveType = '';
         this.dc = null;
         this.basic = false;
-        this.match = match; // Save the match object for render()
+        this.match = match;
         this.parseMatch(match, config);
-        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -826,19 +909,55 @@ class SaveReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Saving Throw',
+            fields: [
+                {
+                    id: 'save-type',
+                    type: 'select',
+                    label: 'Type',
+                    options: [
+                        { value: 'fortitude', label: 'Fortitude' },
+                        { value: 'reflex', label: 'Reflex' },
+                        { value: 'will', label: 'Will' }
+                    ],
+                    getValue: (rep) => rep.saveType || '',
+                    setValue: (rep, value) => { rep.saveType = value; }
+                },
+                {
+                    id: 'save-dc',
+                    type: 'number',
+                    label: 'DC',
+                    min: 0,
+                    getValue: (rep) => rep.dc || '',
+                    setValue: (rep, value) => { rep.dc = value; }
+                },
+                {
+                    id: 'save-basic',
+                    type: 'checkbox',
+                    label: 'Basic',
+                    getValue: (rep) => !!rep.basic,
+                    setValue: (rep, value) => { rep.basic = value; }
+                },
+                ...super.panelConfig.fields
+            ],
+            commonTraits: ['secret']
+        };
+    }
 }
 
 // -------------------- Template Replacement --------------------
 class TemplateReplacement extends RollReplacement {
-    constructor(match, config) {
-        super(match);
+    constructor(match, type, config) {
+        super(match, type);
         this.rollType = 'template';
         this.priority = 80;
         this.shape = '';
         this.distance = 0;
         this.width = 5;
         this.parseMatch(match, config);
-        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -879,17 +998,25 @@ class TemplateReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Template',
+            fields: [
+                ...super.panelConfig.fields
+            ]
+        };
+    }
 }
 
 // -------------------- Within Replacement --------------------
 class WithinReplacement extends RollReplacement {
-    constructor(match, config) {
-        super(match);
+    constructor(match, type, config) {
+        super(match, type);
         this.rollType = 'within';
         this.priority = 80;
         this.distance = 0;
         this.parseMatch(match, config);
-        // this.displayText is inherited
     }
     parseMatch(match, config) {
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
@@ -906,20 +1033,28 @@ class WithinReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Within',
+            fields: [
+                ...super.panelConfig.fields
+            ]
+        };
+    }
 }
 
 // -------------------- Utility Replacement --------------------
 class UtilityReplacement extends RollReplacement {
-    constructor(match, config) {
-        super(match);
+    constructor(match, type, config) {
+        super(match, type);
         this.rollType = 'utility';
         this.priority = 70;
         this.expression = '';
         this.flavor = '';
         this.gmOnly = false;
-        this.match = match; // Save the match object for render()
+        this.match = match;
         this.parseMatch(match, config);
-        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -961,18 +1096,26 @@ class UtilityReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Utility',
+            fields: [
+                ...super.panelConfig.fields
+            ]
+        };
+    }
 }
 
 // -------------------- Healing Replacement --------------------
 class HealingReplacement extends RollReplacement {
-    constructor(match, config) {
-        super(match);
+    constructor(match, type, config) {
+        super(match, type);
         this.rollType = 'healing';
-        this.priority = 85; // Between damage and skill checks
+        this.priority = 85;
         this.dice = '';
-        this.match = match; // Save the match object for render()
+        this.match = match;
         this.parseMatch(match, config);
-        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -1003,19 +1146,27 @@ class HealingReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Healing',
+            fields: [
+                ...super.panelConfig.fields
+            ]
+        };
+    }
 }
 
 // -------------------- Action Replacement --------------------
 class ActionReplacement extends RollReplacement {
-    constructor(match, config) {
-        super(match);
+    constructor(match, type, config) {
+        super(match, type);
         this.rollType = 'action';
         this.priority = 60;
         this.actionName = '';
         this.variant = '';
         this.statistic = '';
         this.parseMatch(match, config);
-        // this.displayText is inherited
     }
     parseMatch(match, config) {
         this.actionName = match[1] || '';
@@ -1035,14 +1186,21 @@ class ActionReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Action',
+            fields: [
+                ...super.panelConfig.fields
+            ]
+        };
+    }
 }
 
 // -------------------- Condition Replacement --------------------
 class ConditionReplacement extends Replacement {
-    constructor(matchObj, config) {
-        // matchObj: { match, args }
-        // Use the original match object for startPos/endPos, but allow overriding the replacement text
-        super(matchObj.match); // Pass the regex match array to super
+    constructor(matchObj, type, config) {
+        super(matchObj.match, type);
         this.priority = 50;
         this.conditionName = '';
         this.degree = null;
@@ -1050,9 +1208,7 @@ class ConditionReplacement extends Replacement {
         this.linkedConditions = config && config.linkedConditions ? config.linkedConditions : new Set();
         this.args = matchObj.args || [];
         this.parseMatch();
-        // Always deduplicate using the *final* condition name (e.g., 'off-guard')
         let dedupKey = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
-        // Special case: treat 'flat-footed' as 'off-guard' for deduplication
         if (dedupKey === 'flat-footed') dedupKey = 'off-guard';
         if (this.linkedConditions.has(dedupKey)) {
             this.enabled = false;
@@ -1087,6 +1243,42 @@ class ConditionReplacement extends Replacement {
             originalText: this.originalText
         };
     }
+    static get panelConfig() {
+        // Combine and sort all conditions alphabetically
+        const allConditions = [...CONDITIONS_WITH_VALUES, ...CONDITIONS_WITHOUT_VALUES]
+            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        return {
+            ...super.panelConfig,
+            title: 'Condition',
+            showTraits: false,
+            fields: [
+                {
+                    id: 'condition-select',
+                    type: 'select',
+                    label: 'Condition',
+                    options: allConditions.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
+                    getValue: (rep) => rep.conditionName || '',
+                    setValue: (rep, value) => {
+                        rep.conditionName = value;
+                        rep.uuid = getConditionUUID(value);
+                        if (!CONDITIONS_WITH_VALUES.includes(value)) {
+                            rep.degree = null;
+                        }
+                    }
+                },
+                {
+                    id: 'condition-value',
+                    type: 'number',
+                    label: 'Value',
+                    min: 1,
+                    getValue: (rep) => rep.degree || '',
+                    setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
+                    showIf: (rep) => CONDITIONS_WITH_VALUES.includes(rep.conditionName)
+                },
+                ...super.panelConfig.fields
+            ]
+        };
+    }
 }
 
 // Replacement class mapping for pattern types
@@ -1107,7 +1299,14 @@ class ReplacementFactory {
     static createFromMatch(match, patternType, patternConfig) {
         const Cls = REPLACEMENT_CLASS_MAP[patternType];
         if (!Cls) throw new Error(`Unknown pattern type: ${patternType}`);
-        return new Cls(match, patternConfig);
+        let instance;
+        if (patternType === 'condition') {
+            instance = new Cls(match, patternType, patternConfig);
+        } else {
+            instance = new Cls(match, patternType, patternConfig);
+        }
+        console.log('[DEBUG] ReplacementFactory.createFromMatch:', { patternType, instanceType: instance.type });
+        return instance;
     }
     static getSupportedTypes() {
         return Object.keys(REPLACEMENT_CLASS_MAP);
@@ -1904,10 +2103,11 @@ function showConverterDialog() {
                         const id = el.getAttribute('data-id');
                         const type = el.getAttribute('data-type');
                         let rep = window.pf2eReplacements.find(r => r.id === id);
+                        console.log('[DEBUG] .pf2e-interactive click:', { id, type, rep });
                         if (!rep) return;
-                        
-                        // Use the flexible modifier panel system
-                        modifierPanelContent.innerHTML = modifierPanelManager.generatePanelHTML(type, rep);
+                        const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
+                        console.log('[DEBUG] panelHTML:', panelHTML);
+                        modifierPanelContent.innerHTML = panelHTML;
                         
                         // Add event listeners to the form
                         const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
@@ -2425,39 +2625,7 @@ class TraitsInput {
  * - traits: Enhanced traits input with pf2e system integration
  * 
  * Example usage:
- * ```javascript
- * // Add a new panel configuration
- * modifierPanelManager.panelConfigs.set('damage', {
- *     title: 'Damage Roll',
- *     fields: [
- *         {
- *             id: 'damage-dice',
- *             type: 'text',
- *             label: 'Dice Expression',
- *             placeholder: 'e.g., 2d6+3',
- *             getValue: (rep) => rep.dice || '',
- *             setValue: (rep, value) => { rep.dice = value; }
- *         },
- *         {
- *             id: 'damage-type',
- *             type: 'select',
- *             label: 'Damage Type',
- *             options: ['bludgeoning', 'piercing', 'slashing', 'fire', 'cold'],
- *             getValue: (rep) => rep.damageType || '',
- *             setValue: (rep, value) => { rep.damageType = value; }
- *         }
- *     ]
- * });
- * 
- * // Add traits support to any replacement type
- * modifierPanelManager.addTraitsField('damage');
- * 
- * // Or add traits with predefined options
- * modifierPanelManager.addTraitsFieldWithOptions('damage', ['precision', 'splash', 'persistent']);
- * 
- * // Add secret checkbox to any replacement type
- * modifierPanelManager.addSecretField('damage');
- * ```
+ * // See static panelConfig on each Replacement class for configuration.
  */
 
 // Field configuration constants
@@ -2516,14 +2684,10 @@ const DAMAGE_COMPONENT_FIELDS = [
             return '';
         },
         setValue: (component, value) => {
-            // Reset all to false first
             component.persistent = false;
             component.precision = false;
             component.splash = false;
-            // Set the selected one to true
-            if (value) {
-                component[value] = true;
-            }
+            if (value) component[value] = true;
         }
     }
 ];
@@ -2549,205 +2713,17 @@ const DISPLAY_TEXT_FIELD = {
 };
 
 class ModifierPanelManager {
-    constructor() {
-        this.panelConfigs = new Map();
-        this.initializePanelConfigs();
-    }
-
-    /**
-     * Initialize panel configurations for all supported replacement types
-     */
-    initializePanelConfigs() {
-        // Skill/Check panel configuration
-        this.panelConfigs.set('skill', {
-            title: 'Skill Check',
-            fields: [
-                {
-                    id: 'skill-select',
-                    type: 'select',
-                    label: 'Skill',
-                    options: [
-                        'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
-                        'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
-                        'Society', 'Stealth', 'Survival', 'Thievery', 'Lore'
-                    ],
-                    getValue: (rep) => rep.checkType ? rep.checkType.charAt(0).toUpperCase() + rep.checkType.slice(1) : '',
-                    setValue: (rep, value) => { rep.checkType = value.toLowerCase(); }
-                },
-                {
-                    id: 'lore-name',
-                    type: 'text',
-                    label: 'Lore Name',
-                    placeholder: 'e.g., Warfare, Local Politics',
-                    getValue: (rep) => rep.loreName || '',
-                    setValue: (rep, value) => { rep.loreName = value; },
-                    hideIfNotLore: true  // Simple flag for CSS visibility
-                },
-                {
-                    id: 'skill-dc',
-                    type: 'number',
-                    label: 'DC',
-                    min: 0,
-                    getValue: (rep) => rep.dc || '',
-                    setValue: (rep, value) => { rep.dc = value; }
-                }
-            ],
-            commonTraits: ['secret']
-        });
-
-        // Save panel configuration
-        this.panelConfigs.set('save', {
-            title: 'Saving Throw',
-            fields: [
-                {
-                    id: 'save-type',
-                    type: 'select',
-                    label: 'Type',
-                    options: [
-                        { value: 'fortitude', label: 'Fortitude' },
-                        { value: 'reflex', label: 'Reflex' },
-                        { value: 'will', label: 'Will' }
-                    ],
-                    getValue: (rep) => rep.saveType || '',
-                    setValue: (rep, value) => { rep.saveType = value; }
-                },
-                {
-                    id: 'save-dc',
-                    type: 'number',
-                    label: 'DC',
-                    min: 0,
-                    getValue: (rep) => rep.dc || '',
-                    setValue: (rep, value) => { rep.dc = value; }
-                },
-                {
-                    id: 'save-basic',
-                    type: 'checkbox',
-                    label: 'Basic',
-                    getValue: (rep) => !!rep.basic,
-                    setValue: (rep, value) => { rep.basic = value; }
-                }
-            ],
-            commonTraits: ['secret']
-        });
-
-        // Check panel configuration (make a shallow copy of skill, not a reference)
-        const skillConfig = this.panelConfigs.get('skill');
-        this.panelConfigs.set('check', {
-            ...skillConfig,
-            fields: [...skillConfig.fields],
-        });
-
-        // Damage panel configuration - special handling for multiple components
-        this.panelConfigs.set('damage', {
-            title: 'Damage Roll',
-            isMultiComponent: true, // Special flag for damage components
-            componentFields: DAMAGE_COMPONENT_FIELDS,
-            fields: [
-                ...DAMAGE_ADDITIONAL_FIELDS
-            ]
-        });
-
-        // Condition panel configuration
-        this.panelConfigs.set('condition', {
-            title: 'Condition',
-            showTraits: false, // Do not show traits or common traits for conditions
-            fields: [
-                {
-                    id: 'condition-select',
-                    type: 'select',
-                    label: 'Condition',
-                    options: [
-                        ...CONDITIONS_WITH_VALUES.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
-                        ...CONDITIONS_WITHOUT_VALUES.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) }))
-                    ],
-                    getValue: (rep) => rep.conditionName || '',
-                    setValue: (rep, value) => {
-                        rep.conditionName = value;
-                        rep.uuid = getConditionUUID(value); // Update UUID when condition changes
-                        // If switching to a condition without value, clear degree
-                        if (!CONDITIONS_WITH_VALUES.includes(value)) {
-                            rep.degree = null;
-                        }
-                    }
-                },
-                {
-                    id: 'condition-value',
-                    type: 'number',
-                    label: 'Value',
-                    min: 1,
-                    getValue: (rep) => rep.degree || '',
-                    setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
-                    showIf: (rep) => CONDITIONS_WITH_VALUES.includes(rep.conditionName)
-                }
-            ]
-        });
-
-        // Template panel configuration
-        this.panelConfigs.set('template', {
-            title: 'Template',
-            fields: []
-        });
-
-        // Within panel configuration
-        this.panelConfigs.set('within', {
-            title: 'Within',
-            fields: []
-        });
-
-        // Utility panel configuration
-        this.panelConfigs.set('utility', {
-            title: 'Utility',
-            fields: []
-        });
-
-        // Healing panel configuration
-        this.panelConfigs.set('healing', {
-            title: 'Healing',
-            fields: []
-        });
-
-        // Action panel configuration
-        this.panelConfigs.set('action', {
-            title: 'Action',
-            fields: []
-        });
-
-        // Legacy panel configuration (if needed)
-        this.panelConfigs.set('legacy', {
-            title: 'Legacy',
-            fields: []
-        });
-
-        // DRY: Add Display Text field to all panel configs
-        for (const [type, config] of this.panelConfigs.entries()) {
-            // For damage, add to fields (not componentFields)
-            if (type === 'damage') {
-                config.fields.push(DISPLAY_TEXT_FIELD);
-            } else {
-                config.fields.push(DISPLAY_TEXT_FIELD);
-            }
-        }
-    }
-
-    /**
-     * Generate HTML for a modifier panel based on replacement type
-     * @param {string} type - The replacement type
-     * @param {object} rep - The replacement object
-     * @returns {string} - HTML for the modifier panel
-     */
     generatePanelHTML(type, rep) {
-        const config = this.panelConfigs.get(type);
+        console.log('[DEBUG] generatePanelHTML called with:', { type, rep });
+        const Cls = REPLACEMENT_CLASS_MAP[type];
+        const config = Cls?.panelConfig;
+        console.log('[DEBUG] generatePanelHTML resolved:', { Cls, config });
         if (!config) {
-            // Fallback to JSON display for unknown types
             return this.generateJSONPanel(type, rep);
         }
-
-        // Special handling for damage components
         if (type === 'damage' && config.isMultiComponent) {
             return this.generateDamagePanelHTML(rep, config);
         }
-
-        // Find the Display Text field and separate it
         const displayTextFieldIndex = config.fields.findIndex(f => f.id === 'display-text');
         let fieldsBeforeDisplayText = config.fields;
         let displayTextField = null;
@@ -2756,8 +2732,6 @@ class ModifierPanelManager {
             displayTextField = config.fields[displayTextFieldIndex];
         }
         const fieldsHTML = fieldsBeforeDisplayText.map(field => this.generateFieldHTML(field, rep)).join('');
-
-        // Generate common trait checkboxes if defined and showTraits is not false
         let commonTraitsHTML = '';
         if ((config.showTraits !== false) && config.commonTraits && config.commonTraits.length > 0) {
             const traitCheckboxes = config.commonTraits.map(trait => {
@@ -2771,8 +2745,6 @@ class ModifierPanelManager {
             }).join('');
             commonTraitsHTML = traitCheckboxes;
         }
-
-        // Generate enhanced traits field only if showTraits is not false
         let traitsFieldHTML = '';
         if (config.showTraits !== false) {
             const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
@@ -2783,8 +2755,6 @@ class ModifierPanelManager {
                 </div>
             `;
         }
-
-        // Render Display Text field last
         const displayTextHTML = displayTextField ? this.generateFieldHTML(displayTextField, rep) : '';
         return `
             <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
@@ -2796,25 +2766,14 @@ class ModifierPanelManager {
             </form>
         `;
     }
-
-    /**
-     * Generate HTML for damage panel with multiple components
-     * @param {object} rep - The damage replacement object
-     * @param {object} config - The panel configuration
-     * @returns {string} - HTML for the damage panel
-     */
     generateDamagePanelHTML(rep, config) {
-        // Ensure damageComponents exists
         if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
             rep.damageComponents = [];
         }
-
-        // Generate component sections
         const componentSections = rep.damageComponents.map((component, index) => {
-            const componentFields = config.componentFields.map(field => 
+            const componentFields = config.componentFields.map(field =>
                 this.generateComponentFieldHTML(field, component, index)
             ).join('');
-            
             return `
                 <div class="damage-component" data-component-index="${index}" style="
                     border: 1px solid #ddd; 
@@ -2830,38 +2789,24 @@ class ModifierPanelManager {
                 </div>
             `;
         }).join('');
-
-        // Generate additional fields
-        const additionalFieldsHTML = config.fields ? config.fields.map(field => 
+        const additionalFieldsHTML = config.fields ? config.fields.map(field =>
             this.generateFieldHTML(field, rep)
         ).join('') : '';
-
         return `
             <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
                 <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${config.title}</div>
-                
                 <div id="damage-components-container">
                     ${componentSections}
                 </div>
-                
                 ${additionalFieldsHTML}
             </form>
         `;
     }
-
-    /**
-     * Generate HTML for a single component field
-     * @param {object} field - Field configuration
-     * @param {object} component - Damage component object
-     * @param {number} componentIndex - Index of the component
-     * @returns {string} - HTML for the component field
-     */
     generateComponentFieldHTML(field, component, componentIndex) {
         const value = field.getValue(component);
         const fieldId = `damage-${componentIndex}-${field.id}`;
         const commonAttrs = `id="${fieldId}" style="width: 100%;"`;
         const labelWidth = '80px';
-        
         switch (field.type) {
             case 'select':
                 const options = field.options.map(option => {
@@ -2878,7 +2823,6 @@ class ModifierPanelManager {
                         </select>
                     </div>
                 `;
-            
             case 'text':
                 const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                 return `
@@ -2887,7 +2831,6 @@ class ModifierPanelManager {
                         <input type="text" ${commonAttrs} ${placeholder} value="${value}" />
                     </div>
                 `;
-            
             case 'checkbox':
                 const checked = value ? 'checked' : '';
                 return `
@@ -2896,31 +2839,18 @@ class ModifierPanelManager {
                         <input type="checkbox" id="${fieldId}" ${checked} style="width: auto; margin: 0;" />
                     </div>
                 `;
-            
             default:
                 return `<div>Unknown field type: ${field.type}</div>`;
         }
     }
-
-    /**
-     * Generate HTML for a single field
-     * @param {object} field - Field configuration
-     * @param {object} rep - Replacement object
-     * @returns {string} - HTML for the field
-     */
     generateFieldHTML(field, rep) {
-        // Check if field should be shown (keep for backwards compatibility)
         if (field.showIf && !field.showIf(rep)) {
             return '';
         }
-        
         const value = field.getValue(rep);
         const commonAttrs = `id="${field.id}" style="width: 100%;"`;
-        const labelWidth = '80px'; // Uniform width for all labels
-        
-        // Show/hide lore field based on current state
+        const labelWidth = '80px';
         const containerStyle = field.hideIfNotLore && rep.checkType !== 'lore' ? 'display: none;' : '';
-        
         switch (field.type) {
             case 'select':
                 const options = field.options.map(option => {
@@ -2937,7 +2867,6 @@ class ModifierPanelManager {
                         </select>
                     </div>
                 `;
-            
             case 'number':
                 const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
                 const html = `
@@ -2946,12 +2875,7 @@ class ModifierPanelManager {
                         <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
                     </div>
                 `;
-                if (rep && rep.conditionName !== undefined) {
-                    console.log(`[PF2e Converter] Rendering number field for condition: field.id='${field.id}', container id='${field.id}-container', value='${value}'`);
-                    console.log('[PF2e Converter] Number field HTML:', html);
-                }
                 return html;
-            
             case 'checkbox':
                 const checked = value ? 'checked' : '';
                 return `
@@ -2960,7 +2884,6 @@ class ModifierPanelManager {
                         <input type="checkbox" id="${field.id}" ${checked} style="width: auto; margin: 0;" />
                     </div>
                 `;
-            
             case 'text':
                 const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                 return `
@@ -2969,7 +2892,6 @@ class ModifierPanelManager {
                         <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                     </div>
                 `;
-            
             case 'textarea':
                 const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                 const rows = field.rows || 3;
@@ -2979,7 +2901,6 @@ class ModifierPanelManager {
                         <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                     </div>
                 `;
-            
             case 'multiselect':
                 const selectedValues = Array.isArray(value) ? value : [value];
                 const multiOptions = field.options.map(option => {
@@ -2996,7 +2917,6 @@ class ModifierPanelManager {
                         </select>
                     </div>
                 `;
-            
             case 'traits':
                 const uniqueId = `${field.id}-container-${Math.random().toString(36).substr(2, 9)}`;
                 return `
@@ -3005,18 +2925,10 @@ class ModifierPanelManager {
                         <div id="${uniqueId}" style="flex: 1;"></div>
                     </div>
                 `;
-            
             default:
                 return `<div>Unknown field type: ${field.type}</div>`;
         }
     }
-
-    /**
-     * Generate JSON panel for unknown types
-     * @param {string} type - The replacement type
-     * @param {object} rep - The replacement object
-     * @returns {string} - HTML for JSON panel
-     */
     generateJSONPanel(type, rep) {
         return `
             <div>
@@ -3027,39 +2939,22 @@ class ModifierPanelManager {
             </div>
         `;
     }
-
-    /**
-     * Add event listeners to a modifier panel form
-     * @param {HTMLElement} formElement - The form element
-     * @param {string} type - The replacement type
-     * @param {object} rep - The replacement object
-     * @param {function} onChangeCallback - Callback when values change
-     */
     addFormListeners(formElement, type, rep, onChangeCallback) {
-        const config = this.panelConfigs.get(type);
+        const Cls = REPLACEMENT_CLASS_MAP[type];
+        const config = Cls?.panelConfig;
         if (!config) return;
-
-        // Special handling for damage components
         if (type === 'damage' && config.isMultiComponent) {
             this.addDamageFormListeners(formElement, rep, config, onChangeCallback);
             return;
         }
-
         let traitsInput = null;
-        
-        // Initialize TraitsInput component for traits field
         const traitsContainer = formElement.querySelector('[id*="traits-container"]');
         if (traitsContainer) {
             traitsInput = new TraitsInput(traitsContainer.id, {
                 placeholder: 'Type trait name and press Enter...',
                 onChange: (selectedTraits) => {
-                    // Get traits from TraitsInput only
                     let enhancedTraits = selectedTraits.map(t => t.value);
-                    
-                    // Update the replacement object directly with TraitsInput traits
                     rep.traits = enhancedTraits;
-                    
-                    // Update all common trait checkboxes to reflect the current traits
                     if (config.commonTraits) {
                         config.commonTraits.forEach(trait => {
                             const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
@@ -3071,8 +2966,6 @@ class ModifierPanelManager {
                             }
                         });
                     }
-                    
-                    // Also update dedicated secret field if it exists
                     const secretField = config.fields.find(field => field.id.includes('secret'));
                     if (secretField) {
                         const secretElement = formElement.querySelector(`#${secretField.id}`);
@@ -3083,80 +2976,56 @@ class ModifierPanelManager {
                             }
                         }
                     }
-                    
-                    // Trigger callback
                     if (onChangeCallback) {
                         onChangeCallback(rep);
                     }
                 }
             });
-            
-            // Set initial value for traits input
             if (rep.traits && Array.isArray(rep.traits)) {
                 traitsInput.setValue(rep.traits);
             }
         }
-
-        // Add simple listener for skill select to show/hide lore name field
         const skillSelect = formElement.querySelector('#skill-select');
         const loreNameContainer = formElement.querySelector('#lore-name-container');
         const loreNameField = formElement.querySelector('#lore-name');
-        
         if (skillSelect && loreNameContainer && loreNameField) {
             skillSelect.addEventListener('change', () => {
                 const isLore = skillSelect.value.toLowerCase() === 'lore';
-                
-                // Super simple - just show or hide with CSS
                 loreNameContainer.style.display = isLore ? 'flex' : 'none';
-                
-                // Update the rep
                 rep.checkType = skillSelect.value.toLowerCase();
-                
-                // Clear lore name if switching away from lore
                 if (!isLore) {
                     rep.loreName = '';
                     loreNameField.value = '';
                 }
-                
                 if (onChangeCallback) {
                     onChangeCallback(rep);
                 }
             });
         }
-
-        // Add simple listener for condition select to show/hide value field
         const conditionSelect = formElement.querySelector('#condition-select');
         const conditionValueContainer = formElement.querySelector('#condition-value-container');
+        let updateConditionValueVisibility = null;
         if (conditionSelect && conditionValueContainer) {
-            console.log('[PF2e Converter] Attaching condition value show/hide listener');
-            const updateConditionValueVisibility = () => {
+            updateConditionValueVisibility = () => {
                 const selected = conditionSelect.value;
                 const show = CONDITIONS_WITH_VALUES.includes(selected);
-                console.log(`[PF2e Converter] Condition selected: '${selected}', show value field: ${show}`);
                 conditionValueContainer.style.display = show ? 'flex' : 'none';
-                // Optionally clear value if hiding
                 if (!show) {
                     rep.degree = null;
                     const valueField = formElement.querySelector('#condition-value');
                     if (valueField) valueField.value = '';
-                    console.log('[PF2e Converter] Hiding value field and clearing value');
-                } else {
-                    console.log('[PF2e Converter] Showing value field');
                 }
+            };
+            conditionSelect.addEventListener('change', () => {
+                updateConditionValueVisibility();
                 if (onChangeCallback) {
                     onChangeCallback(rep);
                 }
-            };
-            conditionSelect.addEventListener('change', updateConditionValueVisibility);
-            // Initial state
+            });
             updateConditionValueVisibility();
         }
-
-        // Add input event listener to the form
         formElement.addEventListener('input', (event) => {
             let shouldTriggerCallback = false;
-            
-            // Update all regular fields
             config.fields.forEach(field => {
                 const element = formElement.querySelector(`#${field.id}`);
                 if (element && element === event.target) {
@@ -3180,23 +3049,19 @@ class ModifierPanelManager {
                     shouldTriggerCallback = true;
                 }
             });
-            
+            // After any input, update condition value field visibility if relevant
+            if (type === 'condition' && updateConditionValueVisibility) {
+                updateConditionValueVisibility();
+            }
             if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep);
             }
-            
-            // Handle common trait checkboxes
             if (config.commonTraits) {
-                // Initialize traits array if it doesn't exist
                 if (!rep.traits) rep.traits = [];
-                
-                // Get traits from TraitsInput component
                 let enhancedTraits = [];
                 if (traitsInput) {
                     enhancedTraits = traitsInput.getValue();
                 }
-                
-                // Get traits from common trait checkboxes (only checked ones)
                 let checkboxTraits = [];
                 config.commonTraits.forEach(trait => {
                     const element = formElement.querySelector(`#${type}-trait-${trait}`);
@@ -3204,38 +3069,26 @@ class ModifierPanelManager {
                         checkboxTraits.push(trait);
                     }
                 });
-                
-                // When checkboxes change, update the replacement object and sync TraitsInput
                 const allTraits = [...new Set([...enhancedTraits, ...checkboxTraits])];
                 rep.traits = allTraits;
-                
-                // Sync the TraitsInput with the combined traits
                 if (traitsInput) {
                     const currentValues = traitsInput.getValue();
-                    // Check if the trait lists are different
                     const currentSet = new Set(currentValues);
                     const newSet = new Set(allTraits);
                     const hasChanged = currentSet.size !== newSet.size || 
                         [...currentSet].some(trait => !newSet.has(trait)) ||
                         [...newSet].some(trait => !currentSet.has(trait));
-                    
                     if (hasChanged) {
-                        traitsInput.setValue(allTraits, false); // Don't trigger onChange to avoid loop
+                        traitsInput.setValue(allTraits, false);
                     }
                 }
             }
-            
-            // Trigger callback
             if (onChangeCallback) {
                 onChangeCallback(rep);
             }
         });
-
-        // Add change event listener for checkboxes (since they don't trigger input events)
         formElement.addEventListener('change', (event) => {
             let shouldTriggerCallback = false;
-            
-            // Check if the changed element is a regular field
             config.fields.forEach(field => {
                 const element = formElement.querySelector(`#${field.id}`);
                 if (element && element === event.target && field.type === 'checkbox') {
@@ -3243,46 +3096,33 @@ class ModifierPanelManager {
                     shouldTriggerCallback = true;
                 }
             });
-            
-            // Check if the changed element is a common trait checkbox
+            // After any change, update condition value field visibility if relevant
+            if (type === 'condition' && updateConditionValueVisibility) {
+                updateConditionValueVisibility();
+            }
             if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
-                // Handle common trait checkbox changes
                 const traitName = event.target.id.replace(`${type}-trait-`, '');
                 const isChecked = event.target.checked;
-                
-                // Initialize traits array if it doesn't exist
                 if (!rep.traits) rep.traits = [];
-                
-                // Get current traits from TraitsInput
                 let currentTraits = [];
                 if (traitsInput) {
                     currentTraits = traitsInput.getValue();
                 }
-                
-                // Add or remove the trait based on checkbox state
                 if (isChecked && !currentTraits.includes(traitName)) {
                     currentTraits.push(traitName);
                 } else if (!isChecked && currentTraits.includes(traitName)) {
                     currentTraits = currentTraits.filter(trait => trait !== traitName);
                 }
-                
-                // Update the replacement object
                 rep.traits = currentTraits;
-                
-                // Sync the TraitsInput with the updated traits
                 if (traitsInput) {
-                    traitsInput.setValue(currentTraits, false); // Don't trigger onChange to avoid loop
+                    traitsInput.setValue(currentTraits, false);
                 }
-                
                 shouldTriggerCallback = true;
             }
-            
             if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep);
             }
         });
-
-        // Add simple listener for condition select to re-render the panel on change
         if (conditionSelect && type === 'condition') {
             conditionSelect.addEventListener('change', () => {
                 if (onChangeCallback) {
@@ -3291,23 +3131,11 @@ class ModifierPanelManager {
             });
         }
     }
-
-    /**
-     * Add event listeners specifically for damage form
-     * @param {HTMLElement} formElement - The form element
-     * @param {object} rep - The damage replacement object
-     * @param {object} config - The panel configuration
-     * @param {function} onChangeCallback - Callback when values change
-     */
     addDamageFormListeners(formElement, rep, config, onChangeCallback) {
-        // Ensure damageComponents exists
         if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
             rep.damageComponents = [];
         }
-
-        // Add component change listener
         const updateComponents = () => {
-            // Update all component fields
             rep.damageComponents.forEach((component, componentIndex) => {
                 config.componentFields.forEach(field => {
                     const element = formElement.querySelector(`#damage-${componentIndex}-${field.id}`);
@@ -3326,8 +3154,6 @@ class ModifierPanelManager {
                     }
                 });
             });
-            
-            // Update additional fields
             if (config.fields) {
                 config.fields.forEach(field => {
                     const element = formElement.querySelector(`#${field.id}`);
@@ -3346,19 +3172,12 @@ class ModifierPanelManager {
                     }
                 });
             }
-            
-            // Trigger callback
             if (onChangeCallback) {
                 onChangeCallback(rep);
             }
         };
-
-        // Add input event listener to the form
         formElement.addEventListener('input', updateComponents);
-
-        // Add change event listener for select elements (since they don't trigger input events)
         formElement.addEventListener('change', (event) => {
-            // Check if the changed element is a component select field
             const componentSelectMatch = event.target.id.match(/^damage-(\d+)-(category|damage-type)$/);
             if (componentSelectMatch) {
                 const componentIndex = parseInt(componentSelectMatch[1]);
@@ -3366,13 +3185,11 @@ class ModifierPanelManager {
                 const component = rep.damageComponents[componentIndex];
                 if (component) {
                     if (fieldName === 'category') {
-                        // Handle category field specifically
                         const field = config.componentFields.find(f => f.id === 'category');
                         if (field) {
                             field.setValue(component, event.target.value);
                         }
                     } else {
-                        // Handle other select fields
                         component[fieldName] = event.target.value;
                     }
                     if (onChangeCallback) {
@@ -3380,172 +3197,9 @@ class ModifierPanelManager {
                     }
                 }
             }
-            
-            // Check if the changed element is an additional field
             if (config.fields && config.fields.some(field => field.id === event.target.id)) {
                 updateComponents();
             }
         });
-
-
     }
-
-    /**
-     * Add traits field to any panel configuration
-     * @param {string} type - The replacement type
-     * @param {string} fieldId - The field ID for traits (e.g., 'damage-traits')
-     */
-    addTraitsField(type, fieldId = null) {
-        const config = this.panelConfigs.get(type);
-        if (!config) {
-            console.warn(`Cannot add traits to unknown panel type: ${type}`);
-            return;
-        }
-
-        // Check if traits field already exists
-        const existingTraitsField = config.fields.find(field => field.id.includes('traits'));
-        if (existingTraitsField) {
-            console.warn(`Traits field already exists for panel type: ${type}`);
-            return;
-        }
-
-        const traitsFieldId = fieldId || `${type}-traits`;
-        const traitsField = {
-            id: traitsFieldId,
-            type: 'text',
-            label: 'Traits',
-            placeholder: 'comma,separated',
-            getValue: (rep) => (rep.traits && rep.traits.join(',')) || '',
-            setValue: (rep, value) => { 
-                rep.traits = value.split(',').map(s => s.trim()).filter(Boolean);
-                // Update secret checkbox based on traits if secret field exists
-                if (this.supportsSecret(type)) {
-                    rep.secret = rep.traits.includes('secret');
-                }
-            }
-        };
-
-        config.fields.push(traitsField);
-    }
-
-    /**
-     * Check if a replacement type supports traits
-     * @param {string} type - The replacement type
-     * @returns {boolean} - True if the type supports traits
-     */
-    supportsTraits(type) {
-        const config = this.panelConfigs.get(type);
-        if (!config) return false;
-        
-        return config.fields.some(field => field.id.includes('traits'));
-    }
-
-    /**
-     * Add traits field with predefined options to any panel configuration
-     * @param {string} type - The replacement type
-     * @param {Array} traitOptions - Array of trait options
-     * @param {string} fieldId - The field ID for traits
-     */
-    addTraitsFieldWithOptions(type, traitOptions = [], fieldId = null) {
-        const config = this.panelConfigs.get(type);
-        if (!config) {
-            console.warn(`Cannot add traits to unknown panel type: ${type}`);
-            return;
-        }
-
-        // Check if traits field already exists
-        const existingTraitsField = config.fields.find(field => field.id.includes('traits'));
-        if (existingTraitsField) {
-            console.warn(`Traits field already exists for panel type: ${type}`);
-            return;
-        }
-
-        const traitsFieldId = fieldId || `${type}-traits`;
-        const traitsField = {
-            id: traitsFieldId,
-            type: traitOptions.length > 0 ? 'multiselect' : 'text',
-            label: 'Traits',
-            placeholder: traitOptions.length > 0 ? undefined : 'comma,separated',
-            options: traitOptions,
-            getValue: (rep) => (rep.traits && rep.traits.join(',')) || '',
-            setValue: (rep, value) => { 
-                if (Array.isArray(value)) {
-                    rep.traits = value;
-                } else {
-                    rep.traits = value.split(',').map(s => s.trim()).filter(Boolean);
-                }
-                // Update secret checkbox based on traits if secret field exists
-                if (this.supportsSecret(type)) {
-                    rep.secret = rep.traits.includes('secret');
-                }
-            }
-        };
-
-        config.fields.push(traitsField);
-    }
-
-    /**
-     * Add secret checkbox to any panel configuration
-     * @param {string} type - The replacement type
-     * @param {string} fieldId - The field ID for secret (e.g., 'damage-secret')
-     */
-    addSecretField(type, fieldId = null) {
-        const config = this.panelConfigs.get(type);
-        if (!config) {
-            console.warn(`Cannot add secret field to unknown panel type: ${type}`);
-            return;
-        }
-
-        // Check if secret field already exists
-        const existingSecretField = config.fields.find(field => field.id.includes('secret'));
-        if (existingSecretField) {
-            console.warn(`Secret field already exists for panel type: ${type}`);
-            return;
-        }
-
-        const secretFieldId = fieldId || `${type}-secret`;
-        const secretField = {
-            id: secretFieldId,
-            type: 'checkbox',
-            label: 'Secret',
-            getValue: (rep) => !!rep.secret,
-            setValue: (rep, value) => { 
-                rep.secret = value;
-                // Also update traits array to include/exclude 'secret'
-                if (!rep.traits) rep.traits = [];
-                if (value && !rep.traits.includes('secret')) {
-                    rep.traits.push('secret');
-                } else if (!value && rep.traits.includes('secret')) {
-                    rep.traits = rep.traits.filter(trait => trait !== 'secret');
-                }
-            }
-        };
-
-        config.fields.push(secretField);
-    }
-
-    /**
-     * Check if a replacement type supports secret
-     * @param {string} type - The replacement type
-     * @returns {boolean} - True if the type supports secret
-     */
-    supportsSecret(type) {
-        const config = this.panelConfigs.get(type);
-        if (!config) return false;
-        
-        return config.fields.some(field => field.id.includes('secret'));
-    }
-
-    /**
-     * Get replacement types that commonly support secret
-     * @returns {Array} - Array of replacement types that support secret
-     */
-    getSecretSupportedTypes() {
-        return ['save', 'skill', 'check', 'damage', 'healing', 'template'];
-    }
-
-
 }
-
-// ===================== END MODIFIER PANEL SYSTEM =====================
-
