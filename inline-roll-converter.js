@@ -885,22 +885,6 @@ class CheckReplacement extends RollReplacement {
             commonTraits: ['secret']
         };
     }
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            checkType: this.checkType,
-            dc: this.dc,
-            secret: this.secret,
-            defense: this.defense,
-            against: this.against,
-            multipleSkills: this.multipleSkills,
-            skills: this.skills,
-            loreName: this.loreName,
-            traits: this.traits,
-            enabled: this.enabled
-        };
-    }
     resetToOriginal() {
         super.resetToOriginal();
         this.secret = false;
@@ -1022,17 +1006,6 @@ class SaveReplacement extends RollReplacement {
             commonTraits: ['secret']
         };
     }
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            saveType: this.saveType,
-            dc: this.dc,
-            basic: this.basic,
-            traits: this.traits,
-            enabled: this.enabled
-        };
-    }
     resetToOriginal() {
         super.resetToOriginal();
         this.basic = false;
@@ -1096,16 +1069,6 @@ class TemplateReplacement extends RollReplacement {
             ]
         };
     }
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            shape: this.shape,
-            distance: this.distance,
-            width: this.width,
-            enabled: this.enabled
-        };
-    }
     resetToOriginal() {
         super.resetToOriginal();
         this.width = 5;
@@ -1145,14 +1108,6 @@ class WithinReplacement extends RollReplacement {
             fields: [
                 ...super.panelConfig.fields
             ]
-        };
-    }
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            distance: this.distance,
-            enabled: this.enabled
         };
     }
     resetToOriginal() {
@@ -1221,16 +1176,6 @@ class UtilityReplacement extends RollReplacement {
             ]
         };
     }
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            expression: this.expression,
-            flavor: this.flavor,
-            gmOnly: this.gmOnly,
-            enabled: this.enabled
-        };
-    }
     resetToOriginal() {
         super.resetToOriginal();
         this.flavor = '';
@@ -1286,14 +1231,6 @@ class HealingReplacement extends RollReplacement {
             ]
         };
     }
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            dice: this.dice,
-            enabled: this.enabled
-        };
-    }
     resetToOriginal() {
         super.resetToOriginal();
     }
@@ -1337,16 +1274,6 @@ class ActionReplacement extends RollReplacement {
             fields: [
                 ...super.panelConfig.fields
             ]
-        };
-    }
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            actionName: this.actionName,
-            variant: this.variant,
-            statistic: this.statistic,
-            enabled: this.enabled
         };
     }
     resetToOriginal() {
@@ -1437,16 +1364,6 @@ class ConditionReplacement extends Replacement {
                 },
                 ...super.panelConfig.fields
             ]
-        };
-    }
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            conditionName: this.conditionName,
-            degree: this.degree,
-            uuid: this.uuid,
-            enabled: this.enabled
         };
     }
     resetToOriginal() {
