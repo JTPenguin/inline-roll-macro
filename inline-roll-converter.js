@@ -1474,6 +1474,8 @@ class TextProcessor {
     }
     process(inputText) {
         // Parse and create new replacements from scratch
+        // Reset linkedConditions to ensure deduplication is fresh for each parse
+        this.linkedConditions = new Set();
         const rollMatches = this.detector.detectAll(inputText);
         const replacements = this.createReplacements(rollMatches);
         return replacements;
@@ -2600,6 +2602,41 @@ class ModifierPanelManager {
             componentFields: DAMAGE_COMPONENT_FIELDS,
             fields: DAMAGE_ADDITIONAL_FIELDS
         });
+
+        // Condition panel configuration
+        this.panelConfigs.set('condition', {
+            title: 'Condition',
+            showTraits: false, // Do not show traits or common traits for conditions
+            fields: [
+                {
+                    id: 'condition-select',
+                    type: 'select',
+                    label: 'Condition',
+                    options: [
+                        ...CONDITIONS_WITH_VALUES.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
+                        ...CONDITIONS_WITHOUT_VALUES.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) }))
+                    ],
+                    getValue: (rep) => rep.conditionName || '',
+                    setValue: (rep, value) => {
+                        rep.conditionName = value;
+                        rep.uuid = getConditionUUID(value); // Update UUID when condition changes
+                        // If switching to a condition without value, clear degree
+                        if (!CONDITIONS_WITH_VALUES.includes(value)) {
+                            rep.degree = null;
+                        }
+                    }
+                },
+                {
+                    id: 'condition-value',
+                    type: 'number',
+                    label: 'Value',
+                    min: 1,
+                    getValue: (rep) => rep.degree || '',
+                    setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
+                    showIf: (rep) => CONDITIONS_WITH_VALUES.includes(rep.conditionName)
+                }
+            ]
+        });
     }
 
     /**
@@ -2623,9 +2660,9 @@ class ModifierPanelManager {
         // Generate regular fields
         const fieldsHTML = config.fields.map(field => this.generateFieldHTML(field, rep)).join('');
         
-        // Generate common trait checkboxes if defined
+        // Generate common trait checkboxes if defined and showTraits is not false
         let commonTraitsHTML = '';
-        if (config.commonTraits && config.commonTraits.length > 0) {
+        if ((config.showTraits !== false) && config.commonTraits && config.commonTraits.length > 0) {
             const traitCheckboxes = config.commonTraits.map(trait => {
                 const isChecked = rep.traits && rep.traits.includes(trait);
                 return `
@@ -2638,14 +2675,17 @@ class ModifierPanelManager {
             commonTraitsHTML = traitCheckboxes;
         }
         
-        // Generate enhanced traits field
-        const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
-        const traitsFieldHTML = `
-            <div style="display: flex; align-items: flex-start; gap: 8px;">
-                <label style="width: 80px; flex-shrink: 0; margin-top: 8px;"><strong>Traits:</strong></label>
-                <div id="${traitsContainerId}" style="flex: 1;"></div>
-            </div>
-        `;
+        // Generate enhanced traits field only if showTraits is not false
+        let traitsFieldHTML = '';
+        if (config.showTraits !== false) {
+            const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
+            traitsFieldHTML = `
+                <div style="display: flex; align-items: flex-start; gap: 8px;">
+                    <label style="width: 80px; flex-shrink: 0; margin-top: 8px;"><strong>Traits:</strong></label>
+                    <div id="${traitsContainerId}" style="flex: 1;"></div>
+                </div>
+            `;
+        }
         
         return `
             <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
@@ -2800,17 +2840,22 @@ class ModifierPanelManager {
             
             case 'number':
                 const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                const html = `
+                    <div id="${field.id}-container" style="display: flex; align-items: center; gap: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
                         <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
                     </div>
                 `;
+                if (rep && rep.conditionName !== undefined) {
+                    console.log(`[PF2e Converter] Rendering number field for condition: field.id='${field.id}', container id='${field.id}-container', value='${value}'`);
+                    console.log('[PF2e Converter] Number field HTML:', html);
+                }
+                return html;
             
             case 'checkbox':
                 const checked = value ? 'checked' : '';
                 return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
                         <input type="checkbox" id="${field.id}" ${checked} style="width: auto; margin: 0;" />
                     </div>
@@ -2979,6 +3024,34 @@ class ModifierPanelManager {
             });
         }
 
+        // Add simple listener for condition select to show/hide value field
+        const conditionSelect = formElement.querySelector('#condition-select');
+        const conditionValueContainer = formElement.querySelector('#condition-value-container');
+        if (conditionSelect && conditionValueContainer) {
+            console.log('[PF2e Converter] Attaching condition value show/hide listener');
+            const updateConditionValueVisibility = () => {
+                const selected = conditionSelect.value;
+                const show = CONDITIONS_WITH_VALUES.includes(selected);
+                console.log(`[PF2e Converter] Condition selected: '${selected}', show value field: ${show}`);
+                conditionValueContainer.style.display = show ? 'flex' : 'none';
+                // Optionally clear value if hiding
+                if (!show) {
+                    rep.degree = null;
+                    const valueField = formElement.querySelector('#condition-value');
+                    if (valueField) valueField.value = '';
+                    console.log('[PF2e Converter] Hiding value field and clearing value');
+                } else {
+                    console.log('[PF2e Converter] Showing value field');
+                }
+                if (onChangeCallback) {
+                    onChangeCallback(rep);
+                }
+            };
+            conditionSelect.addEventListener('change', updateConditionValueVisibility);
+            // Initial state
+            updateConditionValueVisibility();
+        }
+
         // Add input event listener to the form
         formElement.addEventListener('input', (event) => {
             let shouldTriggerCallback = false;
@@ -3108,6 +3181,15 @@ class ModifierPanelManager {
                 onChangeCallback(rep);
             }
         });
+
+        // Add simple listener for condition select to re-render the panel on change
+        if (conditionSelect && type === 'condition') {
+            conditionSelect.addEventListener('change', () => {
+                if (onChangeCallback) {
+                    onChangeCallback(rep);
+                }
+            });
+        }
     }
 
     /**
