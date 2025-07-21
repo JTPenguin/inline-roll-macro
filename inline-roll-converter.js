@@ -274,6 +274,10 @@ class Replacement {
         this.priority = 0;
         this.displayText = '';
         this.type = type; // Store the type string for UI/lookup
+        // For reset: store the last match/config used
+        this._lastMatch = match;
+        this._lastConfig = undefined;
+        // originalRender will be set after parsing in subclasses
     }
     render() { throw new Error('Must implement render()'); }
     getInteractiveParams() {
@@ -284,8 +288,9 @@ class Replacement {
     renderInteractive() {
         const params = this.getInteractiveParams();
         window.pf2eInteractiveElements[this.id] = { ...params };
-        console.log(`[PF2e Converter] Registered interactive element:`, this.id, params);
-        return `<span class="pf2e-interactive" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${this.render()}</span>`;
+        // Add 'modified' class if isModified() is true
+        const modifiedClass = this.isModified && this.isModified() ? ' modified' : '';
+        return `<span class="pf2e-interactive${modifiedClass}" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${this.render()}</span>`;
     }
     validate() { return true; }
     getText() { return this.originalText; }
@@ -296,6 +301,33 @@ class Replacement {
             fields: [DISPLAY_TEXT_FIELD]
         };
     }
+    isModified() {
+        return this.render() !== this.originalRender;
+    }
+    parseMatch(match, config) {
+        // Store for reset
+        this._lastMatch = match;
+        this._lastConfig = config;
+    }
+    resetToOriginal() {
+        // Use the last match/config, or re-detect if missing
+        let match = this._lastMatch, config = this._lastConfig;
+        if (!match) {
+            const detector = new TextProcessor().detector;
+            const matches = detector.detectAll(this.originalText);
+            for (const m of matches) {
+                if (m.type === this.type) {
+                    match = m.match;
+                    config = m.config;
+                    break;
+                }
+            }
+        }
+        if (match) {
+            this.parseMatch(match, config);
+        }
+        this.displayText = '';
+    }
 }
 
 class RollReplacement extends Replacement {
@@ -304,6 +336,7 @@ class RollReplacement extends Replacement {
         this.rollType = '';
         this.traits = [];
         this.options = [];
+        // originalRender will be set after parsing in subclasses
     }
     addTrait(trait) { if (!this.traits.includes(trait)) this.traits.push(trait); }
     addOption(option) { if (!this.options.includes(option)) this.options.push(option); }
@@ -331,6 +364,14 @@ class RollReplacement extends Replacement {
                 ...super.panelConfig.fields
             ]
         };
+    }
+    parseMatch(match, config) {
+        super.parseMatch(match, config);
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        this.traits = [];
+        this.options = [];
     }
 }
 
@@ -495,12 +536,15 @@ class DamageReplacement extends RollReplacement {
         this.areaDamage = false;
         this.match = match;
         this.parseMatch(match, config);
+        this.originalRender = this.render();
     }
     parseMatch(match, config) {
+        super.parseMatch(match, config);
         // Defensive: if match.replacement exists, skip parsing (already replaced)
         if (match && match.replacement) return;
         
         // If this is a multi-damage match, match[0] is the whole string, match[1] is the repeated group
+        this.damageComponents = [];
         if (Array.isArray(match.multiMatches)) {
             for (const m of match.multiMatches) {
                 this._parseSingleDamage(m);
@@ -660,6 +704,19 @@ class DamageReplacement extends RollReplacement {
             ]
         };
     }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            areaDamage: this.areaDamage,
+            damageComponents: this.damageComponents.map(dc => dc.toJSON()),
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        this.areaDamage = false;
+    }
 }
 
 // -------------------- Check Replacement --------------------
@@ -678,8 +735,10 @@ class CheckReplacement extends RollReplacement {
         this.skills = [];
         this.loreName = '';
         this.parseMatch(match, config);
+        this.originalRender = this.render();
     }
     parseMatch(match, config) {
+        super.parseMatch(match, config);
         // Extract check type, DC, and modifiers
         if (config && config.groups) {
             for (const group of config.groups) {
@@ -687,33 +746,33 @@ class CheckReplacement extends RollReplacement {
                 if (group.dc && match[group.dc]) this.dc = match[group.dc];
             }
         } else {
-                    // Defensive: if match.replacement exists, skip parsing (already replaced)
-        if (match && match.replacement) return;
-        
-        // Check if this is a lore check
-        if (match.isLoreCheck) {
-            this.checkType = 'lore';
-            this.loreName = match.loreName;
-            this.dc = match[1] || null;
-            return;
-        }
-        
-        // Check if this is a multiple skills match
-        if (match.multipleSkills && match.skills) {
-            this.multipleSkills = true;
-            this.skills = match.skills;
-            this.dc = match.dc || match[1] || null;
-        } else {
-            // Handle multiple skills logic (moved from pattern handler)
-            if (match[2] && match[2].includes(' or ')) {
-                this.multipleSkills = true;
-                this.skills = match[2].split(/\s+or\s+/).map(s => s.trim());
+            // Defensive: if match.replacement exists, skip parsing (already replaced)
+            if (match && match.replacement) return;
+            
+            // Check if this is a lore check
+            if (match.isLoreCheck) {
+                this.checkType = 'lore';
+                this.loreName = match.loreName;
                 this.dc = match[1] || null;
-            } else {
-                this.checkType = match[2] ? match[2].toLowerCase() : '';
-                this.dc = match[1] || null;
+                return;
             }
-        }
+            
+            // Check if this is a multiple skills match
+            if (match.multipleSkills && match.skills) {
+                this.multipleSkills = true;
+                this.skills = match.skills;
+                this.dc = match.dc || match[1] || null;
+            } else {
+                // Handle multiple skills logic (moved from pattern handler)
+                if (match[2] && match[2].includes(' or ')) {
+                    this.multipleSkills = true;
+                    this.skills = match[2].split(/\s+or\s+/).map(s => s.trim());
+                    this.dc = match[1] || null;
+                } else {
+                    this.checkType = match[2] ? match[2].toLowerCase() : '';
+                    this.dc = match[1] || null;
+                }
+            }
         }
     }
     render() {
@@ -826,6 +885,31 @@ class CheckReplacement extends RollReplacement {
             commonTraits: ['secret']
         };
     }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            checkType: this.checkType,
+            dc: this.dc,
+            secret: this.secret,
+            defense: this.defense,
+            against: this.against,
+            multipleSkills: this.multipleSkills,
+            skills: this.skills,
+            loreName: this.loreName,
+            traits: this.traits,
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        this.secret = false;
+        this.defense = '';
+        this.against = '';
+        this.multipleSkills = false;
+        this.skills = [];
+        this.loreName = '';
+    }
 }
 
 // -------------------- Save Replacement --------------------
@@ -839,31 +923,23 @@ class SaveReplacement extends RollReplacement {
         this.basic = false;
         this.match = match;
         this.parseMatch(match, config);
+        this.originalRender = this.render();
     }
     parseMatch(match, config) {
-        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        super.parseMatch(match, config);
         if (match && match.replacement) return;
-        
-        // Robust extraction by scanning all indices for components
         for (let i = 1; i < match.length; i++) {
             const value = match[i];
             if (!value) continue;
-            
-            // Check if this is a DC (numeric value, typically 1-2 digits)
             if (/^\d{1,2}$/.test(value)) {
                 this.dc = value;
-            }
-            // Check if this is a save type (fort/reflex/will variations)
-            else if (/^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
+            } else if (/^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
                 this.saveType = value.toLowerCase();
-                // Normalize save type
                 if (this.saveType.startsWith('fort')) this.saveType = 'fortitude';
                 else if (this.saveType.startsWith('ref')) this.saveType = 'reflex';
                 else if (this.saveType.startsWith('will')) this.saveType = 'will';
             }
         }
-        
-        // Check for basic saves
         this.basic = /\bbasic\b/i.test(match[0]);
     }
     render() {
@@ -946,6 +1022,21 @@ class SaveReplacement extends RollReplacement {
             commonTraits: ['secret']
         };
     }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            saveType: this.saveType,
+            dc: this.dc,
+            basic: this.basic,
+            traits: this.traits,
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        this.basic = false;
+    }
 }
 
 // -------------------- Template Replacement --------------------
@@ -958,15 +1049,13 @@ class TemplateReplacement extends RollReplacement {
         this.distance = 0;
         this.width = 5;
         this.parseMatch(match, config);
+        this.originalRender = this.render();
     }
     parseMatch(match, config) {
-        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        super.parseMatch(match, config);
         if (match && match.replacement) return;
-        
         const shapeName = match[2] ? match[2].toLowerCase() : '';
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
-        
-        // Map alternate names to standard shapes
         this.shape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
     }
     render() {
@@ -1007,6 +1096,20 @@ class TemplateReplacement extends RollReplacement {
             ]
         };
     }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            shape: this.shape,
+            distance: this.distance,
+            width: this.width,
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        this.width = 5;
+    }
 }
 
 // -------------------- Within Replacement --------------------
@@ -1017,8 +1120,10 @@ class WithinReplacement extends RollReplacement {
         this.priority = 80;
         this.distance = 0;
         this.parseMatch(match, config);
+        this.originalRender = this.render();
     }
     parseMatch(match, config) {
+        super.parseMatch(match, config);
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
     }
     render() {
@@ -1042,6 +1147,17 @@ class WithinReplacement extends RollReplacement {
             ]
         };
     }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            distance: this.distance,
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+    }
 }
 
 // -------------------- Utility Replacement --------------------
@@ -1055,11 +1171,11 @@ class UtilityReplacement extends RollReplacement {
         this.gmOnly = false;
         this.match = match;
         this.parseMatch(match, config);
+        this.originalRender = this.render();
     }
     parseMatch(match, config) {
-        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        super.parseMatch(match, config);
         if (match && match.replacement) return;
-        
         this.expression = match[1] || '';
     }
     render() {
@@ -1105,6 +1221,21 @@ class UtilityReplacement extends RollReplacement {
             ]
         };
     }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            expression: this.expression,
+            flavor: this.flavor,
+            gmOnly: this.gmOnly,
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        this.flavor = '';
+        this.gmOnly = false;
+    }
 }
 
 // -------------------- Healing Replacement --------------------
@@ -1116,11 +1247,11 @@ class HealingReplacement extends RollReplacement {
         this.dice = '';
         this.match = match;
         this.parseMatch(match, config);
+        this.originalRender = this.render();
     }
     parseMatch(match, config) {
-        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        super.parseMatch(match, config);
         if (match && match.replacement) return;
-        
         this.dice = match[1] || '';
     }
     render() {
@@ -1155,6 +1286,17 @@ class HealingReplacement extends RollReplacement {
             ]
         };
     }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            dice: this.dice,
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+    }
 }
 
 // -------------------- Action Replacement --------------------
@@ -1167,8 +1309,10 @@ class ActionReplacement extends RollReplacement {
         this.variant = '';
         this.statistic = '';
         this.parseMatch(match, config);
+        this.originalRender = this.render();
     }
     parseMatch(match, config) {
+        super.parseMatch(match, config);
         this.actionName = match[1] || '';
     }
     render() {
@@ -1195,6 +1339,21 @@ class ActionReplacement extends RollReplacement {
             ]
         };
     }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            actionName: this.actionName,
+            variant: this.variant,
+            statistic: this.statistic,
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        this.variant = '';
+        this.statistic = '';
+    }
 }
 
 // -------------------- Condition Replacement --------------------
@@ -1217,6 +1376,7 @@ class ConditionReplacement extends Replacement {
             this.enabled = true;
         }
         this.displayText = '';
+        this.originalRender = this.render();
     }
     parseMatch() {
         // args: [condition, value?]
@@ -1278,6 +1438,20 @@ class ConditionReplacement extends Replacement {
                 ...super.panelConfig.fields
             ]
         };
+    }
+    toJSON() {
+        return {
+            type: this.type,
+            displayText: this.displayText,
+            conditionName: this.conditionName,
+            degree: this.degree,
+            uuid: this.uuid,
+            enabled: this.enabled
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        this.degree = null;
     }
 }
 
@@ -1919,6 +2093,7 @@ function showConverterDialog() {
                         padding: 8px;
                         font-family: 'Signika', sans-serif;
                         font-size: 13px;
+                        line-height: 1.7;
                     ">
                         <em style="color: #999;">Live preview will appear here...</em>
                     </div>
@@ -1992,23 +2167,6 @@ function showConverterDialog() {
             .pf2e-preview-content .inline-roll.healing:hover {
                 background: #007800;
             }
-            .pf2e-interactive {
-                cursor: pointer;
-                transition: background 0.2s, outline 0.2s, box-shadow 0.2s, color 0.2s;
-                background: #dddddd;
-                padding: 1px 3px;
-                color: inherit;
-                border-radius: 2px;
-            }
-            .pf2e-interactive:hover {
-                background: #bbbbbb;
-            }
-            .pf2e-interactive.selected {
-                outline: none;
-                background: #1976d2;
-                color: #fff;
-                box-shadow: 0 0 6px 1px #90caf9;
-            }
             
             /* Enhanced traits input styling */
             .traits-input-wrapper .trait-option.active {
@@ -2042,6 +2200,42 @@ function showConverterDialog() {
             .traits-input-wrapper .traits-selected:focus-within {
                 border-color: #1976d2;
                 box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+            }
+            .pf2e-interactive.selected:hover {
+                background: #bbbbbb !important;
+            }
+            .pf2e-interactive.selected.modified:hover {
+                background: #aee9a3 !important;
+            }
+            .pf2e-interactive {
+                cursor: pointer;
+                transition: background 0.2s, outline 0.2s, box-shadow 0.2s, color 0.2s;
+                background: #dddddd;
+                padding: 1px 3px;
+                color: #191813;
+                border-radius: 2px;
+                border: none;
+            }
+            .pf2e-interactive:hover {
+                background: #bbbbbb;
+            }
+            .pf2e-interactive.modified {
+                background: #c8f7c5;
+            }
+            .pf2e-interactive.modified:hover {
+                background: #aee9a3;
+            }
+            .pf2e-interactive.selected {
+                outline: 2px solid #1976d2;
+                box-shadow: 0 0 6px 1px #90caf9;
+            }
+            .pf2e-interactive.selected.modified {
+                outline: 2px solid #1976d2;
+                box-shadow: 0 0 6px 1px #90caf9;
+            }
+            #modifier-reset-btn:hover {
+                background: #e3eafc !important;
+                border-color: #1976d2 !important;
             }
         </style>
     `;
@@ -2117,6 +2311,8 @@ function showConverterDialog() {
                         if (typeof el.scrollIntoView === 'function') {
                             el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                         }
+                        // Attach reset button handler
+                        attachResetButtonHandler(rep, type);
                     });
                 });
                 // Re-apply selection if there was a selected element
@@ -2129,6 +2325,34 @@ function showConverterDialog() {
                 // Render non-interactive preview
                 lastRawConvertedText = processor.renderFromReplacements(lastInputText, window.pf2eReplacements, false);
                 createLivePreview(lastRawConvertedText, livePreview);
+            }
+
+            // Attach reset button handler (now has access to modifierPanelContent, outputHtmlDiv, etc.)
+            function attachResetButtonHandler(rep, type) {
+                const resetBtn = modifierPanelContent.querySelector('#modifier-reset-btn');
+                if (resetBtn) {
+                    resetBtn.onclick = function() {
+                        if (!selectedElementId) return;
+                        // Find the replacement
+                        const idx = window.pf2eReplacements.findIndex(r => r.id === selectedElementId);
+                        if (idx === -1) return;
+                        const rep = window.pf2eReplacements[idx];
+                        rep.resetToOriginal();
+                        renderAll();
+                        // Reselect in the UI and update modifier panel
+                        const selectedEl = outputHtmlDiv.querySelector(`[data-id="${selectedElementId}"]`);
+                        if (selectedEl) selectedEl.classList.add('selected');
+                        const type = rep.type;
+                        const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
+                        modifierPanelContent.innerHTML = panelHTML;
+                        const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
+                        if (form) {
+                            modifierPanelManager.addFormListeners(form, type, rep, handleModifierChange);
+                        }
+                        // Re-attach the reset button handler after rerender
+                        attachResetButtonHandler(rep, type);
+                    };
+                }
             }
 
             // === 5. Hook up events ===
@@ -2756,9 +2980,17 @@ class ModifierPanelManager {
             `;
         }
         const displayTextHTML = displayTextField ? this.generateFieldHTML(displayTextField, rep) : '';
+        // Add Reset button next to the title
+        const resetButtonHTML = `
+            <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
+                Reset
+            </button>
+        `;
         return `
             <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${config.title}</div>
+                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2; display: flex; align-items: center; gap: 8px;">
+                    <span>${config.title}</span>${resetButtonHTML}
+                </div>
                 ${fieldsHTML}
                 ${commonTraitsHTML}
                 ${traitsFieldHTML}
@@ -2792,9 +3024,17 @@ class ModifierPanelManager {
         const additionalFieldsHTML = config.fields ? config.fields.map(field =>
             this.generateFieldHTML(field, rep)
         ).join('') : '';
+        // Add Reset button next to the title
+        const resetButtonHTML = `
+            <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
+                Reset
+            </button>
+        `;
         return `
             <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${config.title}</div>
+                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2; display: flex; align-items: center; gap: 8px;">
+                    <span>${config.title}</span>${resetButtonHTML}
+                </div>
                 <div id="damage-components-container">
                     ${componentSections}
                 </div>
@@ -3203,3 +3443,32 @@ class ModifierPanelManager {
         });
     }
 }
+
+// ... existing code ...
+            function attachResetButtonHandler(rep, type) {
+                const resetBtn = modifierPanelContent.querySelector('#modifier-reset-btn');
+                if (resetBtn) {
+                    resetBtn.onclick = function() {
+                        if (!selectedElementId) return;
+                        // Find the replacement
+                        const idx = window.pf2eReplacements.findIndex(r => r.id === selectedElementId);
+                        if (idx === -1) return;
+                        const rep = window.pf2eReplacements[idx];
+                        rep.resetToOriginal();
+                        renderAll();
+                        // Reselect in the UI and update modifier panel
+                        const selectedEl = outputHtmlDiv.querySelector(`[data-id="${selectedElementId}"]`);
+                        if (selectedEl) selectedEl.classList.add('selected');
+                        const type = rep.type;
+                        const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
+                        modifierPanelContent.innerHTML = panelHTML;
+                        const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
+                        if (form) {
+                            modifierPanelManager.addFormListeners(form, type, rep, handleModifierChange);
+                        }
+                        // Re-attach the reset button handler after rerender
+                        attachResetButtonHandler(rep, type);
+                    };
+                }
+            }
+// ... existing code ...

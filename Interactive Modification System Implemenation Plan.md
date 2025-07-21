@@ -32,18 +32,19 @@ Check off tasks as they are completed.
     - [x] 3.3.1. Add Display Text option for all elements
 
 ### 4. Two-Way Data Binding and Live Updates
-- [ ] 4.1. **Update Element State on Modification**
-    - [ ] 4.1.1. When a user changes a property in the modifier panel, update the corresponding element’s state in JS.
-    - [ ] 4.1.2. Ensure two-way binding: changes in the modifier panel update the state and trigger a re-render of the output and preview panels.
-- [ ] 4.2. **Re-render Output and Preview**
-    - [ ] 4.2.1. Regenerate the output panel’s HTML to reflect changes.
-    - [ ] 4.2.2. Update the live preview to show the new output.
-- [ ] 4.3. **Preserve Modifications**
-    - [ ] 4.3.1. Ensure that user modifications persist during further edits and mode switches.
+- [x] 4.1. **Update Element State on Modification**
+    - [x] 4.1.1. When a user changes a property in the modifier panel, update the corresponding element’s state in JS.
+    - [x] 4.1.2. Ensure two-way binding: changes in the modifier panel update the state and trigger a re-render of the output and preview panels.
+- [x] 4.2. **Re-render Output and Preview**
+    - [x] 4.2.1. Regenerate the output panel’s HTML to reflect changes.
+    - [x] 4.2.2. Update the live preview to show the new output.
+- [x] 4.3. **Preserve Modifications**
+    - [x] 4.3.1. Ensure that user modifications persist during further edits and mode switches.
 
 ### 5. Visual Feedback and Validation
-- [ ] 5.1. **Show Modified State**
-    - [ ] 5.1.1. Visually indicate elements that have been modified (e.g., green tint, icon).
+- [x] 5.1. **Show Modified State**
+    - [x] 5.1.1. Visually indicate elements that have been modified (e.g., green tint).
+    - [x] 5.1.2. Allow user to reset an element to its original parameters
 - [ ] 5.2. **Validation Feedback**
     - [ ] 5.2.1. Validate user input in real time (e.g., DC must be numeric, valid skill names).
     - [ ] 5.2.2. Show error messages or red highlight for invalid input.
