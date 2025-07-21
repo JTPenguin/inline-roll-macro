@@ -29,7 +29,7 @@ Check off tasks as they are completed.
     - [x] 3.2.3. Damage: Dice expression input, dropdown for damage type, checkboxes for persistent/splash/precision, notes.
     - [x] 3.2.4. Condition: Dropdown for condition, numeric input for value (if applicable), display text.
 - [ ] 3.3. **Universal Controls**
-    - [ ] 3.3.1. Add Display Text option for all elements
+    - [x] 3.3.1. Add Display Text option for all elements
 
 ### 4. Two-Way Data Binding and Live Updates
 - [ ] 4.1. **Update Element State on Modification**

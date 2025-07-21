@@ -248,12 +248,13 @@ class Replacement {
         this.originalText = match[0];
         this.enabled = true;
         this.priority = 0;
+        this.displayText = '';
     }
     render() { throw new Error('Must implement render()'); }
     getInteractiveParams() {
         // Base: just type and id
         const type = this.constructor.name.replace('Replacement', '').toLowerCase();
-        return { type, id: this.id };
+        return { type, id: this.id, displayText: this.displayText };
     }
     renderInteractive() {
         const params = this.getInteractiveParams();
@@ -276,6 +277,7 @@ class RollReplacement extends Replacement {
         this.rollType = '';
         this.traits = [];
         this.options = [];
+        // this.displayText is inherited
     }
     addTrait(trait) { if (!this.traits.includes(trait)) this.traits.push(trait); }
     addOption(option) { if (!this.options.includes(option)) this.options.push(option); }
@@ -458,6 +460,7 @@ class DamageReplacement extends RollReplacement {
         this.areaDamage = false;
         this.match = match; // Save the match object for render()
         this.parseMatch(match, config);
+        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -542,6 +545,10 @@ class DamageReplacement extends RollReplacement {
             }
         }
         
+        // Display text logic
+        if (this.displayText && this.displayText.trim()) {
+            return `${roll}{${this.displayText}} damage`;
+        }
         return roll + ' damage';
     }
     
@@ -625,6 +632,7 @@ class CheckReplacement extends RollReplacement {
         this.skills = [];
         this.loreName = ''; // For lore skill checks
         this.parseMatch(match, config);
+        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Extract check type, DC, and modifiers
@@ -678,7 +686,10 @@ class CheckReplacement extends RollReplacement {
             if (this.traits && this.traits.length > 0) {
                 params.push(`traits:${this.traits.join(',')}`);
             }
-            return `@Check[${params.join('|')}]{${this.loreName} Lore} check`;
+            if (this.displayText && this.displayText.trim()) {
+                return `@Check[${params.join('|')}]` + `{${this.displayText}} check`;
+            }
+            return `@Check[${params.join('|')}]` + `{${this.loreName} Lore} check`;
         }
         
         // Handle multiple skills
@@ -689,6 +700,9 @@ class CheckReplacement extends RollReplacement {
                 // Add traits if any exist
                 if (this.traits && this.traits.length > 0) {
                     params.push(`traits:${this.traits.join(',')}`);
+                }
+                if (this.displayText && this.displayText.trim()) {
+                    return `@Check[${params.join('|')}]` + `{${this.displayText}}`;
                 }
                 return `@Check[${params.join('|')}]`;
             });
@@ -701,6 +715,9 @@ class CheckReplacement extends RollReplacement {
         // Add traits if any exist
         if (this.traits && this.traits.length > 0) {
             params.push(`traits:${this.traits.join(',')}`);
+        }
+        if (this.displayText && this.displayText.trim()) {
+            return `@Check[${params.join('|')}]` + `{${this.displayText}} check`;
         }
         return `@Check[${params.join('|')}] check`;
     }
@@ -738,6 +755,7 @@ class SaveReplacement extends RollReplacement {
         this.basic = false;
         this.match = match; // Save the match object for render()
         this.parseMatch(match, config);
+        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -788,7 +806,7 @@ class SaveReplacement extends RollReplacement {
         const originalText = this.match[0];
         const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
         
-        const replacement = `@Check[${params.join('|')}] ${saveTerm}`;
+        const replacement = `@Check[${params.join('|')}]` + (this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '') + ` ${saveTerm}`;
         
         // If the original text was wrapped in parentheses, preserve them
         return hasWrappingParentheses ? `(${replacement})` : replacement;
@@ -820,6 +838,7 @@ class TemplateReplacement extends RollReplacement {
         this.distance = 0;
         this.width = 5;
         this.parseMatch(match, config);
+        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -844,8 +863,9 @@ class TemplateReplacement extends RollReplacement {
             }
         }
         
-        if (originalShapeName) {
-            return `@Template[type:${this.shape}|distance:${this.distance}]{${this.distance}-foot ${originalShapeName}}`;
+        let display = this.displayText && this.displayText.trim() ? this.displayText : (originalShapeName ? `${this.distance}-foot ${originalShapeName}` : '');
+        if (display) {
+            return `@Template[type:${this.shape}|distance:${this.distance}]{${display}}`;
         } else {
             return `@Template[type:${this.shape}|distance:${this.distance}]`;
         }
@@ -869,13 +889,15 @@ class WithinReplacement extends RollReplacement {
         this.priority = 80;
         this.distance = 0;
         this.parseMatch(match, config);
+        // this.displayText is inherited
     }
     parseMatch(match, config) {
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
     }
     render() {
         // Create the inline template format as requested: "within [inline template here]{30 feet}"
-        return `within @Template[type:emanation|distance:${this.distance}]{${this.distance} feet}`;
+        let display = this.displayText && this.displayText.trim() ? this.displayText : `${this.distance} feet`;
+        return `within @Template[type:emanation|distance:${this.distance}]{${display}}`;
     }
     getInteractiveParams() {
         return {
@@ -897,6 +919,7 @@ class UtilityReplacement extends RollReplacement {
         this.gmOnly = false;
         this.match = match; // Save the match object for render()
         this.parseMatch(match, config);
+        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -913,15 +936,16 @@ class UtilityReplacement extends RollReplacement {
         // Handle different utility patterns
         const originalText = this.originalText.toLowerCase();
         
+        let display = this.displayText && this.displayText.trim() ? this.displayText : this.expression;
         if (originalText.includes('again for')) {
-            return `again for [[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+            return `again for [[/gmr ${this.expression} #Recharge]]{${display}}`;
         } else if (originalText.includes("can't use this")) {
-            return `can't use this ability again for [[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+            return `can't use this ability again for [[/gmr ${this.expression} #Recharge]]{${display}}`;
         } else if (originalText.includes('recharges')) {
-            return `recharges in [[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+            return `recharges in [[/gmr ${this.expression} #Recharge]]{${display}}`;
         } else {
             // Default fallback
-            return `[[/gmr ${this.expression} #Recharge]]{${this.expression}}`;
+            return `[[/gmr ${this.expression} #Recharge]]{${display}}`;
         }
     }
     validate() {
@@ -948,6 +972,7 @@ class HealingReplacement extends RollReplacement {
         this.dice = '';
         this.match = match; // Save the match object for render()
         this.parseMatch(match, config);
+        // this.displayText is inherited
     }
     parseMatch(match, config) {
         // Defensive: if match.replacement exists, skip parsing (already replaced)
@@ -964,7 +989,8 @@ class HealingReplacement extends RollReplacement {
         // Create healing replacement that preserves surrounding text
         const dice = this.dice;
         const restOfText = this.originalText.substring(dice.length);
-        return `@Damage[${dice}[healing]]${restOfText}`;
+        let display = this.displayText && this.displayText.trim() ? this.displayText : restOfText;
+        return `@Damage[${dice}[healing]]${display}`;
     }
     validate() {
         if (this.match && this.match.replacement) return true;
@@ -989,11 +1015,15 @@ class ActionReplacement extends RollReplacement {
         this.variant = '';
         this.statistic = '';
         this.parseMatch(match, config);
+        // this.displayText is inherited
     }
     parseMatch(match, config) {
         this.actionName = match[1] || '';
     }
     render() {
+        if (this.displayText && this.displayText.trim()) {
+            return `[[/act ${this.actionName}]]{${this.displayText}}`;
+        }
         return `[[/act ${this.actionName}]]`;
     }
     getInteractiveParams() {
@@ -1030,6 +1060,7 @@ class ConditionReplacement extends Replacement {
             this.linkedConditions.add(dedupKey);
             this.enabled = true;
         }
+        this.displayText = '';
     }
     parseMatch() {
         // args: [condition, value?]
@@ -1041,11 +1072,8 @@ class ConditionReplacement extends Replacement {
     render() {
         if (!this.uuid) return this.originalText;
         const capitalized = this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
-        if (this.degree) {
-            return `@UUID[${this.uuid}]{${capitalized} ${this.degree}}`;
-        } else {
-            return `@UUID[${this.uuid}]{${capitalized}}`;
-        }
+        let display = this.displayText && this.displayText.trim() ? this.displayText : (this.degree ? `${capitalized} ${this.degree}` : capitalized);
+        return `@UUID[${this.uuid}]{${display}}`;
     }
     validate() {
         return this.conditionName && this.uuid;
@@ -2510,6 +2538,16 @@ const DAMAGE_ADDITIONAL_FIELDS = [
     }
 ];
 
+// DRY: Shared Display Text field definition
+const DISPLAY_TEXT_FIELD = {
+    id: 'display-text',
+    type: 'text',
+    label: 'Display Text',
+    placeholder: 'Optional display text',
+    getValue: (rep) => rep.displayText || '',
+    setValue: (rep, value) => { rep.displayText = value; }
+};
+
 class ModifierPanelManager {
     constructor() {
         this.panelConfigs = new Map();
@@ -2592,15 +2630,21 @@ class ModifierPanelManager {
             commonTraits: ['secret']
         });
 
-        // Check panel configuration (same as skill for now)
-        this.panelConfigs.set('check', this.panelConfigs.get('skill'));
+        // Check panel configuration (make a shallow copy of skill, not a reference)
+        const skillConfig = this.panelConfigs.get('skill');
+        this.panelConfigs.set('check', {
+            ...skillConfig,
+            fields: [...skillConfig.fields],
+        });
 
         // Damage panel configuration - special handling for multiple components
         this.panelConfigs.set('damage', {
             title: 'Damage Roll',
             isMultiComponent: true, // Special flag for damage components
             componentFields: DAMAGE_COMPONENT_FIELDS,
-            fields: DAMAGE_ADDITIONAL_FIELDS
+            fields: [
+                ...DAMAGE_ADDITIONAL_FIELDS
+            ]
         });
 
         // Condition panel configuration
@@ -2637,6 +2681,52 @@ class ModifierPanelManager {
                 }
             ]
         });
+
+        // Template panel configuration
+        this.panelConfigs.set('template', {
+            title: 'Template',
+            fields: []
+        });
+
+        // Within panel configuration
+        this.panelConfigs.set('within', {
+            title: 'Within',
+            fields: []
+        });
+
+        // Utility panel configuration
+        this.panelConfigs.set('utility', {
+            title: 'Utility',
+            fields: []
+        });
+
+        // Healing panel configuration
+        this.panelConfigs.set('healing', {
+            title: 'Healing',
+            fields: []
+        });
+
+        // Action panel configuration
+        this.panelConfigs.set('action', {
+            title: 'Action',
+            fields: []
+        });
+
+        // Legacy panel configuration (if needed)
+        this.panelConfigs.set('legacy', {
+            title: 'Legacy',
+            fields: []
+        });
+
+        // DRY: Add Display Text field to all panel configs
+        for (const [type, config] of this.panelConfigs.entries()) {
+            // For damage, add to fields (not componentFields)
+            if (type === 'damage') {
+                config.fields.push(DISPLAY_TEXT_FIELD);
+            } else {
+                config.fields.push(DISPLAY_TEXT_FIELD);
+            }
+        }
     }
 
     /**
@@ -2657,9 +2747,16 @@ class ModifierPanelManager {
             return this.generateDamagePanelHTML(rep, config);
         }
 
-        // Generate regular fields
-        const fieldsHTML = config.fields.map(field => this.generateFieldHTML(field, rep)).join('');
-        
+        // Find the Display Text field and separate it
+        const displayTextFieldIndex = config.fields.findIndex(f => f.id === 'display-text');
+        let fieldsBeforeDisplayText = config.fields;
+        let displayTextField = null;
+        if (displayTextFieldIndex !== -1) {
+            fieldsBeforeDisplayText = config.fields.slice(0, displayTextFieldIndex).concat(config.fields.slice(displayTextFieldIndex + 1));
+            displayTextField = config.fields[displayTextFieldIndex];
+        }
+        const fieldsHTML = fieldsBeforeDisplayText.map(field => this.generateFieldHTML(field, rep)).join('');
+
         // Generate common trait checkboxes if defined and showTraits is not false
         let commonTraitsHTML = '';
         if ((config.showTraits !== false) && config.commonTraits && config.commonTraits.length > 0) {
@@ -2674,7 +2771,7 @@ class ModifierPanelManager {
             }).join('');
             commonTraitsHTML = traitCheckboxes;
         }
-        
+
         // Generate enhanced traits field only if showTraits is not false
         let traitsFieldHTML = '';
         if (config.showTraits !== false) {
@@ -2686,13 +2783,16 @@ class ModifierPanelManager {
                 </div>
             `;
         }
-        
+
+        // Render Display Text field last
+        const displayTextHTML = displayTextField ? this.generateFieldHTML(displayTextField, rep) : '';
         return `
             <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
                 <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${config.title}</div>
                 ${fieldsHTML}
                 ${commonTraitsHTML}
                 ${traitsFieldHTML}
+                ${displayTextHTML}
             </form>
         `;
     }
