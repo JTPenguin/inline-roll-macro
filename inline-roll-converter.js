@@ -870,7 +870,7 @@ class CheckReplacement extends RollReplacement {
                     placeholder: 'e.g., Warfare, Local Politics',
                     getValue: (rep) => rep.loreName || '',
                     setValue: (rep, value) => { rep.loreName = value; },
-                    hideIfNotLore: true
+                    hideIf: (rep) => rep.checkType !== 'lore'
                 },
                 {
                     id: 'skill-dc',
@@ -1360,7 +1360,7 @@ class ConditionReplacement extends Replacement {
                     min: 1,
                     getValue: (rep) => rep.degree || '',
                     setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
-                    hideIfNotValueCondition: true
+                    hideIf: (rep) => !CONDITIONS_WITH_VALUES.includes(rep.conditionName)
                 },
                 ...super.panelConfig.fields
             ]
@@ -2892,7 +2892,10 @@ class ModifierPanelManager {
             const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
             const commonAttrs = `id="${fieldId}" style="width: 100%;"`;
             const labelWidth = '80px';
-            const containerStyle = field.hideIfNotLore && target.checkType !== 'lore' ? 'display: none;' : '';
+            let containerStyle = '';
+            if (field.hideIf && field.hideIf(target)) {
+                containerStyle = 'display: none;';
+            }
             // Use CSS class for all field containers
             let rowClass = 'modifier-field-row';
             // For textarea, multiselect, traits, use flex-start
@@ -3124,9 +3127,7 @@ class ModifierPanelManager {
         const commonAttrs = `id="${field.id}" style="width: 100%;"`;
         const labelWidth = '80px';
         let containerStyle = '';
-        if (field.hideIfNotLore && rep.checkType !== 'lore') {
-            containerStyle = 'display: none;';
-        } else if (field.hideIfNotValueCondition && !CONDITIONS_WITH_VALUES.includes(rep.conditionName)) {
+        if (field.hideIf && field.hideIf(rep)) {
             containerStyle = 'display: none;';
         }
         switch (field.type) {
@@ -3479,7 +3480,6 @@ class ModifierPanelManager {
     }
 }
 
-// ... existing code ...
             function attachResetButtonHandler(rep, type) {
                 const resetBtn = modifierPanelContent.querySelector('#modifier-reset-btn');
                 if (resetBtn) {
@@ -3506,4 +3506,3 @@ class ModifierPanelManager {
                     };
                 }
             }
-// ... existing code ...
