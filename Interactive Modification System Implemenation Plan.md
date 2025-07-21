@@ -55,10 +55,6 @@ Check off tasks as they are completed.
     - [ ] 6.1.2. In Edit Mode, show interactive wrappers and modifier panel.
     - [ ] 6.1.3. In Preview Mode, render output as Foundry would display it, with no interactive controls.
 
-### 7. Final Output Generation
-- [ ] 7.1. **Generate Clean Output**
-    - [ ] 7.1.1. When copying or exporting, strip all interactive markup and output only the final PF2e inline roll syntax and links.
-
 ---
 
 **Tip:**  

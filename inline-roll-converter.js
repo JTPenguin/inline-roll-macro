@@ -3008,16 +3008,6 @@ class ModifierPanelManager {
     generatePanelHTML(type, rep) {
         const Cls = REPLACEMENT_CLASS_MAP[type];
         const config = Cls?.panelConfig;
-        console.log('Generating panel HTML:', {
-            type,
-            repState: rep,
-            hasConfig: !!config,
-            fields: config?.fields?.map(f => ({
-                id: f.id,
-                showIf: f.showIf ? f.showIf(rep) : 'no showIf',
-                value: f.getValue ? f.getValue(rep) : 'no getValue'
-            }))
-        });
         if (!config) {
             return this.generateJSONPanel(type, rep);
         }
@@ -3115,13 +3105,6 @@ class ModifierPanelManager {
         }
     }
     generateFieldHTML(field, rep) {
-        console.log('Generating field HTML:', {
-            fieldId: field.id,
-            showIf: field.showIf ? field.showIf(rep) : 'no showIf',
-            repState: rep
-        });
-        
-        // Don't return empty string - instead set display: none
         const isHidden = field.showIf && !field.showIf(rep);
         const value = field.getValue(rep);
         const commonAttrs = `id="${field.id}" style="width: 100%;"`;
