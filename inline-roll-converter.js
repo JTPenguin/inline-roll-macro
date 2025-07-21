@@ -2154,6 +2154,24 @@ function showConverterDialog() {
                 background: #e3eafc !important;
                 border-color: #1976d2 !important;
             }
+            .modifier-field-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .modifier-field-row:last-child {
+                margin-bottom: 0;
+            }
+            .modifier-field-row.flex-start {
+                align-items: flex-start;
+            }
+            #damage-modifier-form,
+            #modifier-panel form,
+            .damage-component {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
         </style>
     `;
 
@@ -2854,17 +2872,146 @@ const DISPLAY_TEXT_FIELD = {
 };
 
 class ModifierPanelManager {
+    // DRY: Render the panel header (title + reset button)
+    renderPanelHeader(title) {
+        return `
+            <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2; display: flex; align-items: center; gap: 8px;">
+                <span>${title}</span>
+                <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
+                    Reset
+                </button>
+            </div>
+        `;
+    }
+
+    // DRY: Render a group of fields
+    renderFields(fields, target, prefix = '') {
+        return fields.map((field, idx) => {
+            if (field.showIf && !field.showIf(target)) return '';
+            const value = field.getValue(target);
+            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
+            const commonAttrs = `id="${fieldId}" style="width: 100%;"`;
+            const labelWidth = '80px';
+            const containerStyle = field.hideIfNotLore && target.checkType !== 'lore' ? 'display: none;' : '';
+            // Use CSS class for all field containers
+            let rowClass = 'modifier-field-row';
+            // For textarea, multiselect, traits, use flex-start
+            if (["textarea", "multiselect", "traits"].includes(field.type)) rowClass += ' flex-start';
+            switch (field.type) {
+                case 'select':
+                    const options = field.options.map(option => {
+                        const optionValue = typeof option === 'object' ? option.value : option;
+                        const optionLabel = typeof option === 'object' ? option.label : option;
+                        const selected = optionValue === value ? 'selected' : '';
+                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                    }).join('');
+                    return `
+                        <div class="${rowClass}" style="${containerStyle}">
+                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                            <select ${commonAttrs}>
+                                ${options}
+                            </select>
+                        </div>
+                    `;
+                case 'number':
+                    const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                            <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
+                        </div>
+                    `;
+                case 'checkbox':
+                    const checked = value ? 'checked' : '';
+                    return `
+                        <div class="${rowClass}" style="${containerStyle}">
+                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                            <input type="checkbox" id="${fieldId}" ${checked} style="width: auto; margin: 0;" />
+                        </div>
+                    `;
+                case 'text':
+                    const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label style="width: ${labelWidth}; flex-shrink: 0; font-weight: bold;">${field.label}:</label>
+                            <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+                        </div>
+                    `;
+                case 'textarea':
+                    const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                    const rows = field.rows || 3;
+                    return `
+                        <div class="${rowClass}" style="${containerStyle}">
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}:</strong></label>
+                            <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+                        </div>
+                    `;
+                case 'multiselect':
+                    const selectedValues = Array.isArray(value) ? value : [value];
+                    const multiOptions = field.options.map(option => {
+                        const optionValue = typeof option === 'object' ? option.value : option;
+                        const optionLabel = typeof option === 'object' ? option.label : option;
+                        const selected = selectedValues.includes(optionValue) ? 'selected' : '';
+                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                    }).join('');
+                    return `
+                        <div class="${rowClass}" style="${containerStyle}">
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}:</strong></label>
+                            <select ${commonAttrs} multiple>
+                                ${multiOptions}
+                            </select>
+                        </div>
+                    `;
+                case 'traits':
+                    const uniqueId = `${fieldId}-container-${Math.random().toString(36).substr(2, 9)}`;
+                    return `
+                        <div class="${rowClass}" style="${containerStyle}">
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>${field.label}:</strong></label>
+                            <div id="${uniqueId}" style="flex: 1;"></div>
+                        </div>
+                    `;
+                default:
+                    return `<div class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
+            }
+        }).join('');
+    }
+
+    // DRY: Render common traits checkboxes
+    renderCommonTraits(commonTraits, rep, type) {
+        if (!commonTraits || !commonTraits.length) return '';
+        return commonTraits.map(trait => {
+                const isChecked = rep.traits && rep.traits.includes(trait);
+                return `
+                    <div class="modifier-field-row">
+                        <label style="width: 80px; flex-shrink: 0;"><strong>${trait.charAt(0).toUpperCase() + trait.slice(1)}:</strong></label>
+                        <input type="checkbox" id="${type}-trait-${trait}" style="width: auto; margin: 0;" ${isChecked ? 'checked' : ''} />
+                    </div>
+                `;
+            }).join('');
+    }
+
+    // DRY: Render traits field
+    renderTraitsField(config, type) {
+        if (config.showTraits === false) return '';
+            const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
+        return `
+                <div class="modifier-field-row flex-start">
+                    <label style="width: 80px; flex-shrink: 0; margin-top: 8px;"><strong>Traits:</strong></label>
+                    <div id="${traitsContainerId}" style="flex: 1;"></div>
+                </div>
+            `;
+        }
+
     generatePanelHTML(type, rep) {
-        console.log('[DEBUG] generatePanelHTML called with:', { type, rep });
         const Cls = REPLACEMENT_CLASS_MAP[type];
         const config = Cls?.panelConfig;
-        console.log('[DEBUG] generatePanelHTML resolved:', { Cls, config });
         if (!config) {
             return this.generateJSONPanel(type, rep);
         }
         if (type === 'damage' && config.isMultiComponent) {
             return this.generateDamagePanelHTML(rep, config);
         }
+        // Split out display text field if present
         const displayTextFieldIndex = config.fields.findIndex(f => f.id === 'display-text');
         let fieldsBeforeDisplayText = config.fields;
         let displayTextField = null;
@@ -2872,90 +3019,44 @@ class ModifierPanelManager {
             fieldsBeforeDisplayText = config.fields.slice(0, displayTextFieldIndex).concat(config.fields.slice(displayTextFieldIndex + 1));
             displayTextField = config.fields[displayTextFieldIndex];
         }
-        const fieldsHTML = fieldsBeforeDisplayText.map(field => this.generateFieldHTML(field, rep)).join('');
-        let commonTraitsHTML = '';
-        if ((config.showTraits !== false) && config.commonTraits && config.commonTraits.length > 0) {
-            const traitCheckboxes = config.commonTraits.map(trait => {
-                const isChecked = rep.traits && rep.traits.includes(trait);
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label style="width: 80px; flex-shrink: 0;"><strong>${trait.charAt(0).toUpperCase() + trait.slice(1)}:</strong></label>
-                        <input type="checkbox" id="${type}-trait-${trait}" style="width: auto; margin: 0;" ${isChecked ? 'checked' : ''} />
-                    </div>
-                `;
-            }).join('');
-            commonTraitsHTML = traitCheckboxes;
-        }
-        let traitsFieldHTML = '';
-        if (config.showTraits !== false) {
-            const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
-            traitsFieldHTML = `
-                <div style="display: flex; align-items: flex-start; gap: 8px;">
-                    <label style="width: 80px; flex-shrink: 0; margin-top: 8px;"><strong>Traits:</strong></label>
-                    <div id="${traitsContainerId}" style="flex: 1;"></div>
-                </div>
-            `;
-        }
-        const displayTextHTML = displayTextField ? this.generateFieldHTML(displayTextField, rep) : '';
-        // Add Reset button next to the title
-        const resetButtonHTML = `
-            <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
-                Reset
-            </button>
-        `;
         return `
             <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2; display: flex; align-items: center; gap: 8px;">
-                    <span>${config.title}</span>${resetButtonHTML}
-                </div>
-                ${fieldsHTML}
-                ${commonTraitsHTML}
-                ${traitsFieldHTML}
-                ${displayTextHTML}
+                ${this.renderPanelHeader(config.title)}
+                ${this.renderFields(fieldsBeforeDisplayText, rep)}
+                ${this.renderCommonTraits(config.commonTraits, rep, type)}
+                ${this.renderTraitsField(config, type)}
+                ${displayTextField ? this.renderFields([displayTextField], rep) : ''}
             </form>
         `;
     }
+
     generateDamagePanelHTML(rep, config) {
         if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
             rep.damageComponents = [];
         }
         const componentSections = rep.damageComponents.map((component, index) => {
-            const componentFields = config.componentFields.map(field =>
-                this.generateComponentFieldHTML(field, component, index)
-            ).join('');
             return `
                 <div class="damage-component" data-component-index="${index}" style="
-                    border: 1px solid #ddd; 
-                    border-radius: 4px; 
-                    padding: 10px; 
-                    margin-bottom: 10px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    padding: 10px;
                     background: #f9f9f9;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
                 ">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div style="font-weight: bold; color: #1976d2;">Damage Partial ${index + 1}</div>
                     </div>
-                    ${componentFields}
+                    ${this.renderFields(config.componentFields, component, `damage-${index}`)}
                 </div>
             `;
         }).join('');
-        const additionalFieldsHTML = config.fields ? config.fields.map(field =>
-            this.generateFieldHTML(field, rep)
-        ).join('') : '';
-        // Add Reset button next to the title
-        const resetButtonHTML = `
-            <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
-                Reset
-            </button>
-        `;
         return `
             <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2; display: flex; align-items: center; gap: 8px;">
-                    <span>${config.title}</span>${resetButtonHTML}
-                </div>
-                <div id="damage-components-container">
+                ${this.renderPanelHeader(config.title)}
                     ${componentSections}
-                </div>
-                ${additionalFieldsHTML}
+                ${this.renderFields(config.fields, rep)}
             </form>
         `;
     }
