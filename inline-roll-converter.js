@@ -1008,12 +1008,28 @@ class HealingReplacement extends RollReplacement {
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
-        
-        // Create healing replacement that preserves surrounding text
+        // Only replace the dice portion, preserve the healing term after
         const dice = this.dice;
-        const restOfText = this.originalText.substring(dice.length);
-        let display = this.displayText && this.displayText.trim() ? this.displayText : restOfText;
-        return `@Damage[${dice}[healing]]${display}`;
+        let params = [`(${dice})[healing]`];
+        // Add traits if any exist
+        if (this.traits && this.traits.length > 0) {
+            params.push(`traits:${this.traits.join(',')}`);
+        }
+        let roll = `@Damage[${params.join('|')}]`;
+        // Always use the original healing term (originalText minus the original dice)
+        let afterDice = '';
+        if (this._lastMatch && this._lastMatch[1]) {
+            const originalDice = this._lastMatch[1];
+            const diceIndex = this.originalText.indexOf(originalDice);
+            if (diceIndex !== -1) {
+                afterDice = this.originalText.substring(diceIndex + originalDice.length);
+            }
+        }
+        // Display text logic
+        if (this.displayText && this.displayText.trim()) {
+            return `${roll}{${this.displayText}}${afterDice}`;
+        }
+        return `${roll}${afterDice}`;
     }
     validate() {
         if (this.match && this.match.replacement) return true;
@@ -1031,6 +1047,14 @@ class HealingReplacement extends RollReplacement {
             ...super.panelConfig,
             title: 'Healing',
             fields: [
+                {
+                    id: 'healing-dice',
+                    type: 'text',
+                    label: 'Dice',
+                    placeholder: 'e.g., 3d8+4',
+                    getValue: (rep) => rep.dice || '',
+                    setValue: (rep, value) => { rep.dice = value; }
+                },
                 ...super.panelConfig.fields
             ]
         };
@@ -1407,7 +1431,7 @@ const PATTERN_DEFINITIONS = [
     // Healing patterns - consolidated handler
     {
         type: 'healing',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:${HEALING_TERMS_PATTERN})(?:\\s+(?:healed|damage))?`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)(?:\\s+${HEALING_TERMS_PATTERN})(?:\\s+(?:healed|damage))?`, 'gi'),
         priority: PRIORITY.HEALING,
         handler: (match) => match,
         description: 'Healing patterns (hit points, HP, healing)'
