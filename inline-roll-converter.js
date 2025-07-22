@@ -304,6 +304,7 @@ class Replacement {
         // Store for reset
         this._lastMatch = match;
         this._lastConfig = config;
+        this.displayText = '';
     }
     resetToOriginal() {
         // Use the last match/config, or re-detect if missing
@@ -332,15 +333,6 @@ class RollReplacement extends Replacement {
         this.traits = [];
         this.options = [];
         // originalRender will be set after parsing in subclasses
-    }
-    addTrait(trait) { if (!this.traits.includes(trait)) this.traits.push(trait); }
-    addOption(option) { if (!this.options.includes(option)) this.options.push(option); }
-    hasTag(tag) { return this.traits.includes(tag) || this.options.includes(tag); }
-    buildParameters(baseParams) {
-        const params = [...baseParams];
-        if (this.traits.length > 0) params.push(`traits:${this.traits.join(',')}`);
-        if (this.options.length > 0) params.push(`options:${this.options.join(',')}`);
-        return params;
     }
     getInteractiveParams() {
         // Add traits and options to base params
@@ -419,34 +411,6 @@ class DamageComponent {
             damageType: this.damageType,
             category: this.category
         };
-    }
-
-    /**
-     * Create a copy of this component
-     * @returns {DamageComponent} - A new DamageComponent with the same values
-     */
-    clone() {
-        return new DamageComponent(this.dice, this.damageType, this.category);
-    }
-
-    /**
-     * Check if this component equals another component
-     * @param {DamageComponent} other - The component to compare with
-     * @returns {boolean} - True if the components are equal
-     */
-    equals(other) {
-        if (!(other instanceof DamageComponent)) return false;
-        return this.dice === other.dice &&
-               this.damageType === other.damageType &&
-               this.category === other.category;
-    }
-
-    /**
-     * Get a string representation of the component
-     * @returns {string} - A string representation
-     */
-    toString() {
-        return `DamageComponent(${this.dice}, ${this.damageType}, ${this.category})`;
     }
 }
 
@@ -1100,6 +1064,7 @@ class ConditionReplacement extends Replacement {
     }
     parseMatch() {
         // args: [condition, value?]
+        super.parseMatch();
         const args = this.args;
         this.conditionName = args[0] || '';
         this.degree = args[1] || null;
