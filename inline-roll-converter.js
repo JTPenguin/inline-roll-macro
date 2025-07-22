@@ -1026,31 +1026,27 @@ class TemplateReplacement extends RollReplacement {
         if (match && match.replacement) return;
         const shapeName = match[2] ? match[2].toLowerCase() : '';
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
+        const isAlternateShape = Object.prototype.hasOwnProperty.call(ALTERNATE_SHAPE_NAMES, shapeName);
         this.shape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
-        if (match.displayText) this.displayText = match.displayText;
+        // If displayText is provided by the match, use it. Otherwise, if alternate shape, set displayText to the original phrase.
+        if (match.displayText) {
+            this.displayText = match.displayText;
+        } else if (isAlternateShape && this.distance) {
+            // Reconstruct the original phrase (e.g., '20-foot radius')
+            this.displayText = `${this.distance}-foot ${shapeName}`;
+        } else {
+            this.displayText = '';
+        }
         if (match.isWithin) this.isWithin = true; // optional, for future use
     }
     render() {
-        // Check if we need custom display text by finding the original shape name
-        const originalText = this.originalText.toLowerCase();
-        let originalShapeName = null;
-        
-        // Find which alternate shape name was used in the original text
-        for (const [alternateName, standardShape] of Object.entries(ALTERNATE_SHAPE_NAMES)) {
-            if (originalText.includes(alternateName) && standardShape === this.shape) {
-                originalShapeName = alternateName;
-                break;
-            }
-        }
-        
-        let display = this.displayText && this.displayText.trim() ? this.displayText : (originalShapeName ? `${this.distance}-foot ${originalShapeName}` : '');
-        // --- Add width for line templates if not 5 ---
+        // Always use the standard shape in the @Template[] tag, and displayText for the display text
         let params = [`type:${this.shape}`, `distance:${this.distance}`];
         if (this.shape === 'line' && this.width && this.width !== 5) {
             params.push(`width:${this.width}`);
         }
-        if (display) {
-            return `@Template[${params.join('|')}]` + `{${display}}`;
+        if (this.displayText && this.displayText.trim()) {
+            return `@Template[${params.join('|')}]` + `{${this.displayText}}`;
         } else {
             return `@Template[${params.join('|')}]`;
         }
@@ -1154,54 +1150,6 @@ class HealingReplacement extends RollReplacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-    }
-}
-
-// -------------------- Action Replacement --------------------
-class ActionReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'action';
-        this.priority = 60;
-        this.actionName = '';
-        this.variant = '';
-        this.statistic = '';
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        this.variant = '';
-        this.statistic = '';
-        this.actionName = match[1] || '';
-    }
-    render() {
-        if (this.displayText && this.displayText.trim()) {
-            return `[[/act ${this.actionName}]]{${this.displayText}}`;
-        }
-        return `[[/act ${this.actionName}]]`;
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            actionName: this.actionName,
-            variant: this.variant,
-            statistic: this.statistic,
-            originalText: this.originalText
-        };
-    }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Action',
-            fields: [
-                ...super.panelConfig.fields
-            ]
-        };
-    }
-    resetToOriginal() {
-        super.resetToOriginal();
-        // Removed variant/statistic reset (now in parseMatch)
     }
 }
 
@@ -1462,7 +1410,6 @@ const REPLACEMENT_CLASS_MAP = {
     save: SaveReplacement, // Dedicated save replacement class
     skill: CheckReplacement,
     template: TemplateReplacement,
-    action: ActionReplacement,
     condition: ConditionReplacement,
     legacy: DamageReplacement, // Use DamageReplacement for legacy damage type conversions
     flat: FlatCheckReplacement, // Flat check support
