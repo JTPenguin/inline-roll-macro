@@ -1043,10 +1043,15 @@ class TemplateReplacement extends RollReplacement {
         }
         
         let display = this.displayText && this.displayText.trim() ? this.displayText : (originalShapeName ? `${this.distance}-foot ${originalShapeName}` : '');
+        // --- Add width for line templates if not 5 ---
+        let params = [`type:${this.shape}`, `distance:${this.distance}`];
+        if (this.shape === 'line' && this.width && this.width !== 5) {
+            params.push(`width:${this.width}`);
+        }
         if (display) {
-            return `@Template[type:${this.shape}|distance:${this.distance}]{${display}}`;
+            return `@Template[${params.join('|')}]` + `{${display}}`;
         } else {
-            return `@Template[type:${this.shape}|distance:${this.distance}]`;
+            return `@Template[${params.join('|')}]`;
         }
     }
     getInteractiveParams() {
@@ -1062,7 +1067,33 @@ class TemplateReplacement extends RollReplacement {
         return {
             ...super.panelConfig,
             title: 'Template',
+            showTraits: false, // Hide traits field for templates
             fields: [
+                {
+                    id: 'template-type',
+                    type: 'select',
+                    label: 'Type',
+                    options: TEMPLATE_SHAPES.map(shape => ({ value: shape, label: shape.charAt(0).toUpperCase() + shape.slice(1) })),
+                    getValue: (rep) => rep.shape || '',
+                    setValue: (rep, value) => { rep.shape = value; }
+                },
+                {
+                    id: 'template-distance',
+                    type: 'number',
+                    label: 'Distance',
+                    min: 0,
+                    getValue: (rep) => rep.distance || '',
+                    setValue: (rep, value) => { rep.distance = parseInt(value, 10) || 0; }
+                },
+                {
+                    id: 'template-width',
+                    type: 'number',
+                    label: 'Width',
+                    min: 0,
+                    getValue: (rep) => rep.width || '',
+                    setValue: (rep, value) => { rep.width = parseInt(value, 10) || 0; },
+                    hideIf: (rep) => rep.shape !== 'line'
+                },
                 ...super.panelConfig.fields
             ]
         };
@@ -3311,47 +3342,10 @@ class ModifierPanelManager {
                 traitsInput.setValue(rep.traits);
             }
         }
-        const skillSelect = formElement.querySelector('#skill-select');
-        const loreNameContainer = formElement.querySelector('#lore-name-container');
-        const loreNameField = formElement.querySelector('#lore-name');
-        if (skillSelect && loreNameContainer && loreNameField) {
-            skillSelect.addEventListener('change', () => {
-                const isLore = skillSelect.value.toLowerCase() === 'lore';
-                loreNameContainer.style.display = isLore ? 'flex' : 'none';
-                rep.checkType = skillSelect.value.toLowerCase();
-                if (!isLore) {
-                    rep.loreName = '';
-                    loreNameField.value = '';
-                }
-                if (onChangeCallback) {
-                    onChangeCallback(rep);
-                }
-            });
-        }
-        const conditionSelect = formElement.querySelector('#condition-select');
-        const conditionValueContainer = formElement.querySelector('#condition-value-container');
-        const conditionValueField = formElement.querySelector('#condition-value');
-        
-        if (conditionSelect && conditionValueContainer && conditionValueField) {
-            conditionSelect.addEventListener('change', () => {
-                const selected = conditionSelect.value;
-                const supportsValue = CONDITIONS_WITH_VALUES.includes(selected);
-                
-                // Update visibility
-                conditionValueContainer.style.display = supportsValue ? 'flex' : 'none';
-                
-                // Update rep state
-                rep.conditionName = selected;
-                if (!supportsValue) {
-                    rep.degree = null;
-                    conditionValueField.value = '';
-                }
-                
-                if (onChangeCallback) {
-                    onChangeCallback(rep);
-                }
-            });
-        }
+        // Remove custom listeners for field visibility (Lore Name, Condition Value, Template Width)
+        // Instead, use the generic updateFieldVisibility below
+        // Initial update after render
+        this.updateFieldVisibility(formElement, config.fields, rep);
         formElement.addEventListener('input', (event) => {
             let shouldTriggerCallback = false;
             config.fields.forEach(field => {
@@ -3377,7 +3371,8 @@ class ModifierPanelManager {
                     shouldTriggerCallback = true;
                 }
             });
-            // No need to manually update visibility - it's handled by the showIf property
+            // Update all field visibility generically
+            this.updateFieldVisibility(formElement, config.fields, rep);
             if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep);
             }
@@ -3421,7 +3416,8 @@ class ModifierPanelManager {
                     shouldTriggerCallback = true;
                 }
             });
-            // No need to manually update visibility - it's handled by the showIf property
+            // Update all field visibility generically
+            this.updateFieldVisibility(formElement, config.fields, rep);
             if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
                 const traitName = event.target.id.replace(`${type}-trait-`, '');
                 const isChecked = event.target.checked;
@@ -3444,14 +3440,10 @@ class ModifierPanelManager {
             if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep);
             }
+            // Update all field visibility generically
+            this.updateFieldVisibility(formElement, config.fields, rep);
         });
-        if (conditionSelect && type === 'condition') {
-            conditionSelect.addEventListener('change', () => {
-                if (onChangeCallback) {
-                    onChangeCallback(rep);
-                }
-            });
-        }
+        // No need for custom listeners for select fields; generic update handles all
     }
     addDamageFormListeners(formElement, rep, config, onChangeCallback) {
         if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
@@ -3522,6 +3514,19 @@ class ModifierPanelManager {
             if (config.fields && config.fields.some(field => field.id === event.target.id)) {
                 updateComponents();
             }
+        });
+    }
+
+    // Generic function to update field visibility based on hideIf/showIf
+    updateFieldVisibility(formElement, fields, rep, prefix = '') {
+        fields.forEach(field => {
+            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
+            const container = formElement.querySelector(`#${fieldId}-container`);
+            if (!container) return;
+            let hidden = false;
+            if (field.hideIf && field.hideIf(rep)) hidden = true;
+            if (field.showIf && !field.showIf(rep)) hidden = true;
+            container.style.display = hidden ? 'none' : '';
         });
     }
 }
