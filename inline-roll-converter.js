@@ -223,7 +223,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = "Deal 6d6 fire damage. Deals 3d6 fire damage and 2d4 force damage. Deal 1d6 splash fire damage. Deal 1d8 precision piercing damage.";
+const DEFAULT_TEST_INPUT = `Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
 
 // Utility for unique IDs
 function generateId() {
@@ -367,11 +367,12 @@ class RollReplacement extends Replacement {
     }
     parseMatch(match, config) {
         super.parseMatch(match, config);
+        this.traits = [];
+        this.options = [];
     }
     resetToOriginal() {
         super.resetToOriginal();
-        this.traits = [];
-        this.options = [];
+        // Removed traits/options reset (now in parseMatch)
     }
 }
 
@@ -540,9 +541,9 @@ class DamageReplacement extends RollReplacement {
     }
     parseMatch(match, config) {
         super.parseMatch(match, config);
+        this.areaDamage = false;
         // Defensive: if match.replacement exists, skip parsing (already replaced)
         if (match && match.replacement) return;
-        
         // If this is a multi-damage match, match[0] is the whole string, match[1] is the repeated group
         this.damageComponents = [];
         if (Array.isArray(match.multiMatches)) {
@@ -715,7 +716,7 @@ class DamageReplacement extends RollReplacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-        this.areaDamage = false;
+        // Removed areaDamage reset (now in parseMatch)
     }
 }
 
@@ -739,6 +740,11 @@ class CheckReplacement extends RollReplacement {
     }
     parseMatch(match, config) {
         super.parseMatch(match, config);
+        this.secret = false;
+        this.defense = '';
+        this.against = '';
+        this.multipleSkills = false;
+        this.skills = [];
         // Extract check type, DC, and modifiers
         if (config && config.groups) {
             for (const group of config.groups) {
@@ -748,7 +754,6 @@ class CheckReplacement extends RollReplacement {
         } else {
             // Defensive: if match.replacement exists, skip parsing (already replaced)
             if (match && match.replacement) return;
-            
             // Check if this is a lore check
             if (match.isLoreCheck) {
                 this.checkType = 'lore';
@@ -756,7 +761,6 @@ class CheckReplacement extends RollReplacement {
                 this.dc = match[1] || null;
                 return;
             }
-            
             // Check if this is a multiple skills match
             if (match.multipleSkills && match.skills) {
                 this.multipleSkills = true;
@@ -887,12 +891,7 @@ class CheckReplacement extends RollReplacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-        this.secret = false;
-        this.defense = '';
-        this.against = '';
-        this.multipleSkills = false;
-        this.skills = [];
-        this.loreName = '';
+        // Removed secret, defense, against, multipleSkills, skills reset (now in parseMatch)
     }
 }
 
@@ -1008,7 +1007,6 @@ class SaveReplacement extends RollReplacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-        this.basic = false;
     }
 }
 
@@ -1071,7 +1069,6 @@ class TemplateReplacement extends RollReplacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-        this.width = 5;
     }
 }
 
@@ -1130,6 +1127,8 @@ class UtilityReplacement extends RollReplacement {
     }
     parseMatch(match, config) {
         super.parseMatch(match, config);
+        this.flavor = '';
+        this.gmOnly = false;
         if (match && match.replacement) return;
         this.expression = match[1] || '';
     }
@@ -1178,8 +1177,7 @@ class UtilityReplacement extends RollReplacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-        this.flavor = '';
-        this.gmOnly = false;
+        // Removed flavor/gmOnly reset (now in parseMatch)
     }
 }
 
@@ -1250,6 +1248,8 @@ class ActionReplacement extends RollReplacement {
     }
     parseMatch(match, config) {
         super.parseMatch(match, config);
+        this.variant = '';
+        this.statistic = '';
         this.actionName = match[1] || '';
     }
     render() {
@@ -1278,8 +1278,7 @@ class ActionReplacement extends RollReplacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-        this.variant = '';
-        this.statistic = '';
+        // Removed variant/statistic reset (now in parseMatch)
     }
 }
 
@@ -1368,7 +1367,6 @@ class ConditionReplacement extends Replacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-        this.degree = null;
     }
 }
 
