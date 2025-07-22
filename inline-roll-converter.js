@@ -326,7 +326,6 @@ class Replacement {
         if (match) {
             this.parseMatch(match, config);
         }
-        this.displayText = '';
     }
 }
 
@@ -1028,6 +1027,8 @@ class TemplateReplacement extends RollReplacement {
         const shapeName = match[2] ? match[2].toLowerCase() : '';
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
         this.shape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
+        if (match.displayText) this.displayText = match.displayText;
+        if (match.isWithin) this.isWithin = true; // optional, for future use
     }
     render() {
         // Check if we need custom display text by finding the original shape name
@@ -1094,46 +1095,6 @@ class TemplateReplacement extends RollReplacement {
                     setValue: (rep, value) => { rep.width = parseInt(value, 10) || 0; },
                     hideIf: (rep) => rep.shape !== 'line'
                 },
-                ...super.panelConfig.fields
-            ]
-        };
-    }
-    resetToOriginal() {
-        super.resetToOriginal();
-    }
-}
-
-// -------------------- Within Replacement --------------------
-class WithinReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'within';
-        this.priority = 80;
-        this.distance = 0;
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        this.distance = match[1] ? parseInt(match[1], 10) : 0;
-    }
-    render() {
-        // Create the inline template format as requested: "within [inline template here]{30 feet}"
-        let display = this.displayText && this.displayText.trim() ? this.displayText : `${this.distance} feet`;
-        return `within @Template[type:emanation|distance:${this.distance}]{${display}}`;
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            distance: this.distance,
-            originalText: this.originalText
-        };
-    }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Within',
-            fields: [
                 ...super.panelConfig.fields
             ]
         };
@@ -1501,7 +1462,6 @@ const REPLACEMENT_CLASS_MAP = {
     save: SaveReplacement, // Dedicated save replacement class
     skill: CheckReplacement,
     template: TemplateReplacement,
-    within: WithinReplacement,
     action: ActionReplacement,
     condition: ConditionReplacement,
     legacy: DamageReplacement, // Use DamageReplacement for legacy damage type conversions
@@ -1764,10 +1724,20 @@ const PATTERN_DEFINITIONS = [
     },
     // Priority 7: "within X feet" pattern
     {
-        type: 'within',
+        type: 'template',
         regex: /within\s+(\d+)\s+(?:foot|feet)/gi,
         priority: PRIORITY.TEMPLATE,
-        handler: (match) => match,
+        handler: (match) => {
+            // Simulate a template match for an emanation
+            return {
+                0: match[0],
+                1: match[1], // distance
+                2: 'emanation', // shape
+                index: match.index,
+                displayText: `within ${match[1]} feet`,
+                isWithin: true // optional flag for future use
+            };
+        },
         description: '"within X feet" pattern for inline template generation'
     },
     // Duration pattern: dice expression followed by a time unit
