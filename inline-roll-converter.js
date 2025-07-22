@@ -61,10 +61,6 @@ const ALTERNATE_SHAPE_NAMES = {
     'wall': 'line'
 };
 
-// Time unit patterns
-const TIME_UNITS = ['rounds?', 'minutes?', 'hours?', 'days?'];
-const TIME_UNITS_PATTERN = TIME_UNITS.join('|');
-
 // Ability type patterns
 const ABILITY_TYPES = ['ability', 'action', 'feature', 'spell'];
 const ABILITY_TYPES_PATTERN = ABILITY_TYPES.join('|');
@@ -72,6 +68,10 @@ const ABILITY_TYPES_PATTERN = ABILITY_TYPES.join('|');
 // Healing patterns
 const HEALING_TERMS = ['hit\\s+points?', 'HP', 'healing'];
 const HEALING_TERMS_PATTERN = HEALING_TERMS.join('|');
+
+// Duration patterns
+const DURATION_UNITS = ['rounds?', 'seconds?', 'minutes?', 'hours?', 'days?'];
+const DURATION_UNITS_PATTERN = DURATION_UNITS.join('|');
 
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
@@ -1143,75 +1143,6 @@ class WithinReplacement extends RollReplacement {
     }
 }
 
-// -------------------- Utility Replacement --------------------
-class UtilityReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'utility';
-        this.priority = 70;
-        this.expression = '';
-        this.flavor = '';
-        this.gmOnly = false;
-        this.match = match;
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        this.flavor = '';
-        this.gmOnly = false;
-        if (match && match.replacement) return;
-        this.expression = match[1] || '';
-    }
-    render() {
-        // If match.replacement exists, use it directly
-        if (this.match && this.match.replacement) {
-            return this.match.replacement;
-        }
-        
-        // Handle different utility patterns
-        const originalText = this.originalText.toLowerCase();
-        
-        let display = this.displayText && this.displayText.trim() ? this.displayText : this.expression;
-        if (originalText.includes('again for')) {
-            return `again for [[/gmr ${this.expression} #Recharge]]{${display}}`;
-        } else if (originalText.includes("can't use this")) {
-            return `can't use this ability again for [[/gmr ${this.expression} #Recharge]]{${display}}`;
-        } else if (originalText.includes('recharges')) {
-            return `recharges in [[/gmr ${this.expression} #Recharge]]{${display}}`;
-        } else {
-            // Default fallback
-            return `[[/gmr ${this.expression} #Recharge]]{${display}}`;
-        }
-    }
-    validate() {
-        if (this.match && this.match.replacement) return true;
-        return this.expression && this.expression.length > 0;
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            expression: this.expression,
-            flavor: this.flavor,
-            gmOnly: this.gmOnly,
-            originalText: this.originalText
-        };
-    }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Utility',
-            fields: [
-                ...super.panelConfig.fields
-            ]
-        };
-    }
-    resetToOriginal() {
-        super.resetToOriginal();
-        // Removed flavor/gmOnly reset (now in parseMatch)
-    }
-}
-
 // -------------------- Healing Replacement --------------------
 class HealingReplacement extends RollReplacement {
     constructor(match, type, config) {
@@ -1465,6 +1396,104 @@ class FlatCheckReplacement extends RollReplacement {
     }
 }
 
+// -------------------- Duration Replacement --------------------
+class DurationReplacement extends RollReplacement {
+    constructor(match, type, config) {
+        super(match, type);
+        this.rollType = 'duration';
+        this.priority = 75;
+        this.dice = '';
+        this.unit = '';
+        this.isGM = false; // false = public, true = GM-only
+        this.label = 'Duration'; // New: label for the roll
+        this.match = match;
+        this.parseMatch(match, config);
+        this.originalRender = this.render();
+    }
+    parseMatch(match, config) {
+        super.parseMatch(match, config);
+        if (match && match.replacement) return;
+        this.dice = match[1] || '';
+        this.unit = match[2] || '';
+        this.isGM = false; // default to public
+        this.label = 'Duration'; // default label
+    }
+    render() {
+        if (this.match && this.match.replacement) {
+            return this.match.replacement;
+        }
+        const rollType = this.isGM ? '/gmr' : '/r';
+        const label = this.displayText && this.displayText.trim() ? this.displayText : `${this.dice} ${this.unit}`;
+        const hashLabel = this.label && this.label.trim() ? this.label : 'Duration';
+        return `[[${rollType} ${this.dice} #${hashLabel}]]{${label}}`;
+    }
+    validate() {
+        if (this.match && this.match.replacement) return true;
+        return this.dice && this.unit;
+    }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            dice: this.dice,
+            unit: this.unit,
+            isGM: this.isGM,
+            label: this.label,
+            originalText: this.originalText
+        };
+    }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Duration',
+            fields: [
+                {
+                    id: 'duration-dice',
+                    type: 'text',
+                    label: 'Dice',
+                    placeholder: 'e.g., 1d4',
+                    getValue: (rep) => rep.dice || '',
+                    setValue: (rep, value) => { rep.dice = value; }
+                },
+                {
+                    id: 'duration-unit',
+                    type: 'select',
+                    label: 'Unit',
+                    options: [
+                        { value: 'rounds', label: 'Rounds' },
+                        { value: 'seconds', label: 'Seconds' },
+                        { value: 'minutes', label: 'Minutes' },
+                        { value: 'hours', label: 'Hours' },
+                        { value: 'days', label: 'Days' }
+                    ],
+                    getValue: (rep) => rep.unit.replace(/s$/, ''),
+                    setValue: (rep, value) => { rep.unit = value; }
+                },
+                {
+                    id: 'duration-label',
+                    type: 'text',
+                    label: 'Label',
+                    placeholder: 'e.g., Duration, Recharge, Cooldown',
+                    getValue: (rep) => rep.label || 'Duration',
+                    setValue: (rep, value) => { rep.label = value; }
+                },
+                {
+                    id: 'duration-isGM',
+                    type: 'checkbox',
+                    label: 'GM Only',
+                    getValue: (rep) => !!rep.isGM,
+                    setValue: (rep, value) => { rep.isGM = value; }
+                },
+                DISPLAY_TEXT_FIELD
+            ],
+            showTraits: false
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        // isGM and label reset is handled in parseMatch
+    }
+}
+
 // Replacement class mapping for pattern types
 const REPLACEMENT_CLASS_MAP = {
     damage: DamageReplacement,
@@ -1473,11 +1502,11 @@ const REPLACEMENT_CLASS_MAP = {
     skill: CheckReplacement,
     template: TemplateReplacement,
     within: WithinReplacement,
-    utility: UtilityReplacement,
     action: ActionReplacement,
     condition: ConditionReplacement,
     legacy: DamageReplacement, // Use DamageReplacement for legacy damage type conversions
-    flat: FlatCheckReplacement // Flat check support
+    flat: FlatCheckReplacement, // Flat check support
+    duration: DurationReplacement, // Duration replacement
 };
 
 class ReplacementFactory {
@@ -1651,27 +1680,7 @@ const PATTERN_DEFINITIONS = [
         handler: (match) => match,
         description: 'Flat checks'
     },
-    {
-        type: 'utility',
-        regex: new RegExp(`again for (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
-        priority: PRIORITY.UTILITY,
-        handler: (match) => match,
-        description: 'Ability recharge pattern'
-    },
-    {
-        type: 'utility',
-        regex: new RegExp(`can't use this (?:${ABILITY_TYPES_PATTERN}) again for (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
-        priority: PRIORITY.UTILITY,
-        handler: (match) => match,
-        description: 'Generic ability recharge'
-    },
-    {
-        type: 'utility',
-        regex: new RegExp(`recharges? (?:in|after) (\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${TIME_UNITS_PATTERN})`, 'gi'),
-        priority: PRIORITY.UTILITY,
-        handler: (match) => match,
-        description: 'Recharge timing pattern'
-    },
+    
     // Priority 3: Basic damage and skill patterns (lowered priority)
     {
         type: 'damage',
@@ -1760,7 +1769,15 @@ const PATTERN_DEFINITIONS = [
         priority: PRIORITY.TEMPLATE,
         handler: (match) => match,
         description: '"within X feet" pattern for inline template generation'
-    }
+    },
+    // Duration pattern: dice expression followed by a time unit
+    {
+        type: 'duration',
+        regex: new RegExp(`(\\d+d\\d+(?:[+-]\\d+)?|\\d+)(?:\\s+)(rounds?|seconds?|minutes?|hours?|days?)`, 'gi'),
+        priority: 75,
+        handler: (match) => match,
+        description: 'Duration rolls (dice expression followed by a time unit)'
+    },
 ];
 
 // Update all patterns in PATTERN_DEFINITIONS to use a handler function
