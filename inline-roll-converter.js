@@ -61,10 +61,6 @@ const ALTERNATE_SHAPE_NAMES = {
     'wall': 'line'
 };
 
-// Ability type patterns
-const ABILITY_TYPES = ['ability', 'action', 'feature', 'spell'];
-const ABILITY_TYPES_PATTERN = ABILITY_TYPES.join('|');
-
 // Healing patterns
 const HEALING_TERMS = ['hit\\s+points?', 'HP', 'healing'];
 const HEALING_TERMS_PATTERN = HEALING_TERMS.join('|');
@@ -380,70 +376,7 @@ class DamageComponent {
     constructor(dice = '', damageType = '', category = '') {
         this.dice = dice;
         this.damageType = damageType;
-        this.setCategory(category);
-    }
-
-    /**
-     * Set the category (persistent, precision, or splash)
-     * @param {string} category - The category to set
-     */
-    setCategory(category) {
-        this.persistent = category === 'persistent';
-        this.precision = category === 'precision';
-        this.splash = category === 'splash';
-    }
-
-    /**
-     * Get the current category
-     * @returns {string} - The current category or empty string if none
-     */
-    getCategory() {
-        if (this.persistent) return 'persistent';
-        if (this.precision) return 'precision';
-        if (this.splash) return 'splash';
-        return '';
-    }
-
-    /**
-     * Check if the component has a specific category
-     * @param {string} category - The category to check
-     * @returns {boolean} - True if the component has this category
-     */
-    hasCategory(category) {
-        return this.getCategory() === category;
-    }
-
-    /**
-     * Clear all categories
-     */
-    clearCategory() {
-        this.persistent = false;
-        this.precision = false;
-        this.splash = false;
-    }
-
-    /**
-     * Set the dice expression
-     * @param {string} dice - The dice expression
-     */
-    setDice(dice) {
-        this.dice = dice;
-    }
-
-    /**
-     * Set the damage type
-     * @param {string} damageType - The damage type
-     */
-    setDamageType(damageType) {
-        this.damageType = damageType;
-    }
-
-    /**
-     * Check if the component has a damage type
-     * @returns {boolean} - True if the component has a damage type
-     */
-    hasDamageType() {
-        return this.damageType && this.damageType.length > 0;
+        this.category = category; // 'persistent', 'precision', 'splash', or ''
     }
 
     /**
@@ -461,20 +394,10 @@ class DamageComponent {
     render() {
         let formula = this.dice;
         
-        // Handle precision and splash (they wrap the formula)
-        if (this.precision) formula = `(${formula})[precision]`;
-        if (this.splash) formula = `(${formula})[splash]`;
-        
-        // Handle persistent damage (special case with damage type)
-        if (this.persistent && this.damageType) {
-            return `(${formula})[persistent,${this.damageType}]`;
-        }
-        
-        // Handle regular damage type
-        if (this.damageType) {
-            formula = `(${formula})[${this.damageType}]`;
-        }
-        
+        if (['precision', 'splash'].includes(this.category)) formula = `(${formula})[${this.category}]`; // Handle precision and splash (they wrap the formula)
+        if (this.category === 'persistent' && this.damageType) return `(${formula})[persistent,${this.damageType}]`; // Handle persistent damage (special case with damage type)
+        if (this.damageType) formula = `(${formula})[${this.damageType}]`; // Handle regular damage type
+
         return formula;
     }
 
@@ -494,7 +417,7 @@ class DamageComponent {
         return {
             dice: this.dice,
             damageType: this.damageType,
-            category: this.getCategory()
+            category: this.category
         };
     }
 
@@ -503,7 +426,7 @@ class DamageComponent {
      * @returns {DamageComponent} - A new DamageComponent with the same values
      */
     clone() {
-        return new DamageComponent(this.dice, this.damageType, this.getCategory());
+        return new DamageComponent(this.dice, this.damageType, this.category);
     }
 
     /**
@@ -515,7 +438,7 @@ class DamageComponent {
         if (!(other instanceof DamageComponent)) return false;
         return this.dice === other.dice &&
                this.damageType === other.damageType &&
-               this.getCategory() === other.getCategory();
+               this.category === other.category;
     }
 
     /**
@@ -523,7 +446,7 @@ class DamageComponent {
      * @returns {string} - A string representation
      */
     toString() {
-        return `DamageComponent(${this.dice}, ${this.damageType}, ${this.getCategory()})`;
+        return `DamageComponent(${this.dice}, ${this.damageType}, ${this.category})`;
     }
 }
 
@@ -2223,6 +2146,8 @@ function showConverterDialog() {
                 const inputText = inputTextarea.val();
                 lastInputText = inputText;
                 selectedElementId = null; // Clear selection on input change
+                // Always reset the modifier panel on input change
+                modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
                 if (inputText.trim()) {
                     // Parse and create new replacements
                     window.pf2eReplacements = processor.process(inputText);
@@ -2231,7 +2156,7 @@ function showConverterDialog() {
                     window.pf2eReplacements = [];
                     outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
                     livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
-                    modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
+                    // modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>'; // Already set above
                 }
             }
 
@@ -2864,18 +2789,8 @@ const DAMAGE_COMPONENT_FIELDS = [
         type: 'select',
         label: 'Category',
         options: DAMAGE_CATEGORY_OPTIONS,
-        getValue: (component) => {
-            if (component.persistent) return 'persistent';
-            if (component.precision) return 'precision';
-            if (component.splash) return 'splash';
-            return '';
-        },
-        setValue: (component, value) => {
-            component.persistent = false;
-            component.precision = false;
-            component.splash = false;
-            if (value) component[value] = true;
-        }
+        getValue: (component) => component.category || '',
+        setValue: (component, value) => { component.category = value || ''; }
     }
 ];
 
