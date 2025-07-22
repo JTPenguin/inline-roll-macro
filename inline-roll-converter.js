@@ -1370,6 +1370,70 @@ class ConditionReplacement extends Replacement {
     }
 }
 
+// -------------------- Flat Check Replacement --------------------
+class FlatCheckReplacement extends RollReplacement {
+    constructor(match, type, config) {
+        super(match, type);
+        this.rollType = 'flat';
+        this.priority = 80;
+        this.dc = null;
+        this.match = match;
+        this.parseMatch(match, config);
+        this.originalRender = this.render();
+    }
+    parseMatch(match, config) {
+        super.parseMatch(match, config);
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        // Flat check pattern: match[1] is DC
+        this.dc = match[1] || null;
+    }
+    render() {
+        // If match.replacement exists, use it directly
+        if (this.match && this.match.replacement) {
+            return this.match.replacement;
+        }
+        let params = ['flat'];
+        if (this.dc) params.push(`dc:${this.dc}`);
+        if (this.displayText && this.displayText.trim()) {
+            return `@Check[${params.join('|')}]` + `{${this.displayText}}`;
+        }
+        return `@Check[${params.join('|')}]`;
+    }
+    validate() {
+        if (this.match && this.match.replacement) return true;
+        return this.dc !== null;
+    }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            dc: this.dc,
+            originalText: this.originalText
+        };
+    }
+    static get panelConfig() {
+        return {
+            ...super.panelConfig,
+            title: 'Flat Check',
+            fields: [
+                {
+                    id: 'flat-dc',
+                    type: 'number',
+                    label: 'DC',
+                    min: 0,
+                    getValue: (rep) => rep.dc || '',
+                    setValue: (rep, value) => { rep.dc = value; }
+                },
+                DISPLAY_TEXT_FIELD
+            ],
+            showTraits: false
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+    }
+}
+
 // Replacement class mapping for pattern types
 const REPLACEMENT_CLASS_MAP = {
     damage: DamageReplacement,
@@ -1381,7 +1445,8 @@ const REPLACEMENT_CLASS_MAP = {
     utility: UtilityReplacement,
     action: ActionReplacement,
     condition: ConditionReplacement,
-    legacy: DamageReplacement // Use DamageReplacement for legacy damage type conversions
+    legacy: DamageReplacement, // Use DamageReplacement for legacy damage type conversions
+    flat: FlatCheckReplacement // Flat check support
 };
 
 class ReplacementFactory {

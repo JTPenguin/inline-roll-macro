@@ -46,14 +46,19 @@ Check off tasks as they are completed.
     - [x] 5.1.1. Visually indicate elements that have been modified (e.g., green tint).
     - [x] 5.1.2. Allow user to reset an element to its original parameters
 - [ ] 5.2. **Validation Feedback**
-    - [ ] 5.2.1. Validate user input in real time (e.g., DC must be numeric, valid skill names).
-    - [ ] 5.2.2. Show error messages or red highlight for invalid input.
-
-### 6. Edit/Preview Mode Toggle
-- [ ] 6.1. **Implement Mode Toggle**
-    - [ ] 6.1.1. Allow users to switch between Edit Mode (interactive) and Live Preview Mode (WYSIWYG).
-    - [ ] 6.1.2. In Edit Mode, show interactive wrappers and modifier panel.
-    - [ ] 6.1.3. In Preview Mode, render output as Foundry would display it, with no interactive controls.
+    - [ ] 5.2.1. Validate user input in real time (e.g., DC must be numeric, valid skill names). Error message and color change for invalid values.
+        - [ ] 5.2.1.1. Damage Replacement
+            - [ ] 5.2.1.1.1. Dice expression is present and valid for each component
+        - [ ] 5.2.1.2. Healing Replacement
+            - [ ] 5.2.1.2.1. Dice expression is present and valid
+        - [ ] 5.2.1.3. Save Replacement
+            - [ ] 5.2.1.3.1. DC is present and numeric
+        - [ ] 5.2.1.4. Skill/Check Replacement
+            - [ ] 5.2.1.4.1. DC is present and numeric
+            - [ ] 5.2.1.4.2. For lore, lore name is present
+        - [ ] 5.2.1.5. Template Replacement
+        - [ ] 5.2.1.6. Condition Replacement
+            - [ ] 5.2.1.6.1. Value is numeric or empty
 
 ---
 
