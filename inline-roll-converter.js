@@ -787,6 +787,7 @@ class SaveReplacement extends RollReplacement {
         this.dc = null;
         this.basic = false;
         this.match = match;
+        this.saveTermInInput = false; // Track if 'save' or 'saving throw' is present
         this.parseMatch(match, config);
         this.originalRender = this.render();
     }
@@ -806,14 +807,14 @@ class SaveReplacement extends RollReplacement {
             }
         }
         this.basic = /\bbasic\b/i.test(match[0]);
+        // Detect if 'save' or 'saving throw' is present anywhere in the matched phrase
+        this.saveTermInInput = /\b(save|saving throw)\b/i.test(match[0]);
     }
     render() { return super.render(); }
     conversionRender() {
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
-        const basicStr = this.basic ? '|basic' : '';
-        const saveTerm = 'save';
         let params = [`${this.saveType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
         if (this.basic) params.push('basic');
@@ -822,7 +823,14 @@ class SaveReplacement extends RollReplacement {
         }
         const originalText = this.match[0];
         const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
-        const replacement = `@Check[${params.join('|')}]` + (this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '') + ` ${saveTerm}`;
+        // Only append 'save' or 'saving throw' if it was present in the input
+        let saveTerm = '';
+        if (this.saveTermInInput) {
+            // Use the exact term found in the input (prefer 'saving throw' if present)
+            const found = originalText.match(/\b(saving throw|save)\b/i);
+            saveTerm = found ? ` ${found[1]}` : '';
+        }
+        const replacement = `@Check[${params.join('|')}]` + (this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '') + saveTerm;
         return hasWrappingParentheses ? `(${replacement})` : replacement;
     }
     validate() {
@@ -1396,10 +1404,11 @@ const PATTERN_DEFINITIONS = [
     // Priority 1: Comprehensive save pattern
     {
         type: 'save',
-        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?)(?:\)?)/gi,
+        // Updated regex: do NOT look for 'save' or 'saving throw' at the end at all
+        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will))(?:\)?)/gi,
         priority: PRIORITY.SAVE,
         handler: (match) => match,
-        description: 'Comprehensive save pattern (all variations including parenthetical)'
+        description: 'Comprehensive save pattern (all variations, does not look for save/saving throw at end at all)'
     },
     // Priority 2: Damage and skill patterns
     {
