@@ -79,6 +79,106 @@ let conditionMap = new Map();
 const DAMAGE_TYPE_PATTERN = DAMAGE_TYPES.join('|');
 const SKILL_PATTERN = SKILLS.join('|');
 
+// --- Parse Actions.md for action names and slugs ---
+const ACTIONS_LIST = [
+    // Action name, slug (if present)
+    ["Administer First Aid", "administer-first-aid"],
+    ["Affix a Talisman", "affix-a-talisman"],
+    ["Aid", "aid"],
+    ["Arrest a Fall", "arrest-a-fall"],
+    ["Avert Gaze", "avert-gaze"],
+    ["Avoid Notice", ""],
+    ["Balance", ""],
+    ["Burrow", ""],
+    ["Climb", ""],
+    ["Coerce", ""],
+    ["Command an Animal", ""],
+    ["Conceal an Object", ""],
+    ["Crawl", ""],
+    ["Create a Diversion", ""],
+    ["Create Forgery", ""],
+    ["Decipher Writing", ""],
+    ["Delay", ""],
+    ["Demoralize", ""],
+    ["Disable Device", ""],
+    ["Disarm", ""],
+    ["Dismiss", ""],
+    ["Drop Prone", ""],
+    ["Escape", ""],
+    ["Feint", ""],
+    ["Fly", ""],
+    ["Force Open", ""],
+    ["Gather Information", ""],
+    ["Gran an Edge", ""],
+    ["Grapple", ""],
+    ["Hide", ""],
+    ["High Jump", ""],
+    ["Identify Alchemy", ""],
+    ["Identify Magic", ""],
+    ["Impersonate", ""],
+    ["Interact", ""],
+    ["Leap", ""],
+    ["Learn a Spell", ""],
+    ["Lie", ""],
+    ["Long Jump", ""],
+    ["Make an Impression", ""],
+    ["Maneuver in Flight", ""],
+    ["Mount", ""],
+    ["Palm an Object", ""],
+    ["Perform", ""],
+    ["Pick a Lock", ""],
+    ["Point Out", ""],
+    ["Ready", ""],
+    ["Recall Knowledge", ""],
+    ["Release", ""],
+    ["Reposition", ""],
+    ["Request", ""],
+    ["Seek", ""],
+    ["Sense Direction", ""],
+    ["Sense Motive", ""],
+    ["Shove", ""],
+    ["Sneak", ""],
+    ["Squeeze", ""],
+    ["Stand", ""],
+    ["Steal", ""],
+    ["Step", ""],
+    ["Stride", ""],
+    ["Subsist", ""],
+    ["Sustain", ""],
+    ["Swim", ""],
+    ["Take Cover", ""],
+    ["Track", ""],
+    ["Treat Disease", ""],
+    ["Treat Poison", ""],
+    ["Trip", ""],
+    ["Tumble Through", ""],
+    ["Exploit Vulnerability", ""],
+    ["Daring Swing", ""],
+    ["Haughty Correction", ""],
+    ["Entrap Confession", ""]
+];
+
+// Build action name -> slug map (case-insensitive)
+const ACTION_NAME_TO_SLUG = {};
+ACTIONS_LIST.forEach(([name, slug]) => {
+    const generatedSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    ACTION_NAME_TO_SLUG[name.toLowerCase()] = generatedSlug;
+});
+const ACTION_NAMES = Object.keys(ACTION_NAME_TO_SLUG);
+
+// Build regex for all action names (longest first for greedy match)
+const ACTION_NAMES_REGEX = ACTION_NAMES
+    .sort((a, b) => b.length - a.length)
+    .map(name => name.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&"))
+    .join('|');
+
+// --- Action pattern ---
+// Matches: (use|attempt|perform|take|make|do)? (the)? <action name> (action)? (case-insensitive)
+const ACTION_PATTERN = new RegExp(
+    `(?:\\b(?:use|attempt|perform|take|make|do)\\s+)?(?:the\\s+)?(${ACTION_NAMES_REGEX})(?:\\s+action)?\\b`,
+    'gi'
+);
+
 /**
  * Try to get condition UUID from compendium
  * @param {string} conditionName - The condition name to look up
@@ -222,7 +322,7 @@ function initializeConditionMap() {
 // ===================== OOP PIPELINE ARCHITECTURE =====================
 
 // Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = `Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
+const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
 
 // Utility for unique IDs
 function generateId() {
@@ -1336,6 +1436,110 @@ class DurationReplacement extends RollReplacement {
     }
 }
 
+class ActionReplacement extends Replacement {
+    constructor(match, type, config) {
+        super(match, type);
+        this.priority = 60; // Utility level
+        this.actionName = match[1] || '';
+        this.slug = ACTION_NAME_TO_SLUG[this.actionName.toLowerCase()] || '';
+        this.variant = '';
+        this.dc = '';
+        this.statistic = '';
+        this.displayText = '';
+        this.originalRender = this.render();
+    }
+    parseMatch(match, config) {
+        super.parseMatch(match, config);
+        this.actionName = match[1] || '';
+        this.slug = ACTION_NAME_TO_SLUG[this.actionName.toLowerCase()] || '';
+        this.variant = '';
+        this.dc = '';
+        this.statistic = '';
+    }
+    render() { return super.render(); }
+    conversionRender() {
+        // Render as [[/act <slug> <params>]]
+        let paramsArr = [];
+        if (this.variant && this.variant.trim()) paramsArr.push(`variant=${this.variant.trim()}`);
+        if (this.dc && this.dc.trim()) paramsArr.push(`dc=${this.dc.trim()}`);
+        if (this.statistic && this.statistic.trim()) paramsArr.push(`statistic=${this.statistic.trim()}`);
+        let params = paramsArr.length ? ' ' + paramsArr.join(' ') : '';
+        let label = this.displayText && this.displayText.trim() ? this.displayText : this.actionName;
+        return `[[/act ${this.slug}${params}]]${label ? `{${label}}` : ''}`;
+    }
+    validate() {
+        return !!this.slug;
+    }
+    getInteractiveParams() {
+        return {
+            ...super.getInteractiveParams(),
+            actionName: this.actionName,
+            slug: this.slug,
+            variant: this.variant,
+            dc: this.dc,
+            statistic: this.statistic,
+            originalText: this.originalText
+        };
+    }
+    static get panelConfig() {
+        // Build dropdown options from ACTIONS_LIST
+        const actionOptions = ACTIONS_LIST
+            .map(([name, slug]) => ({ value: name, label: name }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+        return {
+            ...super.panelConfig,
+            title: 'Inline Action',
+            fields: [
+                ENABLED_FIELD,
+                {
+                    id: 'action-name',
+                    type: 'select',
+                    label: 'Action',
+                    options: actionOptions,
+                    getValue: (rep) => rep.actionName || '',
+                    setValue: (rep, value) => {
+                        rep.actionName = value;
+                        rep.slug = ACTION_NAME_TO_SLUG[value.toLowerCase()] || '';
+                    }
+                },
+                {
+                    id: 'action-variant',
+                    type: 'text',
+                    label: 'Variant',
+                    placeholder: 'e.g., stop-bleeding',
+                    getValue: (rep) => rep.variant || '',
+                    setValue: (rep, value) => { rep.variant = value; }
+                },
+                {
+                    id: 'action-dc',
+                    type: 'text',
+                    label: 'DC',
+                    placeholder: 'e.g., 20 or thievery',
+                    getValue: (rep) => rep.dc || '',
+                    setValue: (rep, value) => { rep.dc = value; }
+                },
+                {
+                    id: 'action-statistic',
+                    type: 'text',
+                    label: 'Statistic',
+                    placeholder: 'e.g., performance',
+                    getValue: (rep) => rep.statistic || '',
+                    setValue: (rep, value) => { rep.statistic = value; }
+                },
+                DISPLAY_TEXT_FIELD
+            ]
+        };
+    }
+    resetToOriginal() {
+        super.resetToOriginal();
+        // Reset slug and parameters
+        this.slug = ACTION_NAME_TO_SLUG[this.actionName.toLowerCase()] || '';
+        this.variant = '';
+        this.dc = '';
+        this.statistic = '';
+    }
+}
+
 // Replacement class mapping for pattern types
 const REPLACEMENT_CLASS_MAP = {
     damage: DamageReplacement,
@@ -1347,6 +1551,7 @@ const REPLACEMENT_CLASS_MAP = {
     legacy: DamageReplacement, // Use DamageReplacement for legacy damage type conversions
     flat: FlatCheckReplacement, // Flat check support
     duration: DurationReplacement, // Duration replacement
+    action: ActionReplacement, // New action replacement class
 };
 
 class ReplacementFactory {
@@ -1639,6 +1844,17 @@ const PATTERN_DEFINITIONS = [
         priority: 75,
         handler: (match) => match,
         description: 'Duration rolls (dice expression followed by a time unit)'
+    },
+    // --- Inline Action pattern (priority 2, after saves, before basic damage/skill) ---
+    {
+        type: 'action',
+        regex: ACTION_PATTERN,
+        priority: PRIORITY.UTILITY, // Same as other utility patterns
+        handler: (match) => {
+            // match[1] is the action name matched (case-insensitive)
+            return match;
+        },
+        description: 'Inline action macro (e.g., Use the Shove action, Administer First Aid, etc.)'
     },
 ];
 
@@ -3387,32 +3603,32 @@ class ModifierPanelManager {
     }
 }
 
-            function attachResetButtonHandler(rep, type) {
-                const resetBtn = modifierPanelContent.querySelector('#modifier-reset-btn');
-                if (resetBtn) {
-                    resetBtn.onclick = function() {
-                        if (!selectedElementId) return;
-                        // Find the replacement
-                        const idx = window.pf2eReplacements.findIndex(r => r.id === selectedElementId);
-                        if (idx === -1) return;
-                        const rep = window.pf2eReplacements[idx];
-                        rep.resetToOriginal();
-                        renderAll();
-                        // Reselect in the UI and update modifier panel
-                        const selectedEl = outputHtmlDiv.querySelector(`[data-id="${selectedElementId}"]`);
-                        if (selectedEl) selectedEl.classList.add('selected');
-                        const type = rep.type;
-                        const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
-                        modifierPanelContent.innerHTML = panelHTML;
-                        const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
-                        if (form) {
-                            modifierPanelManager.addFormListeners(form, type, rep, handleModifierChange);
-                        }
-                        // Re-attach the reset button handler after rerender
-                        attachResetButtonHandler(rep, type);
-                    };
-                }
+function attachResetButtonHandler(rep, type) {
+    const resetBtn = modifierPanelContent.querySelector('#modifier-reset-btn');
+    if (resetBtn) {
+        resetBtn.onclick = function() {
+            if (!selectedElementId) return;
+            // Find the replacement
+            const idx = window.pf2eReplacements.findIndex(r => r.id === selectedElementId);
+            if (idx === -1) return;
+            const rep = window.pf2eReplacements[idx];
+            rep.resetToOriginal();
+            renderAll();
+            // Reselect in the UI and update modifier panel
+            const selectedEl = outputHtmlDiv.querySelector(`[data-id="${selectedElementId}"]`);
+            if (selectedEl) selectedEl.classList.add('selected');
+            const type = rep.type;
+            const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
+            modifierPanelContent.innerHTML = panelHTML;
+            const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
+            if (form) {
+                ModifierPanelManager.addFormListeners(form, type, rep, handleModifierChange);
             }
+            // Re-attach the reset button handler after rerender
+            attachResetButtonHandler(rep, type);
+        };
+    }
+}
 
 // Utility: Check if a dice expression is just a number (no 'd' present)
 function isNumberOnlyDice(dice) {
