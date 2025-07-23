@@ -1587,7 +1587,7 @@ const PATTERN_DEFINITIONS = [
     // Priority 7: Area effects (consolidated)
     {
         type: 'template',
-        regex: new RegExp(`(\\d+)\\s*-?(?:foot|feet)\\s+(${TEMPLATE_SHAPES_PATTERN}|${Object.keys(ALTERNATE_SHAPE_NAMES).join('|')})`, 'gi'),
+        regex: new RegExp(`(\\d+)(?:[\\s-]+)(?:foot|feet)\\s+(${TEMPLATE_SHAPES_PATTERN}|${Object.keys(ALTERNATE_SHAPE_NAMES).join('|')})`, 'gi'),
         priority: PRIORITY.TEMPLATE,
         handler: (match) => match,
         description: 'Consolidated area effects (standard and alternate shape names, with optional hyphen) - accepts both foot and feet'
