@@ -1383,13 +1383,13 @@ const PATTERN_DEFINITIONS = [
         type: 'damage',
         // Comprehensive regex: matches a sequence of dice/type pairs including persistent, splash, precision, and basic damage
         // Updated to handle both dice expressions (3d6) and fixed numbers (4)
-        regex: new RegExp(`((?:\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s+and\\s+))*\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?)`, 'gi'),
+        regex: new RegExp(`((?:\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s*,\\s*plus\\s*|\\s+and\\s+|\\s+plus\\s+))*\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?)`, 'gi'),
         priority: PRIORITY.DAMAGE + 10, // Higher than all other damage patterns
         handler: function(match) {
             // Find all dice/type pairs in the match[0] string
             // Accepts: '1d4 acid, 1d6 persistent bleed, and 1d4 slashing damage' (with or without 'damage' after each type)
             // Updated to handle both dice expressions (3d6) and fixed numbers (4)
-            const singlePattern = new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${DAMAGE_TYPE_PATTERN}))(?:\\s+persistent)?|(?:(${DAMAGE_TYPE_PATTERN}))\\s+splash|splash\\s+(?:(${DAMAGE_TYPE_PATTERN}))|(?:(${DAMAGE_TYPE_PATTERN}))\\s+precision|precision\\s+(?:(${DAMAGE_TYPE_PATTERN}))|precision|(?:(${DAMAGE_TYPE_PATTERN})))(?:\\s+damage)?`, 'gi');
+            const singlePattern = new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${DAMAGE_TYPE_PATTERN}))(?:\\s+persistent)?|(?:(${DAMAGE_TYPE_PATTERN}))\\s+splash|splash\\s+(${DAMAGE_TYPE_PATTERN})|(?:(${DAMAGE_TYPE_PATTERN}))\\s+precision|precision\\s+(${DAMAGE_TYPE_PATTERN})|precision|(?:(${DAMAGE_TYPE_PATTERN})))(?:\\s+damage)?`, 'gi');
             let m;
             const multiMatches = [];
             while ((m = singlePattern.exec(match[0])) !== null) {
