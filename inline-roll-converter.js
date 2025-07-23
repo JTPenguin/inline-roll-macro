@@ -987,6 +987,10 @@ class HealingReplacement extends RollReplacement {
         super.parseMatch(match, config);
         if (match && match.replacement) return;
         this.dice = match[1] || '';
+        // Disable if dice is just a number (not a dice roll)
+        if (isNumberOnlyDice(this.dice)) {
+            this.enabled = false;
+        }
     }
     render() { return super.render(); }
     conversionRender() {
@@ -1223,6 +1227,10 @@ class DurationReplacement extends RollReplacement {
         this.unit = match[2] || '';
         this.isGM = false; // default to public
         this.label = 'Duration'; // default label
+        // Disable if dice is just a number (not a dice roll)
+        if (isNumberOnlyDice(this.dice)) {
+            this.enabled = false;
+        }
     }
     render() { return super.render(); }
     conversionRender() {
@@ -3365,3 +3373,8 @@ class ModifierPanelManager {
                     };
                 }
             }
+
+// Utility: Check if a dice expression is just a number (no 'd' present)
+function isNumberOnlyDice(dice) {
+    return /^\s*\d+\s*$/.test(dice);
+}
