@@ -82,7 +82,7 @@ const SKILL_PATTERN = SKILLS.join('|');
 // --- Parse Actions.md for action names and slugs ---
 const ACTIONS_LIST = [
     // Action name, slug (if present)
-    ["Administer First Aid", "administer-first-aid"],
+    ["Administer First Aid", "administer-first-aid", [["Stabilize", "stabilize"], ["Stop Bleeding", "stop-bleeding"]]],
     ["Affix a Talisman", "affix-a-talisman"],
     ["Aid", "aid"],
     ["Arrest a Fall", "arrest-a-fall"],
@@ -95,7 +95,7 @@ const ACTIONS_LIST = [
     ["Command an Animal", ""],
     ["Conceal an Object", ""],
     ["Crawl", ""],
-    ["Create a Diversion", ""],
+    ["Create a Diversion", "", [["Distracting Words", "distracting-words"], ["Gesture", "gesture"], ["Trick", "trick"]]],
     ["Create Forgery", ""],
     ["Decipher Writing", ""],
     ["Delay", ""],
@@ -125,7 +125,7 @@ const ACTIONS_LIST = [
     ["Maneuver in Flight", ""],
     ["Mount", ""],
     ["Palm an Object", ""],
-    ["Perform", ""],
+    ["Perform", "", [["Acting", "acting"], ["Comedy", "comedy"], ["Dance", "dance"], ["Keyboards", "keyboards"], ["Oratory", "oratory"], ["Percussion", "percussion"], ["Singing", "singing"], ["Strings", "strings"], ["Winds", "winds"]]],
     ["Pick a Lock", ""],
     ["Point Out", ""],
     ["Ready", ""],
@@ -165,17 +165,19 @@ ACTIONS_LIST.forEach(([name, slug]) => {
     ACTION_NAME_TO_SLUG[name.toLowerCase()] = generatedSlug;
 });
 const ACTION_NAMES = Object.keys(ACTION_NAME_TO_SLUG);
+console.log(ACTION_NAMES);
 
 // Build regex for all action names (longest first for greedy match)
 const ACTION_NAMES_REGEX = ACTION_NAMES
     .sort((a, b) => b.length - a.length)
     .map(name => name.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&"))
     .join('|');
+console.log('ACTION_NAMES_REGEX:', ACTION_NAMES_REGEX); // LOGGING
 
 // --- Action pattern ---
-// Matches: (use|attempt|perform|take|make|do)? (the)? <action name> (action)? (case-insensitive)
+// Simplified: Only match the action name itself, with word boundaries
 const ACTION_PATTERN = new RegExp(
-    `(?:\\b(?:use|attempt|perform|take|make|do)\\s+)?(?:the\\s+)?(${ACTION_NAMES_REGEX})(?:\\s+action)?\\b`,
+    `\\b(${ACTION_NAMES_REGEX})\\b`,
     'gi'
 );
 
@@ -1436,6 +1438,14 @@ class DurationReplacement extends RollReplacement {
     }
 }
 
+// Helper to get variants for a given action name
+function getActionVariants(actionName) {
+    if (!actionName) return null;
+    const entry = ACTIONS_LIST.find(([name]) => name === actionName);
+    if (!entry || entry.length < 3) return null;
+    return entry[2]; // Array of [name, slug]
+}
+
 class ActionReplacement extends Replacement {
     constructor(match, type, config) {
         super(match, type);
@@ -1446,13 +1456,18 @@ class ActionReplacement extends Replacement {
         this.dc = '';
         this.statistic = '';
         this.displayText = '';
+        this.parseMatch(match, config);
         this.originalRender = this.render();
     }
     parseMatch(match, config) {
         super.parseMatch(match, config);
         this.actionName = match[1] || '';
         this.slug = ACTION_NAME_TO_SLUG[this.actionName.toLowerCase()] || '';
-        this.variant = '';
+        if (getActionVariants(this.actionName)) {
+            this.variant = getActionVariants(this.actionName)[0][1];
+        } else {
+            this.variant = '';
+        }
         this.dc = '';
         this.statistic = '';
     }
@@ -1489,6 +1504,7 @@ class ActionReplacement extends Replacement {
         return {
             ...super.panelConfig,
             title: 'Inline Action',
+            showTraits: false,
             fields: [
                 ENABLED_FIELD,
                 {
@@ -1500,15 +1516,39 @@ class ActionReplacement extends Replacement {
                     setValue: (rep, value) => {
                         rep.actionName = value;
                         rep.slug = ACTION_NAME_TO_SLUG[value.toLowerCase()] || '';
+                        if (getActionVariants(value)) {
+                            rep.variant = getActionVariants(value)[0][1];
+                        } else {
+                            rep.variant = '';
+                        }
                     }
                 },
                 {
                     id: 'action-variant',
-                    type: 'text',
+                    type: 'select',
                     label: 'Variant',
-                    placeholder: 'e.g., stop-bleeding',
+                    options: (rep) => {
+                        const action = ACTIONS_LIST.find(([name]) => name === rep.actionName);
+                        if (action && Array.isArray(action[2])) {
+                            return action[2].map(([label, value]) => ({ label, value }));
+                        }
+                        return [];
+                    },
                     getValue: (rep) => rep.variant || '',
-                    setValue: (rep, value) => { rep.variant = value; }
+                    setValue: (rep, value) => {
+                        // Only set if value is in the current options
+                        const action = ACTIONS_LIST.find(([name]) => name === rep.actionName);
+                        const validOptions = (action && Array.isArray(action[2])) ? action[2].map(([label, value]) => value) : [];
+                        if (validOptions.includes(value)) {
+                            rep.variant = value;
+                        } else {
+                            rep.variant = '';
+                        }
+                    },
+                    hideIf: (rep) => {
+                        const action = ACTIONS_LIST.find(([name]) => name === rep.actionName);
+                        return !(action && Array.isArray(action[2]) && action[2].length > 0);
+                    }
                 },
                 {
                     id: 'action-dc',
@@ -1534,7 +1574,6 @@ class ActionReplacement extends Replacement {
         super.resetToOriginal();
         // Reset slug and parameters
         this.slug = ACTION_NAME_TO_SLUG[this.actionName.toLowerCase()] || '';
-        this.variant = '';
         this.dc = '';
         this.statistic = '';
     }
@@ -1972,10 +2011,14 @@ class TextProcessor {
         this.linkedConditions = new Set();
     }
     process(inputText) {
+        // LOGGING: Show input text
+        console.log('[TextProcessor] Input text:', inputText);
         // Parse and create new replacements from scratch
         // Reset linkedConditions to ensure deduplication is fresh for each parse
         this.linkedConditions = new Set();
         const rollMatches = this.detector.detectAll(inputText);
+        // LOGGING: Show all matches found
+        console.log('[TextProcessor] All matches found:', rollMatches.map(m => ({type: m.type, match: m.match})));
         const replacements = this.createReplacements(rollMatches);
         return replacements;
     }
@@ -2408,7 +2451,20 @@ function showConverterDialog() {
             }
 
             // === 3. Modifier Panel Handler ===
-            function handleModifierChange(rep) {
+            function handleModifierChange(rep, changedFieldId) {
+                // If the replacement is an action and the action-name field was changed, re-render the panel
+                if (rep.type === 'action' && changedFieldId === 'action-name') {
+                    // Re-render the modifier panel for this replacement
+                    const type = rep.type;
+                    const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
+                    modifierPanelContent.innerHTML = panelHTML;
+                    const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
+                    if (form) {
+                        modifierPanelManager.addFormListeners(form, type, rep, (r, f) => handleModifierChange(r, f));
+                    }
+                    attachResetButtonHandler(rep, type);
+                    return;
+                }
                 // rep is the replacement object to update
                 console.log(`[handleModifierChange] id=${rep.id} enabled=${rep.enabled}`);
                 renderAll();
@@ -2451,7 +2507,7 @@ function showConverterDialog() {
                         // Add event listeners to the form
                         const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
                         if (form) {
-                            modifierPanelManager.addFormListeners(form, type, rep, handleModifierChange);
+                            modifierPanelManager.addFormListeners(form, type, rep, (r, f) => handleModifierChange(r, f));
                         }
                         if (typeof el.scrollIntoView === 'function') {
                             el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -2492,7 +2548,7 @@ function showConverterDialog() {
                         modifierPanelContent.innerHTML = panelHTML;
                         const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
                         if (form) {
-                            modifierPanelManager.addFormListeners(form, type, rep, handleModifierChange);
+                            modifierPanelManager.addFormListeners(form, type, rep, (r, f) => handleModifierChange(r, f));
                         }
                         // Re-attach the reset button handler after rerender
                         attachResetButtonHandler(rep, type);
@@ -3111,7 +3167,8 @@ class ModifierPanelManager {
             let labelClass = 'modifier-panel-label';
             switch (field.type) {
                 case 'select':
-                    const options = field.options.map(option => {
+                    const optionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
+                    const options = (optionsArray || []).map(option => {
                         const optionValue = typeof option === 'object' ? option.value : option;
                         const optionLabel = typeof option === 'object' ? option.label : option;
                         const selected = optionValue === value ? 'selected' : '';
@@ -3160,7 +3217,8 @@ class ModifierPanelManager {
                     `;
                 case 'multiselect':
                     const selectedValues = Array.isArray(value) ? value : [value];
-                    const multiOptions = field.options.map(option => {
+                    const multiOptionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
+                    const multiOptions = (multiOptionsArray || []).map(option => {
                         const optionValue = typeof option === 'object' ? option.value : option;
                         const optionLabel = typeof option === 'object' ? option.label : option;
                         const selected = selectedValues.includes(optionValue) ? 'selected' : '';
@@ -3441,12 +3499,17 @@ class ModifierPanelManager {
                     }
                     field.setValue(rep, value);
                     shouldTriggerCallback = true;
+                    // If the action-name field was changed, force immediate re-render
+                    if (field.id === 'action-name' && typeof onChangeCallback === 'function') {
+                        onChangeCallback(rep, 'action-name');
+                        return; // Prevent double-calling below
+                    }
                 }
             });
             // Update all field visibility generically
             this.updateFieldVisibility(formElement, config.fields, rep);
             if (shouldTriggerCallback && onChangeCallback) {
-                onChangeCallback(rep);
+                onChangeCallback(rep, undefined);
             }
             if (config.commonTraits) {
                 if (!rep.traits) rep.traits = [];
@@ -3476,7 +3539,7 @@ class ModifierPanelManager {
                 }
             }
             if (onChangeCallback) {
-                onChangeCallback(rep);
+                onChangeCallback(rep, undefined);
             }
         });
         formElement.addEventListener('change', (event) => {
@@ -3510,7 +3573,7 @@ class ModifierPanelManager {
                 shouldTriggerCallback = true;
             }
             if (shouldTriggerCallback && onChangeCallback) {
-                onChangeCallback(rep);
+                onChangeCallback(rep, undefined);
             }
             // Update all field visibility generically
             this.updateFieldVisibility(formElement, config.fields, rep);
@@ -3622,7 +3685,7 @@ function attachResetButtonHandler(rep, type) {
             modifierPanelContent.innerHTML = panelHTML;
             const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
             if (form) {
-                ModifierPanelManager.addFormListeners(form, type, rep, handleModifierChange);
+                ModifierPanelManager.addFormListeners(form, type, rep, (r, f) => handleModifierChange(r, f));
             }
             // Re-attach the reset button handler after rerender
             attachResetButtonHandler(rep, type);
