@@ -2857,7 +2857,7 @@ class ModifierPanelManager {
     // DRY: Render the panel header (title + reset button)
     renderPanelHeader(title) {
         return `
-            <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2; display: flex; align-items: center; gap: 8px;">
+            <div style="font-weight: bold; margin-bottom: 5px; display: flex; align-items: center; gap: 8px;">
                 <span>${title}</span>
                 <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
                     Reset
@@ -2892,7 +2892,7 @@ class ModifierPanelManager {
                     }).join('');
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
                             <select ${commonAttrs}>
                                 ${options}
                             </select>
@@ -2902,7 +2902,7 @@ class ModifierPanelManager {
                     const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
                     return `
                         <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
                             <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
                         </div>
                     `;
@@ -2910,7 +2910,7 @@ class ModifierPanelManager {
                     const checked = value ? 'checked' : '';
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
                             <input type="checkbox" id="${fieldId}" ${checked} style="width: auto; margin: 0;" />
                         </div>
                     `;
@@ -2918,7 +2918,7 @@ class ModifierPanelManager {
                     const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                     return `
                         <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; font-weight: bold;">${field.label}</label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
                             <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                         </div>
                     `;
@@ -2927,7 +2927,7 @@ class ModifierPanelManager {
                     const rows = field.rows || 3;
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
                             <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                         </div>
                     `;
@@ -2941,7 +2941,7 @@ class ModifierPanelManager {
                     }).join('');
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
                             <select ${commonAttrs} multiple>
                                 ${multiOptions}
                             </select>
@@ -2951,7 +2951,7 @@ class ModifierPanelManager {
                     const uniqueId = `${fieldId}-container-${Math.random().toString(36).substr(2, 9)}`;
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>${field.label}</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">${field.label}</label>
                             <div id="${uniqueId}" style="flex: 1;"></div>
                         </div>
                     `;
@@ -2969,7 +2969,7 @@ class ModifierPanelManager {
                 const isChecked = rep.traits && rep.traits.includes(trait);
                 return `
                     <div class="modifier-field-row">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${trait.charAt(0).toUpperCase() + trait.slice(1)}:</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${trait.charAt(0).toUpperCase() + trait.slice(1)}</label>
                         <input type="checkbox" id="${type}-trait-${trait}" style="width: auto; margin: 0;" ${isChecked ? 'checked' : ''} />
                     </div>
                 `;
@@ -2983,7 +2983,7 @@ class ModifierPanelManager {
         const labelWidth = ModifierPanelManager.labelWidth;
         return `
                 <div class="modifier-field-row flex-start">
-                    <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>Traits:</strong></label>
+                    <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">Traits</label>
                     <div id="${traitsContainerId}" style="flex: 1;"></div>
                 </div>
             `;
@@ -3072,7 +3072,7 @@ class ModifierPanelManager {
                 }).join('');
                 return `
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
                         <select ${commonAttrs}>
                             ${options}
                         </select>
@@ -3083,7 +3083,7 @@ class ModifierPanelManager {
                 const containerStyle = field.showIf && !field.showIf(rep) ? 'display: none;' : 'display: flex;';
                 const html = `
                     <div id="${field.id}-container" class="${rowClass}" style="${containerStyle}; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
                         <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
                     </div>
                 `;
@@ -3092,7 +3092,7 @@ class ModifierPanelManager {
                 const checked = value ? 'checked' : '';
                 return `
                     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
                         <input type="checkbox" id="${field.id}" ${checked} style="width: auto; margin: 0;" />
                     </div>
                 `;
@@ -3100,7 +3100,7 @@ class ModifierPanelManager {
                 const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                 return `
                     <div id="${field.id}-container" style="display: flex; align-items: center; gap: 8px; ${containerStyle}">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; font-weight: bold;">${field.label}</label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
                         <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                     </div>
                 `;
@@ -3109,7 +3109,7 @@ class ModifierPanelManager {
                 const rows = field.rows || 3;
                 return `
                     <div style="display: flex; align-items: flex-start; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
                         <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                     </div>
                 `;
@@ -3123,7 +3123,7 @@ class ModifierPanelManager {
                 }).join('');
                 return `
                     <div style="display: flex; align-items: flex-start; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
                         <select ${commonAttrs} multiple>
                             ${multiOptions}
                         </select>
@@ -3133,7 +3133,7 @@ class ModifierPanelManager {
                 const uniqueId = `${field.id}-container-${Math.random().toString(36).substr(2, 9)}`;
                 return `
                     <div style="display: flex; align-items: flex-start; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>${field.label}</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">${field.label}</label>
                         <div id="${uniqueId}" style="flex: 1;"></div>
                     </div>
                 `;
