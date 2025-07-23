@@ -794,6 +794,15 @@ class SaveReplacement extends RollReplacement {
     parseMatch(match, config) {
         super.parseMatch(match, config);
         if (match && match.replacement) return;
+        // If match[0] starts with '(' but does not contain a matching ')', remove the leading '('
+        if (typeof match[0] === 'string' && match[0].startsWith('(') && !match[0].includes(')')) {
+            // Remove the leading '(' from match[0]
+            match[0] = match[0].slice(1);
+            // Adjust startPos and originalText
+            this.startPos = match.index + 1;
+            this.endPos = this.startPos + match[0].length;
+            this.originalText = match[0];
+        }
         for (let i = 1; i < match.length; i++) {
             const value = match[i];
             if (!value) continue;
