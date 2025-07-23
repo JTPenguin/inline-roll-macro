@@ -394,10 +394,11 @@ class DamageComponent {
     render() {
         let formula = this.dice;
         
-        if (['precision', 'splash'].includes(this.category)) formula = `(${formula})[${this.category}]`; // Handle precision and splash (they wrap the formula)
-        if (this.category === 'persistent' && this.damageType) return `(${formula})[persistent,${this.damageType}]`; // Handle persistent damage (special case with damage type)
+        if (["precision", "splash"].includes(this.category)) formula = `(${formula})[${this.category}]`; // Handle precision and splash (they wrap the formula)
+        if (this.category === "persistent" && this.damageType) return `(${formula})[persistent,${this.damageType}]`; // Handle persistent damage (special case with damage type)
         if (this.damageType) formula = `(${formula})[${this.damageType}]`; // Handle regular damage type
-
+        // NEW: If no type and no category, just (dice)
+        if (!this.damageType && !this.category) return `(${formula})`;
         return formula;
     }
 
@@ -1534,6 +1535,18 @@ const PATTERN_DEFINITIONS = [
         priority: PRIORITY.BASIC_SKILL,
         handler: (match) => match,
         description: 'Single skill checks'
+    },
+    // NEW: Untyped (none) damage, e.g., '3d6 damage'
+    {
+        type: 'damage',
+        regex: /(\d+(?:d\d+)?(?:[+-]\d+)?)\s+damage(?!\s*type)/gi,
+        priority: PRIORITY.BASIC_DAMAGE - 11, // Lower than typed damage
+        handler: (match) => {
+            // Insert an empty string for damage type
+            match[2] = '';
+            return match;
+        },
+        description: 'Untyped (none) damage, e.g., "3d6 damage"'
     },
     // Priority 4: Legacy damage type conversions
     {
