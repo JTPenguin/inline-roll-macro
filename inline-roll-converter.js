@@ -275,18 +275,26 @@ class Replacement {
         this._lastConfig = undefined;
         // originalRender will be set after parsing in subclasses
     }
-    render() { throw new Error('Must implement render()'); }
+    render() {
+        // Logging for debugging render output
+        console.log(`[render] id=${this.id} enabled=${this.enabled} returning=${this.enabled ? 'converted' : 'originalText'}`);
+        if (!this.enabled) return this.originalText;
+        return this.conversionRender();
+    }
+    // Subclasses must implement this
+    conversionRender() { throw new Error('Must implement conversionRender()'); }
     getInteractiveParams() {
         const params = { type: this.type, id: this.id, displayText: this.displayText };
-        console.log('[DEBUG] getInteractiveParams:', params);
         return params;
     }
     renderInteractive() {
         const params = this.getInteractiveParams();
         window.pf2eInteractiveElements[this.id] = { ...params };
-        // Add 'modified' class if isModified() is true
-        const modifiedClass = this.isModified && this.isModified() ? ' modified' : '';
-        return `<span class="pf2e-interactive${modifiedClass}" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${this.render()}</span>`;
+        // Add 'modified' class if isModified() is true and enabled
+        const modifiedClass = (this.enabled && this.isModified && this.isModified()) ? ' modified' : '';
+        // Add 'disabled' class if not enabled
+        const disabledClass = !this.enabled ? ' disabled' : '';
+        return `<span class="pf2e-interactive${modifiedClass}${disabledClass}" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${this.enabled ? this.render() : this.originalText}</span>`;
     }
     validate() { return true; }
     getText() { return this.originalText; }
@@ -294,7 +302,7 @@ class Replacement {
     static get panelConfig() {
         return {
             title: 'Replacement',
-            fields: [DISPLAY_TEXT_FIELD]
+            fields: [ENABLED_FIELD, DISPLAY_TEXT_FIELD]
         };
     }
     isModified() {
@@ -346,10 +354,7 @@ class RollReplacement extends Replacement {
     static get panelConfig() {
         return {
             ...super.panelConfig,
-            // Most roll replacements support traits, but subclasses can override
-            fields: [
-                ...super.panelConfig.fields
-            ]
+            fields: [ENABLED_FIELD, ...super.panelConfig.fields.slice(1)]
         };
     }
     parseMatch(match, config) {
@@ -477,22 +482,20 @@ class DamageReplacement extends RollReplacement {
         
         this.damageComponents.push(new DamageComponent(dice, remasterType, category));
     }
-    render() {
+    render() { return super.render(); }
+    conversionRender() {
         // If match.replacement exists, use it directly
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
-        
         // Handle legacy damage type conversions
         if (this.rollType === 'legacy') {
             return this.renderLegacyConversion();
         }
-        
         // Handle damage consolidation
         if (this.originalText.includes('@Damage[') && this.originalText.includes('@Damage[')) {
             return this.renderDamageConsolidation();
         }
-        
         let roll;
         if (this.damageComponents.length === 1) {
             roll = `@Damage[${this.damageComponents[0].render()}]`;
@@ -500,7 +503,6 @@ class DamageReplacement extends RollReplacement {
             const componentStrings = this.damageComponents.map(comp => comp.render());
             roll = `@Damage[${componentStrings.join(',')}]`;
         }
-        
         // Add area-damage option if enabled
         if (this.areaDamage) {
             // Find the last closing bracket of the @Damage expression
@@ -509,7 +511,6 @@ class DamageReplacement extends RollReplacement {
                 roll = roll.slice(0, lastBracketIndex) + '|options:area-damage' + roll.slice(lastBracketIndex);
             }
         }
-        
         // Display text logic
         if (this.displayText && this.displayText.trim()) {
             return `${roll}{${this.displayText}} damage`;
@@ -585,10 +586,7 @@ class DamageReplacement extends RollReplacement {
             title: 'Damage Roll',
             isMultiComponent: true,
             componentFields: DAMAGE_COMPONENT_FIELDS,
-            fields: [
-                ...DAMAGE_ADDITIONAL_FIELDS,
-                ...super.panelConfig.fields
-            ]
+            fields: [ENABLED_FIELD, ...DAMAGE_ADDITIONAL_FIELDS, ...super.panelConfig.fields.slice(1)]
         };
     }
     toJSON() {
@@ -665,18 +663,17 @@ class CheckReplacement extends RollReplacement {
             }
         }
     }
-    render() {
+    render() { return super.render(); }
+    conversionRender() {
         // If match.replacement exists, use it directly
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
-        
         // Handle lore checks
         if (this.checkType === 'lore' && this.loreName) {
             let params = [`type:lore`];
             if (this.dc) params.push(`dc:${this.dc}`);
             params.push(`name:${this.loreName}`);
-            // Add traits if any exist
             if (this.traits && this.traits.length > 0) {
                 params.push(`traits:${this.traits.join(',')}`);
             }
@@ -685,13 +682,11 @@ class CheckReplacement extends RollReplacement {
             }
             return `@Check[${params.join('|')}]` + `{${this.loreName} Lore} check`;
         }
-        
         // Handle multiple skills
         if (this.multipleSkills && this.skills.length > 0) {
             const skillChecks = this.skills.map(skill => {
                 const params = [skill.toLowerCase()];
                 if (this.dc) params.push(`dc:${this.dc}`);
-                // Add traits if any exist
                 if (this.traits && this.traits.length > 0) {
                     params.push(`traits:${this.traits.join(',')}`);
                 }
@@ -702,11 +697,8 @@ class CheckReplacement extends RollReplacement {
             });
             return skillChecks.join(' or ') + ' check';
         }
-        
-        // Handle single skill
         let params = [`${this.checkType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
-        // Add traits if any exist
         if (this.traits && this.traits.length > 0) {
             params.push(`traits:${this.traits.join(',')}`);
         }
@@ -741,6 +733,7 @@ class CheckReplacement extends RollReplacement {
             ...super.panelConfig,
             title: 'Skill Check',
             fields: [
+                ENABLED_FIELD,
                 {
                     id: 'skill-select',
                     type: 'select',
@@ -770,7 +763,7 @@ class CheckReplacement extends RollReplacement {
                     getValue: (rep) => rep.dc || '',
                     setValue: (rep, value) => { rep.dc = value; }
                 },
-                ...super.panelConfig.fields
+                ...super.panelConfig.fields.slice(1)
             ],
             commonTraits: ['secret']
         };
@@ -811,32 +804,22 @@ class SaveReplacement extends RollReplacement {
         }
         this.basic = /\bbasic\b/i.test(match[0]);
     }
-    render() {
-        // If match.replacement exists, use it directly
+    render() { return super.render(); }
+    conversionRender() {
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
-        
         const basicStr = this.basic ? '|basic' : '';
         const saveTerm = 'save';
-        
-        // Build parameters array
         let params = [`${this.saveType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
         if (this.basic) params.push('basic');
-        
-        // Add traits if any exist
         if (this.traits && this.traits.length > 0) {
             params.push(`traits:${this.traits.join(',')}`);
         }
-        
-        // Check if the entire save phrase is wrapped in parentheses
         const originalText = this.match[0];
         const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
-        
         const replacement = `@Check[${params.join('|')}]` + (this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '') + ` ${saveTerm}`;
-        
-        // If the original text was wrapped in parentheses, preserve them
         return hasWrappingParentheses ? `(${replacement})` : replacement;
     }
     validate() {
@@ -859,6 +842,7 @@ class SaveReplacement extends RollReplacement {
             ...super.panelConfig,
             title: 'Saving Throw',
             fields: [
+                ENABLED_FIELD,
                 {
                     id: 'save-type',
                     type: 'select',
@@ -886,7 +870,7 @@ class SaveReplacement extends RollReplacement {
                     getValue: (rep) => !!rep.basic,
                     setValue: (rep, value) => { rep.basic = value; }
                 },
-                ...super.panelConfig.fields
+                ...super.panelConfig.fields.slice(1)
             ],
             commonTraits: ['secret']
         };
@@ -926,8 +910,8 @@ class TemplateReplacement extends RollReplacement {
         }
         if (match.isWithin) this.isWithin = true; // optional, for future use
     }
-    render() {
-        // Always use the standard shape in the @Template[] tag, and displayText for the display text
+    render() { return super.render(); }
+    conversionRender() {
         let params = [`type:${this.shape}`, `distance:${this.distance}`];
         if (this.shape === 'line' && this.width && this.width !== 5) {
             params.push(`width:${this.width}`);
@@ -953,6 +937,7 @@ class TemplateReplacement extends RollReplacement {
             title: 'Template',
             showTraits: false, // Hide traits field for templates
             fields: [
+                ENABLED_FIELD,
                 {
                     id: 'template-type',
                     type: 'select',
@@ -978,7 +963,7 @@ class TemplateReplacement extends RollReplacement {
                     setValue: (rep, value) => { rep.width = parseInt(value, 10) || 0; },
                     hideIf: (rep) => rep.shape !== 'line'
                 },
-                ...super.panelConfig.fields
+                ...super.panelConfig.fields.slice(1)
             ]
         };
     }
@@ -1003,20 +988,17 @@ class HealingReplacement extends RollReplacement {
         if (match && match.replacement) return;
         this.dice = match[1] || '';
     }
-    render() {
-        // If match.replacement exists, use it directly
+    render() { return super.render(); }
+    conversionRender() {
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
-        // Only replace the dice portion, preserve the healing term after
         const dice = this.dice;
         let params = [`(${dice})[healing]`];
-        // Add traits if any exist
         if (this.traits && this.traits.length > 0) {
             params.push(`traits:${this.traits.join(',')}`);
         }
         let roll = `@Damage[${params.join('|')}]`;
-        // Always use the original healing term (originalText minus the original dice)
         let afterDice = '';
         if (this._lastMatch && this._lastMatch[1]) {
             const originalDice = this._lastMatch[1];
@@ -1025,7 +1007,6 @@ class HealingReplacement extends RollReplacement {
                 afterDice = this.originalText.substring(diceIndex + originalDice.length);
             }
         }
-        // Display text logic
         if (this.displayText && this.displayText.trim()) {
             return `${roll}{${this.displayText}}${afterDice}`;
         }
@@ -1047,6 +1028,7 @@ class HealingReplacement extends RollReplacement {
             ...super.panelConfig,
             title: 'Healing',
             fields: [
+                ENABLED_FIELD,
                 {
                     id: 'healing-dice',
                     type: 'text',
@@ -1055,7 +1037,7 @@ class HealingReplacement extends RollReplacement {
                     getValue: (rep) => rep.dice || '',
                     setValue: (rep, value) => { rep.dice = value; }
                 },
-                ...super.panelConfig.fields
+                ...super.panelConfig.fields.slice(1)
             ]
         };
     }
@@ -1094,7 +1076,8 @@ class ConditionReplacement extends Replacement {
         this.degree = args[1] || null;
         this.uuid = getConditionUUID(this.conditionName);
     }
-    render() {
+    render() { return super.render(); }
+    conversionRender() {
         if (!this.uuid) return this.originalText;
         const capitalized = this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
         let display = this.displayText && this.displayText.trim() ? this.displayText : (this.degree ? `${capitalized} ${this.degree}` : capitalized);
@@ -1121,6 +1104,7 @@ class ConditionReplacement extends Replacement {
             title: 'Condition',
             showTraits: false,
             fields: [
+                ENABLED_FIELD,
                 {
                     id: 'condition-select',
                     type: 'select',
@@ -1144,7 +1128,7 @@ class ConditionReplacement extends Replacement {
                     setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
                     hideIf: (rep) => !CONDITIONS_WITH_VALUES.includes(rep.conditionName)
                 },
-                ...super.panelConfig.fields
+                ...super.panelConfig.fields.slice(1)
             ]
         };
     }
@@ -1171,8 +1155,8 @@ class FlatCheckReplacement extends RollReplacement {
         // Flat check pattern: match[1] is DC
         this.dc = match[1] || null;
     }
-    render() {
-        // If match.replacement exists, use it directly
+    render() { return super.render(); }
+    conversionRender() {
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
@@ -1199,6 +1183,7 @@ class FlatCheckReplacement extends RollReplacement {
             ...super.panelConfig,
             title: 'Flat Check',
             fields: [
+                ENABLED_FIELD,
                 {
                     id: 'flat-dc',
                     type: 'number',
@@ -1239,7 +1224,8 @@ class DurationReplacement extends RollReplacement {
         this.isGM = false; // default to public
         this.label = 'Duration'; // default label
     }
-    render() {
+    render() { return super.render(); }
+    conversionRender() {
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
@@ -1267,6 +1253,7 @@ class DurationReplacement extends RollReplacement {
             ...super.panelConfig,
             title: 'Duration',
             fields: [
+                ENABLED_FIELD,
                 {
                     id: 'duration-dice',
                     type: 'text',
@@ -1338,7 +1325,6 @@ class ReplacementFactory {
         } else {
             instance = new Cls(match, patternType, patternConfig);
         }
-        console.log('[DEBUG] ReplacementFactory.createFromMatch:', { patternType, instanceType: instance.type });
         return instance;
     }
     static getSupportedTypes() {
@@ -1643,7 +1629,6 @@ class PatternDetector {
         this.patterns.push({ type, regex, priority, config });
     }
     detectAll(text) {
-        console.log('[PatternDetector] Input:', text);
         const allMatches = [];
         for (const pattern of this.patterns) {
             let match;
@@ -1652,10 +1637,8 @@ class PatternDetector {
                 const handlerResult = handler ? handler(match) : match;
                 // Defensive: skip undefined or malformed handler results
                 if (!handlerResult || (typeof handlerResult !== 'string' && typeof handlerResult !== 'object')) {
-                    console.warn('[PatternDetector] Skipping malformed handler result:', handlerResult, 'for pattern', pattern);
                     continue;
                 }
-                console.log(`[PatternDetector] ${pattern.type}:`, handlerResult);
                 allMatches.push({
                     match: handlerResult,
                     type: pattern.type,
@@ -1665,9 +1648,7 @@ class PatternDetector {
                 });
             }
         }
-        console.log('[PatternDetector] Before conflicts:', allMatches.length, 'matches');
         const resolvedMatches = this.resolveConflicts(allMatches);
-        console.log('[PatternDetector] After conflicts:', resolvedMatches.length, 'matches');
         return resolvedMatches;
     }
     resolveConflicts(matches) {
@@ -1678,7 +1659,6 @@ class PatternDetector {
         for (const m of matches) {
             let matchArr = m.match && m.match.match ? m.match.match : m.match;
             if (!matchArr || typeof matchArr[0] !== 'string' || typeof matchArr.index !== 'number') {
-                console.warn('[PatternDetector] Skipping invalid match:', matchArr, m);
                 continue;
             }
             const start = matchArr.index;
@@ -1686,8 +1666,6 @@ class PatternDetector {
             if (!covered.some(([s, e]) => (start < e && end > s))) {
                 result.push(m);
                 covered.push([start, end]);
-            } else {
-                console.log(`[PatternDetector] Overlap: ${m.type} at [${start},${end}]`);
             }
         }
         return result;
@@ -1770,9 +1748,8 @@ class TextProcessor {
         let result = text;
         for (let i = 0; i < sorted.length; i++) {
             const replacement = sorted[i];
-            if (replacement.enabled && replacement.validate()) {
-                result = this.applyReplacement(result, replacement, interactive);
-            }
+            console.log(`[renderFromReplacements] id=${replacement.id} enabled=${replacement.enabled}`);
+            result = this.applyReplacement(result, replacement, interactive);
         }
         // After all replacements, replace any remaining 'flat-footed' with 'off-guard'
         result = result.replace(/\bflat-footed\b/gi, 'off-guard');
@@ -1799,7 +1776,6 @@ class MacroInterface {
             const result = this.processor.process(input, opts);
             return result;
         } catch (error) {
-            console.error('[MacroInterface] Error:', error);
             ui.notifications.error(`Conversion failed: ${error.message}`);
             return input;
         }
@@ -1894,14 +1870,12 @@ async function createLivePreview(text, container) {
                     });
                     
                 } catch (rollError) {
-                    console.error('Error executing preview roll:', rollError);
                     ui.notifications.warn(`Could not execute roll: ${rollError.message}`);
                 }
             });
         });
 
     } catch (error) {
-        console.error('Error creating live preview:', error);
         container.innerHTML = `<em style="color: #d32f2f;">Error creating preview: ${error.message}</em>`;
     }
 }
@@ -1915,7 +1889,6 @@ async function copyToClipboard(text) {
         await navigator.clipboard.writeText(text);
         ui.notifications.info("Text copied to clipboard!");
     } catch (error) {
-        console.error('Failed to copy text:', error);
         ui.notifications.error("Failed to copy text to clipboard.");
     }
 }
@@ -2066,12 +2039,12 @@ function showConverterDialog() {
             }
             .pf2e-interactive {
                 cursor: pointer;
-                transition: background 0.2s, outline 0.2s, box-shadow 0.2s, color 0.2s;
+
                 background: #dddddd;
                 padding: 1px 3px;
                 color: #191813;
-                border-radius: 2px;
-                border: none;
+                border-radius: 1px;
+                outline: 1px solid #444;
             }
             .pf2e-interactive:hover {
                 background: #bbbbbb;
@@ -2111,6 +2084,15 @@ function showConverterDialog() {
                 display: flex;
                 flex-direction: column;
                 gap: 10px;
+            }
+            .pf2e-interactive.disabled {
+                background: none;
+            }
+            .pf2e-interactive.disabled:hover {
+                background: #dddddd;
+            }
+            .damage-component label {
+                width: 88px !important;
             }
         </style>
     `;
@@ -2152,6 +2134,7 @@ function showConverterDialog() {
             // === 3. Modifier Panel Handler ===
             function handleModifierChange(rep) {
                 // rep is the replacement object to update
+                console.log(`[handleModifierChange] id=${rep.id} enabled=${rep.enabled}`);
                 renderAll();
             }
 
@@ -2159,6 +2142,10 @@ function showConverterDialog() {
             function renderAll() {
                 // Render output and preview from pf2eReplacements
                 if (!window.pf2eReplacements || !lastInputText.trim()) return;
+                // Log enabled state of all replacements before rendering
+                window.pf2eReplacements.forEach(r => {
+                    console.log(`[renderAll] id=${r.id} enabled=${r.enabled}`);
+                });
                 // Render interactive output
                 const htmlOutput = processor.renderFromReplacements(lastInputText, window.pf2eReplacements, true).replace(/\r?\n/g, '<br>');
                 outputHtmlDiv.innerHTML = htmlOutput;
@@ -2174,10 +2161,8 @@ function showConverterDialog() {
                         const id = el.getAttribute('data-id');
                         const type = el.getAttribute('data-type');
                         let rep = window.pf2eReplacements.find(r => r.id === id);
-                        console.log('[DEBUG] .pf2e-interactive click:', { id, type, rep });
                         if (!rep) return;
                         const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
-                        console.log('[DEBUG] panelHTML:', panelHTML);
                         modifierPanelContent.innerHTML = panelHTML;
                         
                         // Add event listeners to the form
@@ -2270,14 +2255,12 @@ function showConverterDialog() {
 try {
     // Verify we're in a PF2e game
     if (game.system.id !== 'pf2e') {
-        console.error('[PF2e Converter] Wrong system:', game.system.id);
         ui.notifications.error("This macro is designed for the Pathfinder 2e system only.");
         return;
     }
     
     // Verify minimum Foundry version
     if (!game.version || parseInt(game.version.split('.')[0]) < 12) {
-        console.warn('[PF2e Converter] Foundry version may be too old:', game.version);
         ui.notifications.warn("This macro is designed for Foundry VTT v12+. Some features may not work properly.");
     }
     
@@ -2288,7 +2271,6 @@ try {
     showConverterDialog();
     
 } catch (error) {
-    console.error('[PF2e Converter] Init error:', error);
     ui.notifications.error("Failed to start PF2e Inline Roll Converter. Check console for details.");
 }
 
@@ -2328,7 +2310,6 @@ function getTraitOptions() {
             }))
             .sort((a, b) => a.label.localeCompare(b.label));
     } catch (error) {
-        console.warn('[PF2e Converter] Could not load trait options from system:', error);
         // Fallback common traits
         return [
             { label: 'Arcane', value: 'arcane' },
@@ -2803,7 +2784,22 @@ const DISPLAY_TEXT_FIELD = {
     setValue: (rep, value) => { rep.displayText = value; }
 };
 
+// DRY: Shared Enabled field definition
+const ENABLED_FIELD = {
+    id: 'enabled',
+    type: 'checkbox',
+    label: 'Enabled',
+    getValue: (rep) => rep.enabled !== false,
+    setValue: (rep, value) => {
+        const prev = rep.enabled;
+        rep.enabled = value;
+        console.log(`[ENABLED_FIELD] id=${rep.id} enabled changed: ${prev} -> ${value}`);
+    }
+};
+
 class ModifierPanelManager {
+    // Shared label width for all modifier panel labels
+    static labelWidth = '100px';
     // DRY: Render the panel header (title + reset button)
     renderPanelHeader(title) {
         return `
@@ -2823,7 +2819,7 @@ class ModifierPanelManager {
             const value = field.getValue(target);
             const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
             const commonAttrs = `id="${fieldId}" style="width: 100%;"`;
-            const labelWidth = '80px';
+            const labelWidth = ModifierPanelManager.labelWidth;
             let containerStyle = '';
             if (field.hideIf && field.hideIf(target)) {
                 containerStyle = 'display: none;';
@@ -2842,7 +2838,7 @@ class ModifierPanelManager {
                     }).join('');
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
                             <select ${commonAttrs}>
                                 ${options}
                             </select>
@@ -2852,7 +2848,7 @@ class ModifierPanelManager {
                     const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
                     return `
                         <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
                             <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
                         </div>
                     `;
@@ -2860,7 +2856,7 @@ class ModifierPanelManager {
                     const checked = value ? 'checked' : '';
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
                             <input type="checkbox" id="${fieldId}" ${checked} style="width: auto; margin: 0;" />
                         </div>
                     `;
@@ -2868,7 +2864,7 @@ class ModifierPanelManager {
                     const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                     return `
                         <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; font-weight: bold;">${field.label}:</label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0; font-weight: bold;">${field.label}</label>
                             <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                         </div>
                     `;
@@ -2877,7 +2873,7 @@ class ModifierPanelManager {
                     const rows = field.rows || 3;
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}:</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}</strong></label>
                             <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                         </div>
                     `;
@@ -2891,7 +2887,7 @@ class ModifierPanelManager {
                     }).join('');
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}:</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}</strong></label>
                             <select ${commonAttrs} multiple>
                                 ${multiOptions}
                             </select>
@@ -2901,7 +2897,7 @@ class ModifierPanelManager {
                     const uniqueId = `${fieldId}-container-${Math.random().toString(36).substr(2, 9)}`;
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>${field.label}:</strong></label>
+                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>${field.label}</strong></label>
                             <div id="${uniqueId}" style="flex: 1;"></div>
                         </div>
                     `;
@@ -2914,11 +2910,12 @@ class ModifierPanelManager {
     // DRY: Render common traits checkboxes
     renderCommonTraits(commonTraits, rep, type) {
         if (!commonTraits || !commonTraits.length) return '';
+        const labelWidth = ModifierPanelManager.labelWidth;
         return commonTraits.map(trait => {
                 const isChecked = rep.traits && rep.traits.includes(trait);
                 return `
                     <div class="modifier-field-row">
-                        <label style="width: 80px; flex-shrink: 0;"><strong>${trait.charAt(0).toUpperCase() + trait.slice(1)}:</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${trait.charAt(0).toUpperCase() + trait.slice(1)}:</strong></label>
                         <input type="checkbox" id="${type}-trait-${trait}" style="width: auto; margin: 0;" ${isChecked ? 'checked' : ''} />
                     </div>
                 `;
@@ -2929,9 +2926,10 @@ class ModifierPanelManager {
     renderTraitsField(config, type) {
         if (config.showTraits === false) return '';
             const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
+        const labelWidth = ModifierPanelManager.labelWidth;
         return `
                 <div class="modifier-field-row flex-start">
-                    <label style="width: 80px; flex-shrink: 0; margin-top: 8px;"><strong>Traits:</strong></label>
+                    <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>Traits:</strong></label>
                     <div id="${traitsContainerId}" style="flex: 1;"></div>
                 </div>
             `;
@@ -2969,6 +2967,10 @@ class ModifierPanelManager {
         if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
             rep.damageComponents = [];
         }
+        // Render the Enabled field separately at the top
+        const enabledField = config.fields.find(f => f.id === 'enabled');
+        const enabledFieldHTML = enabledField ? this.renderFields([enabledField], rep) : '';
+        const otherFields = config.fields.filter(f => f.id !== 'enabled');
         const componentSections = rep.damageComponents.map((component, index) => {
             return `
                 <div class="damage-component" data-component-index="${index}" style="
@@ -2990,57 +2992,18 @@ class ModifierPanelManager {
         return `
             <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
                 ${this.renderPanelHeader(config.title)}
-                    ${componentSections}
-                ${this.renderFields(config.fields, rep)}
+                ${enabledFieldHTML}
+                ${componentSections}
+                ${this.renderFields(otherFields, rep)}
             </form>
         `;
     }
-    generateComponentFieldHTML(field, component, componentIndex) {
-        const value = field.getValue(component);
-        const fieldId = `damage-${componentIndex}-${field.id}`;
-        const commonAttrs = `id="${fieldId}" style="width: 100%;"`;
-        const labelWidth = '80px';
-        switch (field.type) {
-            case 'select':
-                const options = field.options.map(option => {
-                    const optionValue = typeof option === 'object' ? option.value : option;
-                    const optionLabel = typeof option === 'object' ? option.label : option;
-                    const selected = optionValue === value ? 'selected' : '';
-                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                }).join('');
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
-                        <select ${commonAttrs}>
-                            ${options}
-                        </select>
-                    </div>
-                `;
-            case 'text':
-                const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
-                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" />
-                    </div>
-                `;
-            case 'checkbox':
-                const checked = value ? 'checked' : '';
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
-                        <input type="checkbox" id="${fieldId}" ${checked} style="width: auto; margin: 0;" />
-                    </div>
-                `;
-            default:
-                return `<div>Unknown field type: ${field.type}</div>`;
-        }
-    }
+    
     generateFieldHTML(field, rep) {
         const isHidden = field.showIf && !field.showIf(rep);
         const value = field.getValue(rep);
         const commonAttrs = `id="${field.id}" style="width: 100%;"`;
-        const labelWidth = '80px';
+        const labelWidth = ModifierPanelManager.labelWidth;
         let containerStyle = '';
         if (field.hideIf && field.hideIf(rep)) {
             containerStyle = 'display: none;';
@@ -3055,7 +3018,7 @@ class ModifierPanelManager {
                 }).join('');
                 return `
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
                         <select ${commonAttrs}>
                             ${options}
                         </select>
@@ -3066,7 +3029,7 @@ class ModifierPanelManager {
                 const containerStyle = field.showIf && !field.showIf(rep) ? 'display: none;' : 'display: flex;';
                 const html = `
                     <div id="${field.id}-container" class="${rowClass}" style="${containerStyle}; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
                         <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
                     </div>
                 `;
@@ -3075,7 +3038,7 @@ class ModifierPanelManager {
                 const checked = value ? 'checked' : '';
                 return `
                     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}:</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0;"><strong>${field.label}</strong></label>
                         <input type="checkbox" id="${field.id}" ${checked} style="width: auto; margin: 0;" />
                     </div>
                 `;
@@ -3083,7 +3046,7 @@ class ModifierPanelManager {
                 const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                 return `
                     <div id="${field.id}-container" style="display: flex; align-items: center; gap: 8px; ${containerStyle}">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; font-weight: bold;">${field.label}:</label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0; font-weight: bold;">${field.label}</label>
                         <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                     </div>
                 `;
@@ -3092,7 +3055,7 @@ class ModifierPanelManager {
                 const rows = field.rows || 3;
                 return `
                     <div style="display: flex; align-items: flex-start; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}:</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}</strong></label>
                         <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                     </div>
                 `;
@@ -3106,7 +3069,7 @@ class ModifierPanelManager {
                 }).join('');
                 return `
                     <div style="display: flex; align-items: flex-start; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}:</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;"><strong>${field.label}</strong></label>
                         <select ${commonAttrs} multiple>
                             ${multiOptions}
                         </select>
@@ -3116,7 +3079,7 @@ class ModifierPanelManager {
                 const uniqueId = `${field.id}-container-${Math.random().toString(36).substr(2, 9)}`;
                 return `
                     <div style="display: flex; align-items: flex-start; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>${field.label}:</strong></label>
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;"><strong>${field.label}</strong></label>
                         <div id="${uniqueId}" style="flex: 1;"></div>
                     </div>
                 `;
