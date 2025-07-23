@@ -1451,7 +1451,7 @@ const PATTERN_DEFINITIONS = [
     // Healing patterns - consolidated handler
     {
         type: 'healing',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)(?:\\s+${HEALING_TERMS_PATTERN})(?:\\s+(?:healed|damage))?`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)(?:\\s+\\b(?:${HEALING_TERMS_PATTERN})\\b)(?:\\s+(?:healed|damage))?`, 'gi'),
         priority: PRIORITY.HEALING,
         handler: (match) => match,
         description: 'Healing patterns (hit points, HP, healing)'
