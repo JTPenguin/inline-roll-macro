@@ -2014,7 +2014,6 @@ function showConverterDialog() {
             }
             .pf2e-converter-dialog label {
                 display: block;
-                margin-bottom: 5px;
             }
             .pf2e-preview-content .inline-roll {
                 background: #1f5582;
@@ -2044,16 +2043,13 @@ function showConverterDialog() {
             .pf2e-preview-content .inline-roll.healing:hover {
                 background: #007800;
             }
-            
             /* Enhanced traits input styling */
             .traits-input-wrapper .trait-option.active {
                 background: #e3f2fd !important;
             }
-            
             .traits-input-wrapper .trait-option:hover {
                 background: #f5f5f5;
             }
-            
             .traits-input-wrapper .trait-tag {
                 background: var(--color-bg-trait, #e3f2fd) !important;
                 color: var(--color-text-trait, #1976d2) !important;
@@ -2063,17 +2059,14 @@ function showConverterDialog() {
                 font-size: 10px;
                 letter-spacing: 0.05em;
             }
-            
             .traits-input-wrapper .trait-tag .trait-remove {
                 color: inherit;
                 opacity: 0.7;
             }
-            
             .traits-input-wrapper .trait-tag .trait-remove:hover {
                 opacity: 1;
                 color: #d32f2f;
             }
-            
             .traits-input-wrapper .traits-selected:focus-within {
                 border-color: #1976d2;
                 box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
@@ -2086,7 +2079,6 @@ function showConverterDialog() {
             }
             .pf2e-interactive {
                 cursor: pointer;
-
                 background: #dddddd;
                 padding: 1px 3px;
                 color: #191813;
@@ -2122,9 +2114,21 @@ function showConverterDialog() {
             .modifier-field-row:last-child {
                 margin-bottom: 0;
             }
-            .modifier-field-row.flex-start {
-                align-items: flex-start;
+            .modifier-panel-label {
+                width: 80px;
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                height: 100%;
+                margin-bottom: 0;
             }
+            .modifier-panel-label.panel-title {
+                font-weight: bold;
+                width: 200px;
+            }
+            .modifier-panel-label.bold { font-weight: bold; }
+            .modifier-panel-input { width: 100%; }
+            input[type="checkbox"].modifier-panel-checkbox { width: auto; margin: 0; }
             #damage-modifier-form,
             #modifier-panel form,
             .damage-component {
@@ -2132,14 +2136,23 @@ function showConverterDialog() {
                 flex-direction: column;
                 gap: 10px;
             }
+            .damage-component {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 10px;
+                background: #f9f9f9;
+            }
+            .damage-component-label {
+                font-weight: bold;
+            }
+            .damage-component label {
+                width: 68px !important;
+            }
             .pf2e-interactive.disabled {
                 background: none;
             }
             .pf2e-interactive.disabled:hover {
                 background: #dddddd;
-            }
-            .damage-component label {
-                width: 88px !important;
             }
         </style>
     `;
@@ -2857,9 +2870,9 @@ class ModifierPanelManager {
     // DRY: Render the panel header (title + reset button)
     renderPanelHeader(title) {
         return `
-            <div style="font-weight: bold; margin-bottom: 5px; display: flex; align-items: center; gap: 8px;">
-                <span>${title}</span>
-                <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
+            <div class="modifier-field-row">
+                <span class="modifier-panel-label bold panel-title">${title}</span>
+                <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" class="modifier-panel-input" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
                     Reset
                 </button>
             </div>
@@ -2872,16 +2885,14 @@ class ModifierPanelManager {
             if (field.showIf && !field.showIf(target)) return '';
             const value = field.getValue(target);
             const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
-            const commonAttrs = `id="${fieldId}" style="width: 100%;"`;
-            const labelWidth = ModifierPanelManager.labelWidth;
+            const commonAttrs = `id="${fieldId}" class="modifier-panel-input"`;
             let containerStyle = '';
             if (field.hideIf && field.hideIf(target)) {
                 containerStyle = 'display: none;';
             }
             // Use CSS class for all field containers
             let rowClass = 'modifier-field-row';
-            // For textarea, multiselect, traits, use flex-start
-            if (["textarea", "multiselect", "traits"].includes(field.type)) rowClass += ' flex-start';
+            let labelClass = 'modifier-panel-label';
             switch (field.type) {
                 case 'select':
                     const options = field.options.map(option => {
@@ -2892,7 +2903,7 @@ class ModifierPanelManager {
                     }).join('');
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
+                            <label class="${labelClass}">${field.label}</label>
                             <select ${commonAttrs}>
                                 ${options}
                             </select>
@@ -2902,7 +2913,7 @@ class ModifierPanelManager {
                     const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
                     return `
                         <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
+                            <label class="${labelClass}">${field.label}</label>
                             <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
                         </div>
                     `;
@@ -2910,15 +2921,15 @@ class ModifierPanelManager {
                     const checked = value ? 'checked' : '';
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                            <input type="checkbox" id="${fieldId}" ${checked} style="width: auto; margin: 0;" />
+                            <label class="${labelClass}">${field.label}</label>
+                            <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
                         </div>
                     `;
                 case 'text':
                     const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                     return `
                         <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
+                            <label class="${labelClass}">${field.label}</label>
                             <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                         </div>
                     `;
@@ -2927,7 +2938,7 @@ class ModifierPanelManager {
                     const rows = field.rows || 3;
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
+                            <label class="${labelClass}">${field.label}</label>
                             <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                         </div>
                     `;
@@ -2941,7 +2952,7 @@ class ModifierPanelManager {
                     }).join('');
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
+                            <label class="${labelClass}">${field.label}</label>
                             <select ${commonAttrs} multiple>
                                 ${multiOptions}
                             </select>
@@ -2951,7 +2962,7 @@ class ModifierPanelManager {
                     const uniqueId = `${fieldId}-container-${Math.random().toString(36).substr(2, 9)}`;
                     return `
                         <div class="${rowClass}" style="${containerStyle}">
-                            <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">${field.label}</label>
+                            <label class="${labelClass}">${field.label}</label>
                             <div id="${uniqueId}" style="flex: 1;"></div>
                         </div>
                     `;
@@ -2964,13 +2975,12 @@ class ModifierPanelManager {
     // DRY: Render common traits checkboxes
     renderCommonTraits(commonTraits, rep, type) {
         if (!commonTraits || !commonTraits.length) return '';
-        const labelWidth = ModifierPanelManager.labelWidth;
         return commonTraits.map(trait => {
                 const isChecked = rep.traits && rep.traits.includes(trait);
                 return `
                     <div class="modifier-field-row">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${trait.charAt(0).toUpperCase() + trait.slice(1)}</label>
-                        <input type="checkbox" id="${type}-trait-${trait}" style="width: auto; margin: 0;" ${isChecked ? 'checked' : ''} />
+                        <label class="modifier-panel-label">${trait.charAt(0).toUpperCase() + trait.slice(1)}</label>
+                        <input type="checkbox" id="${type}-trait-${trait}" class="modifier-panel-checkbox" ${isChecked ? 'checked' : ''} />
                     </div>
                 `;
             }).join('');
@@ -2980,10 +2990,9 @@ class ModifierPanelManager {
     renderTraitsField(config, type) {
         if (config.showTraits === false) return '';
             const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
-        const labelWidth = ModifierPanelManager.labelWidth;
         return `
-                <div class="modifier-field-row flex-start">
-                    <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">Traits</label>
+                <div class="modifier-field-row">
+                    <label class="modifier-panel-label">Traits</label>
                     <div id="${traitsContainerId}" style="flex: 1;"></div>
                 </div>
             `;
@@ -3027,17 +3036,9 @@ class ModifierPanelManager {
         const otherFields = config.fields.filter(f => f.id !== 'enabled');
         const componentSections = rep.damageComponents.map((component, index) => {
             return `
-                <div class="damage-component" data-component-index="${index}" style="
-                    border: 1px solid #ddd;
-                    border-radius: 4px;
-                    padding: 10px;
-                    background: #f9f9f9;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 10px;
-                ">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div style="font-weight: bold; color: #1976d2;">Damage Partial ${index + 1}</div>
+                <div class="damage-component" data-component-index="${index}">
+                    <div class="modifier-field-row" style="justify-content: space-between; align-items: center;">
+                        <div class="damage-component-label">Damage Partial ${index + 1}</div>
                     </div>
                     ${this.renderFields(config.componentFields, component, `damage-${index}`)}
                 </div>
@@ -3108,7 +3109,7 @@ class ModifierPanelManager {
                 const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                 const rows = field.rows || 3;
                 return `
-                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                    <div style="display: flex; gap: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
                         <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                     </div>
@@ -3122,7 +3123,7 @@ class ModifierPanelManager {
                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
                 }).join('');
                 return `
-                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                    <div style="display: flex; gap: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
                         <select ${commonAttrs} multiple>
                             ${multiOptions}
@@ -3132,7 +3133,7 @@ class ModifierPanelManager {
             case 'traits':
                 const uniqueId = `${field.id}-container-${Math.random().toString(36).substr(2, 9)}`;
                 return `
-                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                    <div style="display: flex; gap: 8px;">
                         <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">${field.label}</label>
                         <div id="${uniqueId}" style="flex: 1;"></div>
                     </div>
