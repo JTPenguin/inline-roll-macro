@@ -2155,16 +2155,23 @@ function showConverterDialog() {
                     el.addEventListener('click', (event) => {
                         event.preventDefault();
                         event.stopPropagation();
+                        const id = el.getAttribute('data-id');
+                        // If this element is already selected, deselect it
+                        if (selectedElementId === id && el.classList.contains('selected')) {
+                            el.classList.remove('selected');
+                            selectedElementId = null;
+                            modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
+                            return;
+                        }
+                        // Otherwise, select this element and deselect others
                         interactiveEls.forEach(e => e.classList.remove('selected'));
                         el.classList.add('selected');
-                        selectedElementId = el.getAttribute('data-id'); // Track selected element
-                        const id = el.getAttribute('data-id');
+                        selectedElementId = id; // Track selected element
                         const type = el.getAttribute('data-type');
                         let rep = window.pf2eReplacements.find(r => r.id === id);
                         if (!rep) return;
                         const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
                         modifierPanelContent.innerHTML = panelHTML;
-                        
                         // Add event listeners to the form
                         const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
                         if (form) {
