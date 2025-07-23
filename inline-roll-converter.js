@@ -58,7 +58,10 @@ const ALTERNATE_SHAPE_NAMES = {
     'sphere': 'burst',
     'cylinder': 'burst',
     'wedge': 'cone',
-    'wall': 'line'
+    'wall': 'line',
+    // Special: square/cube are lines with width = distance
+    'square': 'line',
+    'cube': 'line'
 };
 
 // Healing patterns
@@ -899,11 +902,16 @@ class TemplateReplacement extends RollReplacement {
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
         const isAlternateShape = Object.prototype.hasOwnProperty.call(ALTERNATE_SHAPE_NAMES, shapeName);
         this.shape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
+        // Special handling for square/cube: width = distance
+        if ((shapeName === 'square' || shapeName === 'cube') && this.distance) {
+            this.width = this.distance;
+        } else {
+            this.width = 5; // default for lines
+        }
         // If displayText is provided by the match, use it. Otherwise, if alternate shape, set displayText to the original phrase.
         if (match.displayText) {
             this.displayText = match.displayText;
         } else if (isAlternateShape && this.distance) {
-            // Reconstruct the original phrase (e.g., '20-foot radius')
             this.displayText = `${this.distance}-foot ${shapeName}`;
         } else {
             this.displayText = '';
