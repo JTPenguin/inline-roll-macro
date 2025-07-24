@@ -371,6 +371,7 @@ class Replacement {
         this.startPos = match.index;
         this.endPos = match.index + match[0].length;
         this.originalText = match[0];
+        this.trimTrailingSpaces();
         this.enabled = true;
         this.priority = 0;
         this.displayText = '';
@@ -380,6 +381,7 @@ class Replacement {
         this._lastConfig = undefined;
         // originalRender will be set after parsing in subclasses
     }
+    // Return the original or converted text depending on the enabled state
     render() {
         // Logging for debugging render output
         console.log(`[render] id=${this.id} enabled=${this.enabled} returning=${this.enabled ? 'converted' : 'originalText'}`);
@@ -392,6 +394,7 @@ class Replacement {
         const params = { type: this.type, id: this.id, displayText: this.displayText };
         return params;
     }
+    // Render the interactive element
     renderInteractive() {
         const params = this.getInteractiveParams();
         window.pf2eInteractiveElements[this.id] = { ...params };
@@ -419,6 +422,7 @@ class Replacement {
         this._lastConfig = config;
         this.displayText = '';
     }
+    // Reset to the original text
     resetToOriginal() {
         // Use the last match/config, or re-detect if missing
         let match = this._lastMatch, config = this._lastConfig;
@@ -435,6 +439,16 @@ class Replacement {
         }
         if (match) {
             this.parseMatch(match, config);
+        }
+    }
+    // Trim trailing spaces from the original text
+    trimTrailingSpaces() {
+        const originalLength = this.originalText.length;
+        const trimmed = this.originalText.replace(/\s+$/, '');
+        const spacesRemoved = originalLength - trimmed.length;
+        if (spacesRemoved > 0) {
+            this.endPos -= spacesRemoved;
+            this.originalText = trimmed;
         }
     }
 }
