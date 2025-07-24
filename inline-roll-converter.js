@@ -736,8 +736,6 @@ class CheckReplacement extends RollReplacement {
         this.defense = '';
         this.against = '';
         this.match = match;
-        this.multipleSkills = false;
-        this.skills = [];
         this.loreName = '';
         this.parseMatch(match, config);
         this.originalRender = this.render();
@@ -747,8 +745,6 @@ class CheckReplacement extends RollReplacement {
         this.secret = false;
         this.defense = '';
         this.against = '';
-        this.multipleSkills = false;
-        this.skills = [];
         // Extract check type, DC, and modifiers
         if (config && config.groups) {
             for (const group of config.groups) {
@@ -765,22 +761,9 @@ class CheckReplacement extends RollReplacement {
                 this.dc = match[1] || null;
                 return;
             }
-            // Check if this is a multiple skills match
-            if (match.multipleSkills && match.skills) {
-                this.multipleSkills = true;
-                this.skills = match.skills;
-                this.dc = match.dc || match[1] || null;
-            } else {
-                // Handle multiple skills logic (moved from pattern handler)
-                if (match[2] && match[2].includes(' or ')) {
-                    this.multipleSkills = true;
-                    this.skills = match[2].split(/\s+or\s+/).map(s => s.trim());
-                    this.dc = match[1] || null;
-                } else {
-                    this.checkType = match[2] ? match[2].toLowerCase() : '';
-                    this.dc = match[1] || null;
-                }
-            }
+            // Handle single skill logic
+            this.checkType = match[2] ? match[2].toLowerCase() : '';
+            this.dc = match[1] || null;
         }
     }
     render() { return super.render(); }
@@ -802,21 +785,6 @@ class CheckReplacement extends RollReplacement {
             }
             return `@Check[${params.join('|')}]` + `{${this.loreName} Lore}`;
         }
-        // Handle multiple skills
-        if (this.multipleSkills && this.skills.length > 0) {
-            const skillChecks = this.skills.map(skill => {
-                const params = [skill.toLowerCase()];
-                if (this.dc) params.push(`dc:${this.dc}`);
-                if (this.traits && this.traits.length > 0) {
-                    params.push(`traits:${this.traits.join(',')}`);
-                }
-                if (this.displayText && this.displayText.trim()) {
-                    return `@Check[${params.join('|')}]` + `{${this.displayText}}`;
-                }
-                return `@Check[${params.join('|')}]`;
-            });
-            return skillChecks.join(' or ');
-        }
         let params = [`${this.checkType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
         if (this.traits && this.traits.length > 0) {
@@ -829,9 +797,6 @@ class CheckReplacement extends RollReplacement {
     }
     validate() {
         if (this.match && this.match.replacement) return true;
-        if (this.multipleSkills) {
-            return this.skills.length > 0;
-        }
         return this.checkType;
     }
     getInteractiveParams() {
@@ -842,8 +807,6 @@ class CheckReplacement extends RollReplacement {
             secret: this.secret,
             defense: this.defense,
             against: this.against,
-            multipleSkills: this.multipleSkills,
-            skills: this.skills,
             loreName: this.loreName,
             originalText: this.originalText
         };
