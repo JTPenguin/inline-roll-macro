@@ -784,9 +784,9 @@ class CheckReplacement extends RollReplacement {
                 params.push(`traits:${this.traits.join(',')}`);
             }
             if (this.displayText && this.displayText.trim()) {
-                return `@Check[${params.join('|')}]` + `{${this.displayText}} check`;
+                return `@Check[${params.join('|')}]` + `{${this.displayText}}`;
             }
-            return `@Check[${params.join('|')}]` + `{${this.loreName} Lore} check`;
+            return `@Check[${params.join('|')}]` + `{${this.loreName} Lore}`;
         }
         // Handle multiple skills
         if (this.multipleSkills && this.skills.length > 0) {
@@ -801,7 +801,7 @@ class CheckReplacement extends RollReplacement {
                 }
                 return `@Check[${params.join('|')}]`;
             });
-            return skillChecks.join(' or ') + ' check';
+            return skillChecks.join(' or ');
         }
         let params = [`${this.checkType}`];
         if (this.dc) params.push(`dc:${this.dc}`);
@@ -809,16 +809,16 @@ class CheckReplacement extends RollReplacement {
             params.push(`traits:${this.traits.join(',')}`);
         }
         if (this.displayText && this.displayText.trim()) {
-            return `@Check[${params.join('|')}]` + `{${this.displayText}} check`;
+            return `@Check[${params.join('|')}]` + `{${this.displayText}}`;
         }
-        return `@Check[${params.join('|')}] check`;
+        return `@Check[${params.join('|')}]`;
     }
     validate() {
         if (this.match && this.match.replacement) return true;
         if (this.multipleSkills) {
-            return this.skills.length > 0 && this.dc;
+            return this.skills.length > 0;
         }
-        return this.checkType && (this.dc || this.defense || this.against);
+        return this.checkType;
     }
     getInteractiveParams() {
         return {
@@ -947,7 +947,7 @@ class SaveReplacement extends RollReplacement {
     }
     validate() {
         if (this.match && this.match.replacement) return true;
-        return this.saveType && this.dc;
+        return this.saveType;
     }
     getInteractiveParams() {
         return {
@@ -1658,11 +1658,10 @@ const PATTERN_DEFINITIONS = [
     // Priority 1: Comprehensive save pattern
     {
         type: 'save',
-        // Updated regex: do NOT look for 'save' or 'saving throw' at the end at all
-        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?DC\s*(\d{1,2}))|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s+basic(?:\s*[,;:\(\)]?\s*DC\s*(\d{1,2}))|(?:basic\s+)?DC\s*(\d{1,2})\s+(fort(?:itude)?|ref(?:lex)?|will)|DC\s*(\d{1,2})\s+(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will))(?:\)?)/gi,
+        regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?\s*(?:basic)?(?:\s*[,;:\(\)]?\s*(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?(?:DC\s*(\d{1,2})\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b|(?:DC\s*(\d{1,2})\s+)?(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b)(?:\)?)/gi,
         priority: PRIORITY.SAVE,
         handler: (match) => match,
-        description: 'Comprehensive save pattern (all variations, does not look for save/saving throw at end at all)'
+        description: 'Comprehensive save pattern (all variations, does not look for save/saving throw at end at all, dc optional)'
     },
     // Priority 2: Damage and skill patterns
     {
@@ -1703,21 +1702,14 @@ const PATTERN_DEFINITIONS = [
     },
     {
         type: 'skill',
-        regex: new RegExp(`DC\\s+(\\d+)\\s+((?:${SKILL_PATTERN})(?:\\s*,\\s*(?:${SKILL_PATTERN}))*\\s*(?:,\\s*)?(?:or\\s+)?(?:${SKILL_PATTERN}))\\s+check`, 'gi'),
-        priority: PRIORITY.SKILL,
-        handler: (match) => match,
-        description: 'Multiple skill checks with "or" separators'
-    },
-    {
-        type: 'skill',
-        regex: /DC\s+(\d+)\s+Perception\s+check/gi,
+        regex: /(?:DC\s+(\d+)\s+)?Perception(?:\s+check)?/gi,
         priority: PRIORITY.SKILL,
         handler: (match) => match,
         description: 'Perception checks'
     },
     {
         type: 'skill',
-        regex: /DC\s+(\d+)\s+([^0-9\n]+?)\s+Lore\s+check/gi,
+        regex: /(?:DC\s+(\d+)\s+)?([^0-9\n]+?)\s+Lore(?:\s+check)?/gi,
         priority: PRIORITY.SKILL,
         handler: (match) => {
             // Mark this as a lore check for special handling
@@ -1729,30 +1721,32 @@ const PATTERN_DEFINITIONS = [
     },
     {
         type: 'skill',
-        regex: /([^0-9\n]+?)\s+Lore\s+DC\s+(\d+)\s+check/gi,
+        regex: /([^0-9\n]+?)\s+Lore\s+(?:DC\s+(\d+)\s+)?check/gi,
         priority: PRIORITY.SKILL,
         handler: (match) => {
-            // Mark this as a lore check for special handling  
             match.isLoreCheck = true;
             match.loreName = match[1].trim();
+            // DC is now in position [2], might be undefined
+            const dc = match[2];
             // Normalize: put DC in position [1] like other patterns
-            match[1] = match[2]; // DC
-            match[2] = match.loreName; // Lore name
+            match[1] = dc || null;
+            match[2] = match.loreName;
             return match;
         },
         description: 'Lore skill checks (lore name first)'
     },
     {
         type: 'skill',
-        regex: /([^0-9\n]+?)\s+Lore\s+check\s+DC\s+(\d+)/gi,
+        regex: /([^0-9\n]+?)\s+Lore(?:\s+check)?(?:\s+DC\s+(\d+))?/gi,
         priority: PRIORITY.SKILL,
         handler: (match) => {
-            // Mark this as a lore check for special handling
             match.isLoreCheck = true;
             match.loreName = match[1].trim();
+            // DC is now in position [2], might be undefined  
+            const dc = match[2];
             // Normalize: put DC in position [1] like other patterns
-            match[1] = match[2]; // DC
-            match[2] = match.loreName; // Lore name
+            match[1] = dc || null;
+            match[2] = match.loreName;
             return match;
         },
         description: 'Lore skill checks (DC at end)'
@@ -1775,7 +1769,7 @@ const PATTERN_DEFINITIONS = [
     },
     {
         type: 'skill',
-        regex: new RegExp(`DC\\s+(\\d+)\\s+(${SKILL_PATTERN})\\s+check`, 'gi'),
+        regex: new RegExp(`(?:DC\\s+(\\d+)\\s+)?(${SKILL_PATTERN})\(?:\s+check)?`, 'gi'),
         priority: PRIORITY.BASIC_SKILL,
         handler: (match) => match,
         description: 'Single skill checks'
