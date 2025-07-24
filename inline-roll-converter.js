@@ -19,6 +19,10 @@ const SKILLS = [
     'Society', 'Stealth', 'Survival', 'Thievery'
 ];
 
+const SAVES = [
+    'Reflex', 'Fortitude', 'Will'
+];
+
 // Legacy to Remaster damage type mapping
 const LEGACY_TO_REMASTER_DAMAGE_TYPE = {
     chaotic: 'spirit',
@@ -730,105 +734,288 @@ class CheckReplacement extends RollReplacement {
         super(match, type);
         this.rollType = 'check';
         this.priority = 90;
+        // Unified properties
+        this.checkCategory = '';
         this.checkType = '';
         this.dc = null;
-        this.secret = false;
-        this.defense = '';
-        this.against = '';
-        this.match = match;
+        this.basic = false;
         this.loreName = '';
+        this.traits = [];
+        this.options = [];
+        this.match = match;
         this.parseMatch(match, config);
         this.originalRender = this.render();
     }
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        this.secret = false;
-        this.defense = '';
-        this.against = '';
-        // Extract check type, DC, and modifiers
-        if (config && config.groups) {
-            for (const group of config.groups) {
-                if (group.type && match[group.type]) this.checkType = match[group.type].toLowerCase();
-                if (group.dc && match[group.dc]) this.dc = match[group.dc];
-            }
-        } else {
-            // Defensive: if match.replacement exists, skip parsing (already replaced)
-            if (match && match.replacement) return;
-            // Check if this is a lore check
-            if (match.isLoreCheck) {
-                this.checkType = 'lore';
-                this.loreName = match.loreName;
-                this.dc = match[1] || null;
-                return;
-            }
-            // Handle single skill logic
-            this.checkType = match[2] ? match[2].toLowerCase() : '';
-            this.dc = match[1] || null;
+
+    resetCategoryProperties() {
+        // Reset all category-specific properties
+        this.checkType = '';
+        this.dc = null;
+        this.basic = false;
+        this.loreName = '';
+    }
+
+    determineCategory(match, config) {
+        // Priority 1: Explicit category from pattern handler
+        if (match && match.checkCategory) return match.checkCategory;
+        // Detect from match content
+        if (match && match.isLoreCheck) return 'lore';
+        // Detect from checkType content
+        const checkType = this.extractCheckType(match);
+        if (["fortitude", "reflex", "will"].includes(checkType)) return 'save';
+        if (checkType === 'perception') return 'perception';
+        if (typeof SKILLS !== 'undefined' && SKILLS.map(s => s.toLowerCase()).includes(checkType)) return 'skill';
+        // Check for flat check patterns
+        if (match && match[0] && /flat\s+check/i.test(match[0])) return 'flat';
+        // Default
+        return 'skill';
+    }
+
+    extractCheckType(match) {
+        // Try to extract checkType from match object
+        if (match && match.checkType) return match.checkType.toLowerCase();
+        if (match && match[2]) return match[2].toLowerCase();
+        if (match && match[1] && typeof match[1] === 'string') return match[1].toLowerCase();
+        return '';
+    }
+
+    getCategoryOptions() {
+        switch (this.checkCategory) {
+            case 'save':
+                return [
+                    { value: 'fortitude', label: 'Fortitude' },
+                    { value: 'reflex', label: 'Reflex' },
+                    { value: 'will', label: 'Will' }
+                ];
+            case 'skill':
+                return (typeof SKILLS !== 'undefined' ? SKILLS : [
+                    'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
+                    'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
+                    'Society', 'Stealth', 'Survival', 'Thievery'
+                ]).map(skill => ({ value: skill.toLowerCase(), label: skill }));
+            case 'perception':
+                return [{ value: 'perception', label: 'Perception' }];
+            case 'flat':
+                return [{ value: 'flat', label: 'Flat Check' }];
+            default:
+                return [];
         }
     }
+
+    parseMatch(match, config) {
+        super.parseMatch(match, config);
+        this.resetCategoryProperties();
+        this.checkCategory = this.determineCategory(match, config);
+        // Route to category-specific parser
+        switch (this.checkCategory) {
+            case 'save':
+                this.parseSaveMatch(match, config);
+                break;
+            case 'skill':
+                this.parseSkillMatch(match, config);
+                break;
+            case 'perception':
+                this.parsePerceptionMatch(match, config);
+                break;
+            case 'lore':
+                this.parseLoreMatch(match, config);
+                break;
+            case 'flat':
+                this.parseFlatMatch(match, config);
+                break;
+            default:
+                this.parseGenericMatch(match, config);
+        }
+    }
+
+    parseSkillMatch(match, config) {
+        // Minimal logic for skill checks (already handled in previous parseMatch)
+        this.checkType = this.extractCheckType(match);
+        this.dc = match[1] || null;
+    }
+
+    parsePerceptionMatch(match, config) {
+        // Minimal logic for perception checks
+        this.checkType = 'perception';
+        this.dc = match[1] || null;
+    }
+
+    parseLoreMatch(match, config) {
+        // Lore check name extraction and DC
+        if (match && match.loreName) {
+            this.loreName = match.loreName;
+        } else if (match && match[2]) {
+            this.loreName = match[2];
+        } else if (match && match[1]) {
+            this.loreName = match[1];
+        }
+        this.dc = match[1] || null;
+    }
+
+    parseGenericMatch(match, config) {
+        // Fallback parser: treat as skill check
+        this.checkType = this.extractCheckType(match);
+        this.dc = match[1] || null;
+    }
+
     render() { return super.render(); }
     conversionRender() {
-        // If match.replacement exists, use it directly
+        // Handle special replacement cases
         if (this.match && this.match.replacement) {
             return this.match.replacement;
         }
-        // Handle lore checks
-        if (this.checkType === 'lore' && this.loreName) {
-            let params = [`type:lore`];
-            if (this.dc) params.push(`dc:${this.dc}`);
-            params.push(`name:${this.loreName}`);
-            if (this.traits && this.traits.length > 0) {
-                params.push(`traits:${this.traits.join(',')}`);
-            }
-            if (this.displayText && this.displayText.trim()) {
-                return `@Check[${params.join('|')}]` + `{${this.displayText}}`;
-            }
-            return `@Check[${params.join('|')}]` + `{${this.loreName} Lore}`;
+        // Route to category-specific renderer
+        switch (this.checkCategory) {
+            case 'save':
+                return this.renderSaveCheck();
+            case 'lore':
+                return this.renderLoreCheck();
+            case 'flat':
+                return this.renderFlatCheck();
+            case 'perception':
+            case 'skill':
+                return this.renderSingleCheck();
+            default:
+                return this.renderSingleCheck();
         }
-        let params = [`${this.checkType}`];
+    }
+
+    renderSingleCheck() {
+        // Standard single check rendering
+        let params = [this.checkType];
+        if (this.dc) params.push(`dc:${this.dc}`);
+        if (this.basic) params.push('basic');
+        if (this.traits && this.traits.length > 0) {
+            params.push(`traits:${this.traits.join(',')}`);
+        }
+        const baseRoll = `@Check[${params.join('|')}]`;
+        const displayText = this.getDisplayText ? this.getDisplayText() : this.displayText;
+        return baseRoll + (displayText ? `{${displayText}}` : '');
+    }
+
+    renderLoreCheck() {
+        // Lore-specific parameter handling
+        let params = [`type:lore`];
+        if (this.dc) params.push(`dc:${this.dc}`);
+        params.push(`name:${this.loreName}`);
+        if (this.traits && this.traits.length > 0) {
+            params.push(`traits:${this.traits.join(',')}`);
+        }
+        const baseRoll = `@Check[${params.join('|')}]`;
+        const displayText = this.displayText || `${this.loreName} Lore`;
+        return baseRoll + `{${displayText}}`;
+    }
+
+    renderSaveCheck() {
+        // Save-specific parameter handling, parentheses, and save term
+        let params = [this.checkType];
+        if (this.dc) params.push(`dc:${this.dc}`);
+        if (this.basic) params.push('basic');
+        if (this.traits && this.traits.length > 0) {
+            params.push(`traits:${this.traits.join(',')}`);
+        }
+        // Only append 'save' or 'saving throw' if it was present in the input
+        let saveTerm = '';
+        if (this.saveTermInInput) {
+            // Use the exact term found in the input (prefer 'saving throw' if present)
+            const found = this.match[0].match(/\b(saving throw|save)\b/i);
+            saveTerm = found ? ` ${found[1]}` : '';
+        }
+        const replacement = `@Check[${params.join('|')}]` + (this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '') + saveTerm;
+        return this.hasWrappingParentheses ? `(${replacement})` : replacement;
+    }
+
+    renderFlatCheck() {
+        // Flat check parameter handling
+        let params = ['flat'];
         if (this.dc) params.push(`dc:${this.dc}`);
         if (this.traits && this.traits.length > 0) {
             params.push(`traits:${this.traits.join(',')}`);
         }
-        if (this.displayText && this.displayText.trim()) {
-            return `@Check[${params.join('|')}]` + `{${this.displayText}}`;
-        }
-        return `@Check[${params.join('|')}]`;
+        const baseRoll = `@Check[${params.join('|')}]`;
+        const displayText = this.displayText;
+        return baseRoll + (displayText ? `{${displayText}}` : '');
     }
+
     validate() {
         if (this.match && this.match.replacement) return true;
-        return this.checkType;
+        // Save-specific validation
+        if (this.checkCategory === 'save') {
+            return !!this.checkType;
+        }
+        // Flat check-specific validation
+        if (this.checkCategory === 'flat') {
+            return this.dc !== null && this.dc !== undefined;
+        }
+        // ... existing validation for other categories ...
+        switch (this.checkCategory) {
+            case 'lore':
+                return !!this.loreName;
+            case 'skill':
+                return !!this.checkType;
+            case 'perception':
+                return !!this.checkType;
+            default:
+                return !!this.checkType;
+        }
     }
     getInteractiveParams() {
+        // Enhanced interactive parameters for unified check replacement
         return {
             ...super.getInteractiveParams(),
+            checkCategory: this.checkCategory,
             checkType: this.checkType,
             dc: this.dc,
-            secret: this.secret,
-            defense: this.defense,
-            against: this.against,
+            basic: this.basic,
             loreName: this.loreName,
             originalText: this.originalText
+            // No multipleSkills or skills array in unified version
         };
     }
     static get panelConfig() {
         return {
             ...super.panelConfig,
-            title: 'Skill Check',
+            title: 'Check/Save',
             fields: [
                 ENABLED_FIELD,
+                // Category selector
                 {
-                    id: 'skill-select',
+                    id: 'check-category',
+                    type: 'select',
+                    label: 'Type',
+                    options: [
+                        { value: 'skill', label: 'Skill Check' },
+                        { value: 'save', label: 'Saving Throw' },
+                        { value: 'perception', label: 'Perception' },
+                        { value: 'lore', label: 'Lore' },
+                        { value: 'flat', label: 'Flat Check' }
+                    ],
+                    getValue: (rep) => rep.checkCategory || 'skill',
+                    setValue: (rep, value) => {
+                        rep.checkCategory = value;
+                    }
+                },
+                // Skill selector (unique ID)
+                {
+                    id: 'check-type-skill',
                     type: 'select',
                     label: 'Skill',
-                    options: [
-                        'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
-                        'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
-                        'Society', 'Stealth', 'Survival', 'Thievery', 'Lore'
-                    ],
-                    getValue: (rep) => rep.checkType ? rep.checkType.charAt(0).toUpperCase() + rep.checkType.slice(1) : '',
-                    setValue: (rep, value) => { rep.checkType = value.toLowerCase(); }
+                    options: (rep) => SKILLS,
+                    getValue: (rep) => rep.checkType || '',
+                    setValue: (rep, value) => { rep.checkType = value; },
+                    hideIf: (rep) => rep.checkCategory !== 'skill'
                 },
+                // Save selector (unique ID)
+                {
+                    id: 'check-type-save',
+                    type: 'select',
+                    label: 'Save',
+                    options: (rep) => SAVES,
+                    getValue: (rep) => rep.checkType || '',
+                    setValue: (rep, value) => { rep.checkType = value; },
+                    hideIf: (rep) => rep.checkCategory !== 'save'
+                },
+                // Lore name field
                 {
                     id: 'lore-name',
                     type: 'text',
@@ -836,17 +1023,27 @@ class CheckReplacement extends RollReplacement {
                     placeholder: 'e.g., Warfare, Local Politics',
                     getValue: (rep) => rep.loreName || '',
                     setValue: (rep, value) => { rep.loreName = value; },
-                    hideIf: (rep) => rep.checkType !== 'lore'
+                    hideIf: (rep) => rep.checkCategory !== 'lore'
                 },
+                // DC field
                 {
-                    id: 'skill-dc',
+                    id: 'check-dc',
                     type: 'number',
                     label: 'DC',
                     min: 0,
                     getValue: (rep) => rep.dc || '',
                     setValue: (rep, value) => { rep.dc = value; }
                 },
-                ...super.panelConfig.fields.slice(1)
+                // Basic save checkbox
+                {
+                    id: 'basic-save',
+                    type: 'checkbox',
+                    label: 'Basic Save',
+                    getValue: (rep) => !!rep.basic,
+                    setValue: (rep, value) => { rep.basic = value; },
+                    hideIf: (rep) => rep.checkCategory !== 'save'
+                },
+                DISPLAY_TEXT_FIELD
             ],
             commonTraits: ['secret']
         };
@@ -855,225 +1052,72 @@ class CheckReplacement extends RollReplacement {
         super.resetToOriginal();
         // Removed secret, defense, against, multipleSkills, skills reset (now in parseMatch)
     }
-}
-
-// -------------------- Save Replacement --------------------
-class SaveReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'save';
-        this.priority = 90;
-        this.saveType = '';
-        this.dc = null;
-        this.basic = false;
-        this.match = match;
-        this.saveTermInInput = false; // Track if 'save' or 'saving throw' is present
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-    parseMatch(match, config) {
+    parseSaveMatch(match, config) {
+        // SaveReplacement.parseMatch logic
         super.parseMatch(match, config);
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
         if (match && match.replacement) return;
-        // If match[0] starts with '(' but does not contain a matching ')', remove the leading '('
-        if (typeof match[0] === 'string' && match[0].startsWith('(') && !match[0].includes(')')) {
-            // Remove the leading '(' from match[0]
-            match[0] = match[0].slice(1);
-            // Adjust startPos and originalText
-            this.startPos = match.index + 1;
-            this.endPos = this.startPos + match[0].length;
-            this.originalText = match[0];
+        // Parentheses handling (for wrapping)
+        this.hasWrappingParentheses = false;
+        if (typeof match[0] === 'string' && match[0].startsWith('(') && match[0].endsWith(')')) {
+            this.hasWrappingParentheses = true;
         }
-        for (let i = 1; i < match.length; i++) {
+        // Save term detection
+        this.saveTermInInput = /\b(save|saving throw)\b/i.test(match[0]);
+        // Extract DC, type, and basic
+        this.basic = /\bbasic\b/i.test(match[0]);
+        for (let i = 1; i < (match.length || 0); i++) {
             const value = match[i];
             if (!value) continue;
             if (/^\d{1,2}$/.test(value)) {
                 this.dc = value;
             } else if (/^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
-                this.saveType = value.toLowerCase();
-                if (this.saveType.startsWith('fort')) this.saveType = 'fortitude';
-                else if (this.saveType.startsWith('ref')) this.saveType = 'reflex';
-                else if (this.saveType.startsWith('will')) this.saveType = 'will';
+                this.checkType = value.toLowerCase();
+                if (this.checkType.startsWith('fort')) this.checkType = 'fortitude';
+                else if (this.checkType.startsWith('ref')) this.checkType = 'reflex';
+                else if (this.checkType.startsWith('will')) this.checkType = 'will';
             }
         }
-        this.basic = /\bbasic\b/i.test(match[0]);
-        // Detect if 'save' or 'saving throw' is present anywhere in the matched phrase
-        this.saveTermInInput = /\b(save|saving throw)\b/i.test(match[0]);
     }
-    render() { return super.render(); }
-    conversionRender() {
-        if (this.match && this.match.replacement) {
-            return this.match.replacement;
-        }
-        let params = [`${this.saveType}`];
+
+    renderSaveCheck() {
+        // SaveReplacement.conversionRender logic
+        let params = [this.checkType];
         if (this.dc) params.push(`dc:${this.dc}`);
         if (this.basic) params.push('basic');
         if (this.traits && this.traits.length > 0) {
             params.push(`traits:${this.traits.join(',')}`);
         }
-        const originalText = this.match[0];
-        const hasWrappingParentheses = originalText.startsWith('(') && originalText.endsWith(')');
         // Only append 'save' or 'saving throw' if it was present in the input
         let saveTerm = '';
         if (this.saveTermInInput) {
             // Use the exact term found in the input (prefer 'saving throw' if present)
-            const found = originalText.match(/\b(saving throw|save)\b/i);
+            const found = this.match[0].match(/\b(saving throw|save)\b/i);
             saveTerm = found ? ` ${found[1]}` : '';
         }
         const replacement = `@Check[${params.join('|')}]` + (this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '') + saveTerm;
-        return hasWrappingParentheses ? `(${replacement})` : replacement;
+        return this.hasWrappingParentheses ? `(${replacement})` : replacement;
     }
-    validate() {
-        if (this.match && this.match.replacement) return true;
-        return this.saveType;
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            saveType: this.saveType,
-            dc: this.dc,
-            basic: this.basic,
-            secret: this.secret,
-            traits: this.traits,
-            originalText: this.originalText
-        };
-    }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Saving Throw',
-            fields: [
-                ENABLED_FIELD,
-                {
-                    id: 'save-type',
-                    type: 'select',
-                    label: 'Type',
-                    options: [
-                        { value: 'fortitude', label: 'Fortitude' },
-                        { value: 'reflex', label: 'Reflex' },
-                        { value: 'will', label: 'Will' }
-                    ],
-                    getValue: (rep) => rep.saveType || '',
-                    setValue: (rep, value) => { rep.saveType = value; }
-                },
-                {
-                    id: 'save-dc',
-                    type: 'number',
-                    label: 'DC',
-                    min: 0,
-                    getValue: (rep) => rep.dc || '',
-                    setValue: (rep, value) => { rep.dc = value; }
-                },
-                {
-                    id: 'save-basic',
-                    type: 'checkbox',
-                    label: 'Basic',
-                    getValue: (rep) => !!rep.basic,
-                    setValue: (rep, value) => { rep.basic = value; }
-                },
-                ...super.panelConfig.fields.slice(1)
-            ],
-            commonTraits: ['secret']
-        };
-    }
-    resetToOriginal() {
-        super.resetToOriginal();
-    }
-}
 
-// -------------------- Template Replacement --------------------
-class TemplateReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'template';
-        this.priority = 80;
-        this.shape = '';
-        this.distance = 0;
-        this.width = 5;
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-    parseMatch(match, config) {
+    parseFlatMatch(match, config) {
+        // FlatCheckReplacement.parseMatch logic
         super.parseMatch(match, config);
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
         if (match && match.replacement) return;
-        const shapeName = match[2] ? match[2].toLowerCase() : '';
-        this.distance = match[1] ? parseInt(match[1], 10) : 0;
-        const isAlternateShape = Object.prototype.hasOwnProperty.call(ALTERNATE_SHAPE_NAMES, shapeName);
-        this.shape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
-        // Special handling for square/cube: width = distance
-        if ((shapeName === 'square' || shapeName === 'cube') && this.distance) {
-            this.width = this.distance;
-        } else {
-            this.width = 5; // default for lines
-        }
-        // If displayText is provided by the match, use it. Otherwise, if alternate shape, set displayText to the original phrase.
-        if (match.displayText) {
-            this.displayText = match.displayText;
-        } else if (isAlternateShape && this.distance) {
-            this.displayText = `${this.distance}-foot ${shapeName}`;
-        } else {
-            this.displayText = '';
-        }
-        if (match.isWithin) this.isWithin = true; // optional, for future use
+        // Flat check pattern: match[1] is DC
+        this.dc = match[1] || null;
     }
-    render() { return super.render(); }
-    conversionRender() {
-        let params = [`type:${this.shape}`, `distance:${this.distance}`];
-        if (this.shape === 'line' && this.width && this.width !== 5) {
-            params.push(`width:${this.width}`);
+
+    renderFlatCheck() {
+        // FlatCheckReplacement.conversionRender logic
+        let params = ['flat'];
+        if (this.dc) params.push(`dc:${this.dc}`);
+        if (this.traits && this.traits.length > 0) {
+            params.push(`traits:${this.traits.join(',')}`);
         }
-        if (this.displayText && this.displayText.trim()) {
-            return `@Template[${params.join('|')}]` + `{${this.displayText}}`;
-        } else {
-            return `@Template[${params.join('|')}]`;
-        }
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            shape: this.shape,
-            distance: this.distance,
-            width: this.width,
-            originalText: this.originalText
-        };
-    }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Template',
-            showTraits: false, // Hide traits field for templates
-            fields: [
-                ENABLED_FIELD,
-                {
-                    id: 'template-type',
-                    type: 'select',
-                    label: 'Type',
-                    options: TEMPLATE_SHAPES.map(shape => ({ value: shape, label: shape.charAt(0).toUpperCase() + shape.slice(1) })),
-                    getValue: (rep) => rep.shape || '',
-                    setValue: (rep, value) => { rep.shape = value; }
-                },
-                {
-                    id: 'template-distance',
-                    type: 'number',
-                    label: 'Distance',
-                    min: 0,
-                    getValue: (rep) => rep.distance || '',
-                    setValue: (rep, value) => { rep.distance = parseInt(value, 10) || 0; }
-                },
-                {
-                    id: 'template-width',
-                    type: 'number',
-                    label: 'Width',
-                    min: 0,
-                    getValue: (rep) => rep.width || '',
-                    setValue: (rep, value) => { rep.width = parseInt(value, 10) || 0; },
-                    hideIf: (rep) => rep.shape !== 'line'
-                },
-                ...super.panelConfig.fields.slice(1)
-            ]
-        };
-    }
-    resetToOriginal() {
-        super.resetToOriginal();
+        const baseRoll = `@Check[${params.join('|')}]`;
+        const displayText = this.displayText;
+        return baseRoll + (displayText ? `{${displayText}}` : '');
     }
 }
 
@@ -1246,64 +1290,96 @@ class ConditionReplacement extends Replacement {
     }
 }
 
-// -------------------- Flat Check Replacement --------------------
-class FlatCheckReplacement extends RollReplacement {
+// -------------------- Template Replacement --------------------
+class TemplateReplacement extends RollReplacement {
     constructor(match, type, config) {
         super(match, type);
-        this.rollType = 'flat';
+        this.rollType = 'template';
         this.priority = 80;
-        this.dc = null;
-        this.match = match;
+        this.shape = '';
+        this.distance = 0;
+        this.width = 5;
         this.parseMatch(match, config);
         this.originalRender = this.render();
     }
     parseMatch(match, config) {
         super.parseMatch(match, config);
-        // Defensive: if match.replacement exists, skip parsing (already replaced)
         if (match && match.replacement) return;
-        // Flat check pattern: match[1] is DC
-        this.dc = match[1] || null;
+        const shapeName = match[2] ? match[2].toLowerCase() : '';
+        this.distance = match[1] ? parseInt(match[1], 10) : 0;
+        const isAlternateShape = Object.prototype.hasOwnProperty.call(ALTERNATE_SHAPE_NAMES, shapeName);
+        this.shape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
+        // Special handling for square/cube: width = distance
+        if ((shapeName === 'square' || shapeName === 'cube') && this.distance) {
+            this.width = this.distance;
+        } else {
+            this.width = 5; // default for lines
+        }
+        // If displayText is provided by the match, use it. Otherwise, if alternate shape, set displayText to the original phrase.
+        if (match.displayText) {
+            this.displayText = match.displayText;
+        } else if (isAlternateShape && this.distance) {
+            this.displayText = `${this.distance}-foot ${shapeName}`;
+        } else {
+            this.displayText = '';
+        }
+        if (match.isWithin) this.isWithin = true; // optional, for future use
     }
     render() { return super.render(); }
     conversionRender() {
-        if (this.match && this.match.replacement) {
-            return this.match.replacement;
+        let params = [`type:${this.shape}`, `distance:${this.distance}`];
+        if (this.shape === 'line' && this.width && this.width !== 5) {
+            params.push(`width:${this.width}`);
         }
-        let params = ['flat'];
-        if (this.dc) params.push(`dc:${this.dc}`);
         if (this.displayText && this.displayText.trim()) {
-            return `@Check[${params.join('|')}]` + `{${this.displayText}}`;
+            return `@Template[${params.join('|')}]` + `{${this.displayText}}`;
+        } else {
+            return `@Template[${params.join('|')}]`;
         }
-        return `@Check[${params.join('|')}]`;
-    }
-    validate() {
-        if (this.match && this.match.replacement) return true;
-        return this.dc !== null;
     }
     getInteractiveParams() {
         return {
             ...super.getInteractiveParams(),
-            dc: this.dc,
+            shape: this.shape,
+            distance: this.distance,
+            width: this.width,
             originalText: this.originalText
         };
     }
     static get panelConfig() {
         return {
             ...super.panelConfig,
-            title: 'Flat Check',
+            title: 'Template',
+            showTraits: false, // Hide traits field for templates
             fields: [
                 ENABLED_FIELD,
                 {
-                    id: 'flat-dc',
-                    type: 'number',
-                    label: 'DC',
-                    min: 0,
-                    getValue: (rep) => rep.dc || '',
-                    setValue: (rep, value) => { rep.dc = value; }
+                    id: 'template-type',
+                    type: 'select',
+                    label: 'Type',
+                    options: TEMPLATE_SHAPES.map(shape => ({ value: shape, label: shape.charAt(0).toUpperCase() + shape.slice(1) })),
+                    getValue: (rep) => rep.shape || '',
+                    setValue: (rep, value) => { rep.shape = value; }
                 },
-                DISPLAY_TEXT_FIELD
-            ],
-            showTraits: false
+                {
+                    id: 'template-distance',
+                    type: 'number',
+                    label: 'Distance',
+                    min: 0,
+                    getValue: (rep) => rep.distance || '',
+                    setValue: (rep, value) => { rep.distance = parseInt(value, 10) || 0; }
+                },
+                {
+                    id: 'template-width',
+                    type: 'number',
+                    label: 'Width',
+                    min: 0,
+                    getValue: (rep) => rep.width || '',
+                    setValue: (rep, value) => { rep.width = parseInt(value, 10) || 0; },
+                    hideIf: (rep) => rep.shape !== 'line'
+                },
+                ...super.panelConfig.fields.slice(1)
+            ]
         };
     }
     resetToOriginal() {
@@ -1560,12 +1636,10 @@ class ActionReplacement extends Replacement {
 const REPLACEMENT_CLASS_MAP = {
     damage: DamageReplacement,
     healing: HealingReplacement, // Dedicated healing replacement class
-    save: SaveReplacement, // Dedicated save replacement class
-    skill: CheckReplacement,
+    check: CheckReplacement, // Unified check replacement for all check/save/flat
     template: TemplateReplacement,
     condition: ConditionReplacement,
     legacy: DamageReplacement, // Use DamageReplacement for legacy damage type conversions
-    flat: FlatCheckReplacement, // Flat check support
     duration: DurationReplacement, // Duration replacement
     action: ActionReplacement, // New action replacement class
 };
@@ -1634,10 +1708,13 @@ const PATTERN_DEFINITIONS = [
     },
     // Priority 1: Comprehensive save pattern
     {
-        type: 'save',
+        type: 'check',
         regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?\s*(?:basic)?(?:\s*[,;:\(\)]?\s*(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?(?:DC\s*(\d{1,2})\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b|(?:DC\s*(\d{1,2})\s+)?(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b)(?:\)?)/gi,
         priority: PRIORITY.SAVE,
-        handler: (match) => match,
+        handler: (match) => {
+            match.checkCategory = 'save';
+            return match;
+        },
         description: 'Comprehensive save pattern (all variations, does not look for save/saving throw at end at all, dc optional)'
     },
     // Priority 2: Damage and skill patterns
@@ -1678,61 +1755,65 @@ const PATTERN_DEFINITIONS = [
         description: 'Healing patterns (hit points, HP, healing)'
     },
     {
-        type: 'skill',
+        type: 'check',
         regex: /(?:DC\s+(\d+)\s+)?Perception(?:\s+check)?/gi,
         priority: PRIORITY.SKILL,
-        handler: (match) => match,
+        handler: (match) => {
+            match.checkCategory = 'skill';
+            return match;
+        },
         description: 'Perception checks'
     },
     {
-        type: 'skill',
+        type: 'check',
         regex: /(?:DC\s+(\d+)\s+)?([^0-9\n]+?)\s+Lore(?:\s+check)?/gi,
         priority: PRIORITY.SKILL,
         handler: (match) => {
-            // Mark this as a lore check for special handling
             match.isLoreCheck = true;
             match.loreName = match[2].trim();
+            match.checkCategory = 'lore';
             return match;
         },
         description: 'Lore skill checks (DC first)'
     },
     {
-        type: 'skill',
+        type: 'check',
         regex: /([^0-9\n]+?)\s+Lore\s+(?:DC\s+(\d+)\s+)?check/gi,
         priority: PRIORITY.SKILL,
         handler: (match) => {
             match.isLoreCheck = true;
             match.loreName = match[1].trim();
-            // DC is now in position [2], might be undefined
             const dc = match[2];
-            // Normalize: put DC in position [1] like other patterns
             match[1] = dc || null;
             match[2] = match.loreName;
+            match.checkCategory = 'lore';
             return match;
         },
         description: 'Lore skill checks (lore name first)'
     },
     {
-        type: 'skill',
+        type: 'check',
         regex: /([^0-9\n]+?)\s+Lore(?:\s+check)?(?:\s+DC\s+(\d+))?/gi,
         priority: PRIORITY.SKILL,
         handler: (match) => {
             match.isLoreCheck = true;
             match.loreName = match[1].trim();
-            // DC is now in position [2], might be undefined  
             const dc = match[2];
-            // Normalize: put DC in position [1] like other patterns
             match[1] = dc || null;
             match[2] = match.loreName;
+            match.checkCategory = 'lore';
             return match;
         },
         description: 'Lore skill checks (DC at end)'
     },
     {
-        type: 'flat',
+        type: 'check',
         regex: /DC\s+(\d+)\s+flat\s+check/gi,
         priority: PRIORITY.FLAT,
-        handler: (match) => match,
+        handler: (match) => {
+            match.checkCategory = 'flat';
+            return match;
+        },
         description: 'Flat checks'
     },
     
@@ -1745,10 +1826,13 @@ const PATTERN_DEFINITIONS = [
         description: 'Basic damage rolls (single)'
     },
     {
-        type: 'skill',
+        type: 'check',
         regex: new RegExp(`(?:DC\\s+(\\d+)\\s+)?(${SKILL_PATTERN})\(?:\s+check)?`, 'gi'),
         priority: PRIORITY.BASIC_SKILL,
-        handler: (match) => match,
+        handler: (match) => {
+            match.checkCategory = 'skill';
+            return match;
+        },
         description: 'Single skill checks'
     },
     // NEW: Untyped (none) damage, e.g., '3d6 damage'
@@ -3146,7 +3230,7 @@ class ModifierPanelManager {
                         return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
                     }).join('');
                     return `
-                        <div class="${rowClass}" style="${containerStyle}">
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
                             <label class="${labelClass}">${field.label}</label>
                             <select ${commonAttrs}>
                                 ${options}
@@ -3164,7 +3248,7 @@ class ModifierPanelManager {
                 case 'checkbox':
                     const checked = value ? 'checked' : '';
                     return `
-                        <div class="${rowClass}" style="${containerStyle}">
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
                             <label class="${labelClass}">${field.label}</label>
                             <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
                         </div>
@@ -3181,7 +3265,7 @@ class ModifierPanelManager {
                     const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
                     const rows = field.rows || 3;
                     return `
-                        <div class="${rowClass}" style="${containerStyle}">
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
                             <label class="${labelClass}">${field.label}</label>
                             <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                         </div>
@@ -3196,7 +3280,7 @@ class ModifierPanelManager {
                         return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
                     }).join('');
                     return `
-                        <div class="${rowClass}" style="${containerStyle}">
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
                             <label class="${labelClass}">${field.label}</label>
                             <select ${commonAttrs} multiple>
                                 ${multiOptions}
@@ -3206,13 +3290,13 @@ class ModifierPanelManager {
                 case 'traits':
                     const uniqueId = `${fieldId}-container-${Math.random().toString(36).substr(2, 9)}`;
                     return `
-                        <div class="${rowClass}" style="${containerStyle}">
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
                             <label class="${labelClass}">${field.label}</label>
                             <div id="${uniqueId}" style="flex: 1;"></div>
                         </div>
                     `;
                 default:
-                    return `<div class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
+                    return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
             }
         }).join('');
     }
