@@ -799,6 +799,7 @@ class CheckReplacement extends RollReplacement {
         this.statistic = '';
         this.dc = null;
         this.basic = false;
+        this.damagingEffect = false;
         this.loreName = '';
         this.traits = [];
         this.options = [];
@@ -987,7 +988,7 @@ class CheckReplacement extends RollReplacement {
         params.push(...this.buildDCParams());
         
         if (this.basic) params.push('basic');
-        
+        if (this.damagingEffect) params.push('options:damaging-effect');
         // Only append 'save' or 'saving throw' if it was present in the input
         let saveTerm = '';
         if (this.saveTermInInput) {
@@ -1118,6 +1119,14 @@ class CheckReplacement extends RollReplacement {
                     label: 'Basic Save',
                     getValue: (rep) => !!rep.basic,
                     setValue: (rep, value) => { rep.basic = value; },
+                    hideIf: (rep) => rep.checkCategory !== 'save'
+                },
+                {
+                    id: 'damaging-effect',
+                    type: 'checkbox',
+                    label: 'Damaging Effect',
+                    getValue: (rep) => !!rep.damagingEffect,
+                    setValue: (rep, value) => { rep.damagingEffect = value; },
                     hideIf: (rep) => rep.checkCategory !== 'save'
                 },
                 DISPLAY_TEXT_FIELD
