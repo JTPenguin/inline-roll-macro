@@ -22,6 +22,37 @@ const SKILLS = [
 const SAVES = [
     'Reflex', 'Fortitude', 'Will'
 ];
+const DEFENSE_STAT_OPTIONS = [
+    // Basic Defense Statistics
+    { value: 'ac', label: 'Armor Class' },
+    { value: 'perception', label: 'Perception' },
+    
+    // Save DCs
+    { value: 'fortitude', label: 'Fortitude' },
+    { value: 'reflex', label: 'Reflex' },
+    { value: 'will', label: 'Will' },
+    
+    // Spell DC
+    { value: 'spell', label: 'Spell DC' },
+    
+    // Skills (all should work with defense)
+    { value: 'acrobatics', label: 'Acrobatics' },
+    { value: 'arcana', label: 'Arcana' },
+    { value: 'athletics', label: 'Athletics' },
+    { value: 'crafting', label: 'Crafting' },
+    { value: 'deception', label: 'Deception' },
+    { value: 'diplomacy', label: 'Diplomacy' },
+    { value: 'intimidation', label: 'Intimidation' },
+    { value: 'medicine', label: 'Medicine' },
+    { value: 'nature', label: 'Nature' },
+    { value: 'occultism', label: 'Occultism' },
+    { value: 'performance', label: 'Performance' },
+    { value: 'religion', label: 'Religion' },
+    { value: 'society', label: 'Society' },
+    { value: 'stealth', label: 'Stealth' },
+    { value: 'survival', label: 'Survival' },
+    { value: 'thievery', label: 'Thievery' }
+];
 
 // Legacy to Remaster damage type mapping
 const LEGACY_TO_REMASTER_DAMAGE_TYPE = {
@@ -764,6 +795,8 @@ class CheckReplacement extends RollReplacement {
         this.save = '';
         this.perception = 'perception';
         this.flat = 'flat';
+        this.dcMethod = 'static';
+        this.statistic = '';
         this.dc = null;
         this.basic = false;
         this.loreName = '';
@@ -782,6 +815,8 @@ class CheckReplacement extends RollReplacement {
         this.save = 'reflex';
         this.perception = 'perception';
         this.flat = 'flat';
+        this.dcMethod = 'static';
+        this.statistic = 'ac';
     }
 
     determineCategory(match, config) {
@@ -894,52 +929,63 @@ class CheckReplacement extends RollReplacement {
         }
     }
 
+    buildDCParams() {
+        const dcParams = [];
+        
+        // Handle DC method
+        if (this.dcMethod !== 'static') {
+            dcParams.push(`against:${this.statistic}`);
+            if (this.checkCategory === 'save' && this.dcMethod === 'target') {
+                dcParams.push('rollerRole:origin');
+            }
+            else if (this.checkCategory !== 'save' && this.dcMethod === 'origin') {
+                dcParams.push('rollerRole:target');
+            }
+        }
+        else { dcParams.push(`dc:${this.dc}`); }
+
+        // Handle traits
+        if (this.traits && this.traits.length > 0) {
+            dcParams.push(`traits:${this.traits.join(',')}`);
+        }
+        
+        return dcParams;
+    }
+
     renderSkillCheck() {
-        // Standard single check rendering
         let params = [this.skill];
-        if (this.dc) params.push(`dc:${this.dc}`);
-        if (this.basic) params.push('basic');
-        if (this.traits && this.traits.length > 0) {
-            params.push(`traits:${this.traits.join(',')}`);
-        }
+        params.push(...this.buildDCParams());
+        
         const baseRoll = `@Check[${params.join('|')}]`;
         const displayText = this.getDisplayText ? this.getDisplayText() : this.displayText;
         return baseRoll + (displayText ? `{${displayText}}` : '');
     }
-
+    
     renderPerceptionCheck() {
-        // Perception-specific parameter handling
         let params = [this.perception];
-        if (this.dc) params.push(`dc:${this.dc}`);
-        if (this.traits && this.traits.length > 0) {
-            params.push(`traits:${this.traits.join(',')}`);
-        }
+        params.push(...this.buildDCParams());
+        
         const baseRoll = `@Check[${params.join('|')}]`;
         const displayText = this.getDisplayText ? this.getDisplayText() : this.displayText;
         return baseRoll + (displayText ? `{${displayText}}` : '');
     }
-
+    
     renderLoreCheck() {
-        // Lore-specific parameter handling
         let params = [`type:lore`];
-        if (this.dc) params.push(`dc:${this.dc}`);
+        params.push(...this.buildDCParams());
+        
         params.push(`name:${this.loreName}`);
-        if (this.traits && this.traits.length > 0) {
-            params.push(`traits:${this.traits.join(',')}`);
-        }
         const baseRoll = `@Check[${params.join('|')}]`;
         const displayText = this.displayText || `${this.loreName} Lore`;
         return baseRoll + `{${displayText}}`;
     }
-
+    
     renderSaveCheck() {
-        // Save-specific parameter handling, parentheses, and save term
         let params = [this.save];
-        if (this.dc) params.push(`dc:${this.dc}`);
+        params.push(...this.buildDCParams());
+        
         if (this.basic) params.push('basic');
-        if (this.traits && this.traits.length > 0) {
-            params.push(`traits:${this.traits.join(',')}`);
-        }
+        
         // Only append 'save' or 'saving throw' if it was present in the input
         let saveTerm = '';
         if (this.saveTermInInput) {
@@ -947,17 +993,17 @@ class CheckReplacement extends RollReplacement {
             const found = this.match[0].match(/\b(saving throw|save)\b/i);
             saveTerm = found ? ` ${found[1]}` : '';
         }
+        
         const replacement = `@Check[${params.join('|')}]` + (this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '') + saveTerm;
         return this.hasWrappingParentheses ? `(${replacement})` : replacement;
     }
-
+    
     renderFlatCheck() {
-        // Flat check parameter handling
         let params = [this.flat];
+        
+        // Flat checks always use static DC (no defense/against options in UI)
         if (this.dc) params.push(`dc:${this.dc}`);
-        if (this.traits && this.traits.length > 0) {
-            params.push(`traits:${this.traits.join(',')}`);
-        }
+        
         const baseRoll = `@Check[${params.join('|')}]`;
         const displayText = this.displayText;
         return baseRoll + (displayText ? `{${displayText}}` : '');
@@ -968,7 +1014,6 @@ class CheckReplacement extends RollReplacement {
         return this.skill || this.save || this.perception || this.flat || this.loreName;
     }
     getInteractiveParams() {
-        // Enhanced interactive parameters for unified check replacement
         return {
             ...super.getInteractiveParams(),
             checkCategory: this.checkCategory,
@@ -976,6 +1021,8 @@ class CheckReplacement extends RollReplacement {
             save: this.save,
             perception: this.perception,
             flat: this.flat,
+            dcMethod: this.dcMethod,
+            statistic: this.statistic,
             dc: this.dc,
             basic: this.basic,
             loreName: this.loreName,
@@ -988,7 +1035,6 @@ class CheckReplacement extends RollReplacement {
             title: 'Check/Save',
             fields: [
                 ENABLED_FIELD,
-                // Category selector
                 {
                     id: 'check-category',
                     type: 'select',
@@ -1001,11 +1047,8 @@ class CheckReplacement extends RollReplacement {
                         { value: 'flat', label: 'Flat Check' }
                     ],
                     getValue: (rep) => rep.checkCategory || 'skill',
-                    setValue: (rep, value) => {
-                        rep.checkCategory = value;
-                    }
+                    setValue: (rep, value) => { rep.checkCategory = value; }
                 },
-                // Skill selector
                 {
                     id: 'check-type-skill',
                     type: 'select',
@@ -1025,7 +1068,6 @@ class CheckReplacement extends RollReplacement {
                     setValue: (rep, value) => { rep.save = value; },
                     hideIf: (rep) => rep.checkCategory !== 'save'
                 },
-                // Lore name field
                 {
                     id: 'lore-name',
                     type: 'text',
@@ -1035,6 +1077,28 @@ class CheckReplacement extends RollReplacement {
                     setValue: (rep, value) => { rep.loreName = value; },
                     hideIf: (rep) => rep.checkCategory !== 'lore'
                 },
+                {
+                    id: 'dc-method',
+                    type: 'select',
+                    label: 'DC Method',
+                    options: [
+                        { value: 'static', label: 'Static DC' },
+                        { value: 'target', label: 'Target\'s Statistic' },
+                        { value: 'origin', label: 'Origin\'s Statistic' },
+                    ],
+                    getValue: (rep) => rep.dcMethod || 'static',
+                    setValue: (rep, value) => { rep.dcMethod = value; },
+                    hideIf: (rep) => rep.checkCategory === 'flat'
+                },
+                {
+                    id: 'statistic',
+                    type: 'select',
+                    label: 'Statistic',
+                    options: DEFENSE_STAT_OPTIONS,
+                    getValue: (rep) => rep.statistic || '',
+                    setValue: (rep, value) => { rep.statistic = value; },
+                    hideIf: (rep) => rep.dcMethod === 'static' || rep.checkCategory === 'flat'
+                },
                 // DC field
                 {
                     id: 'check-dc',
@@ -1042,7 +1106,8 @@ class CheckReplacement extends RollReplacement {
                     label: 'DC',
                     min: 0,
                     getValue: (rep) => rep.dc || '',
-                    setValue: (rep, value) => { rep.dc = value; }
+                    setValue: (rep, value) => { rep.dc = value; },
+                    hideIf: (rep) => rep.dcMethod !== 'static' && rep.checkCategory !== 'flat'
                 },
                 // Basic save checkbox
                 {
@@ -1060,7 +1125,6 @@ class CheckReplacement extends RollReplacement {
     }
     resetToOriginal() {
         super.resetToOriginal();
-        // Removed secret, defense, against, multipleSkills, skills reset (now in parseMatch)
     }
     parseSaveMatch(match, config) {
         // SaveReplacement.parseMatch logic
