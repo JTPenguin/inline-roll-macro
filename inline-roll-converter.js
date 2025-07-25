@@ -971,7 +971,9 @@ class CheckReplacement extends RollReplacement {
     }
     
     renderLoreCheck() {
-        let params = [`type:lore`];
+        const loreSlug = this.loreName.toLowerCase().replace(/ /g, '-') + '-lore';
+        let params = [];
+        params.push(`type:${loreSlug}`);
         params.push(...this.buildDCParams());
         
         params.push(`name:${this.loreName}`);
