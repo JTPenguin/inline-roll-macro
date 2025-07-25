@@ -942,7 +942,7 @@ class CheckReplacement extends RollReplacement {
                 dcParams.push('rollerRole:target');
             }
         }
-        else { dcParams.push(`dc:${this.dc}`); }
+        else if (this.dc) { dcParams.push(`dc:${this.dc}`); }
 
         // Handle traits
         if (this.traits && this.traits.length > 0) {
