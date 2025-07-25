@@ -1260,7 +1260,6 @@ class ConditionReplacement extends Replacement {
                     setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
                     hideIf: (rep) => !CONDITIONS_WITH_VALUES.includes(rep.conditionName)
                 },
-                ...super.panelConfig.fields.slice(1)
             ]
         };
     }
