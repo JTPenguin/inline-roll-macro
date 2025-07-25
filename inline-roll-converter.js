@@ -801,6 +801,7 @@ class CheckReplacement extends RollReplacement {
         this.basic = false;
         this.damagingEffect = false;
         this.loreName = '';
+        this.showDC = 'owner';
         this.traits = [];
         this.options = [];
         this.match = match;
@@ -818,6 +819,7 @@ class CheckReplacement extends RollReplacement {
         this.flat = 'flat';
         this.dcMethod = 'static';
         this.statistic = 'ac';
+        this.showDC = 'owner';
     }
 
     determineCategory(match, config) {
@@ -945,6 +947,10 @@ class CheckReplacement extends RollReplacement {
         }
         else if (this.dc) { dcParams.push(`dc:${this.dc}`); }
 
+        if (this.showDC !== 'owner') {
+            dcParams.push(`showDC:${this.showDC}`);
+        }
+
         // Handle traits
         if (this.traits && this.traits.length > 0) {
             dcParams.push(`traits:${this.traits.join(',')}`);
@@ -1006,6 +1012,16 @@ class CheckReplacement extends RollReplacement {
         
         // Flat checks always use static DC (no defense/against options in UI)
         if (this.dc) params.push(`dc:${this.dc}`);
+
+        // Handle showDC
+        if (this.showDC !== 'owner') {
+            params.push(`showDC:${this.showDC}`);
+        }
+
+        // Handle traits
+        if (this.traits && this.traits.length > 0) {
+            params.push(`traits:${this.traits.join(',')}`);
+        }
         
         const baseRoll = `@Check[${params.join('|')}]`;
         const displayText = this.displayText;
@@ -1112,7 +1128,19 @@ class CheckReplacement extends RollReplacement {
                     setValue: (rep, value) => { rep.dc = value; },
                     hideIf: (rep) => rep.dcMethod !== 'static' && rep.checkCategory !== 'flat'
                 },
-                // Basic save checkbox
+                {
+                    id: 'show-dc',
+                    type: 'select',
+                    label: 'Show DC',
+                    options: [
+                        { value: 'owner', label: 'Owner Only' },
+                        { value: 'gm', label: 'GM Only' },
+                        { value: 'all', label: 'Everyone' },
+                        { value: 'none', label: 'No One' }
+                    ],
+                    getValue: (rep) => rep.showDC || 'owner',
+                    setValue: (rep, value) => { rep.showDC = value; }
+                },
                 {
                     id: 'basic-save',
                     type: 'checkbox',
@@ -3341,7 +3369,7 @@ class ModifierPanelManager {
                         </div>
                     `;
                 case 'traits':
-                    const uniqueId = `${fieldId}-container-${Math.random().toString(36).substr(2, 9)}`;
+                    const uniqueId = `${fieldId}-container`;
                     return `
                         <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
                             <label class="${labelClass}">${field.label}</label>
