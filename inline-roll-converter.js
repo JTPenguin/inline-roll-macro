@@ -3363,13 +3363,6 @@ class TraitsInput {
  * // See static panelConfig on each Replacement class for configuration.
  */
 
-const DAMAGE_CATEGORY_OPTIONS = [
-    { value: '', label: '' },
-    { value: 'persistent', label: 'Persistent' },
-    { value: 'precision', label: 'Precision' },
-    { value: 'splash', label: 'Splash' }
-];
-
 const DAMAGE_COMPONENT_FIELDS = [
     {
         id: 'dice',
@@ -3391,7 +3384,7 @@ const DAMAGE_COMPONENT_FIELDS = [
         id: 'category',
         type: 'select',
         label: 'Category',
-        options: DAMAGE_CATEGORY_OPTIONS,
+        options: ConfigManager.DAMAGE_CATEGORIES.options,
         getValue: (component) => component.category || '',
         setValue: (component, value) => { component.category = value || ''; }
     }
