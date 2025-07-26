@@ -159,6 +159,29 @@ class ConfigManager {
 
     static TEMPLATE_TYPES = new ConfigCategory([ 'burst', 'cone', 'line', 'emanation' ]);
 
+    static ALTERNATE_TEMPLATE_MAPPING = {
+        'radius': 'burst',
+        'circle': 'burst',
+        'sphere': 'burst',
+        'cylinder': 'burst',
+        'wall': 'line',
+        'square': 'line',
+        'cube': 'line'
+    }
+
+    static getStandardTemplateType(alternateName) {
+        return this.ALTERNATE_TEMPLATE_MAPPING[alternateName] || alternateName;
+    }
+
+    static ALTERNATE_TEMPLATE_NAMES = new ConfigCategory(
+        Object.keys(this.ALTERNATE_TEMPLATE_MAPPING)
+    )
+
+    static ALL_TEMPLATE_NAMES = new ConfigCategory([
+        ...this.TEMPLATE_TYPES.slugs,
+        ...this.ALTERNATE_TEMPLATE_NAMES.slugs
+    ])
+
     static DURATION_UNITS = new ConfigCategory([ 'rounds', 'seconds', 'minutes', 'hours', 'days' ]);
 
     static ACTIONS = new ConfigCategory([
@@ -210,22 +233,6 @@ const CONDITIONS_WITHOUT_VALUES = [
 ];
 const CONDITIONS_WITH_VALUES_PATTERN = CONDITIONS_WITH_VALUES.join('|');
 const CONDITIONS_WITHOUT_VALUES_PATTERN = CONDITIONS_WITHOUT_VALUES.join('|');
-
-// Template patterns
-const TEMPLATE_SHAPES = ['burst', 'cone', 'line', 'emanation'];
-const TEMPLATE_SHAPES_PATTERN = TEMPLATE_SHAPES.join('|');
-
-// Mapping of alternate shape names to standard shapes (for display text)
-const ALTERNATE_SHAPE_NAMES = {
-    'radius': 'burst',
-    'sphere': 'burst',
-    'cylinder': 'burst',
-    'wedge': 'cone',
-    'wall': 'line',
-    // Special: square/cube are lines with width = distance
-    'square': 'line',
-    'cube': 'line'
-};
 
 // Healing patterns
 const HEALING_TERMS = ['hit\\s+points?', 'HP', 'healing'];
@@ -1439,8 +1446,7 @@ class TemplateReplacement extends RollReplacement {
         if (match && match.replacement) return;
         const shapeName = match[2] ? match[2].toLowerCase() : '';
         this.distance = match[1] ? parseInt(match[1], 10) : 0;
-        const isAlternateShape = Object.prototype.hasOwnProperty.call(ALTERNATE_SHAPE_NAMES, shapeName);
-        this.shape = ALTERNATE_SHAPE_NAMES[shapeName] || shapeName;
+        this.shape = ConfigManager.getStandardTemplateType(shapeName); // Get the standard template type from the alternate name if necessary
         // Special handling for square/cube: width = distance
         if ((shapeName === 'square' || shapeName === 'cube') && this.distance) {
             this.width = this.distance;
@@ -1450,7 +1456,7 @@ class TemplateReplacement extends RollReplacement {
         // If displayText is provided by the match, use it. Otherwise, if alternate shape, set displayText to the original phrase.
         if (match.displayText) {
             this.displayText = match.displayText;
-        } else if (isAlternateShape && this.distance) {
+        } else if (ConfigManager.ALTERNATE_TEMPLATE_NAMES.includes(shapeName) && this.distance) {
             this.displayText = `${this.distance}-foot ${shapeName}`;
         } else {
             this.displayText = '';
@@ -1489,7 +1495,7 @@ class TemplateReplacement extends RollReplacement {
                     id: 'template-type',
                     type: 'select',
                     label: 'Type',
-                    options: TEMPLATE_SHAPES.map(shape => ({ value: shape, label: shape.charAt(0).toUpperCase() + shape.slice(1) })),
+                    options: ConfigManager.TEMPLATE_TYPES.options,
                     getValue: (rep) => rep.shape || '',
                     setValue: (rep, value) => { rep.shape = value; }
                 },
@@ -2040,7 +2046,7 @@ const PATTERN_DEFINITIONS = [
     // Priority 7: Area effects (consolidated)
     {
         type: 'template',
-        regex: new RegExp(`(\\d+)(?:[\\s-]+)(?:foot|feet)\\s+(${TEMPLATE_SHAPES_PATTERN}|${Object.keys(ALTERNATE_SHAPE_NAMES).join('|')})`, 'gi'),
+        regex: new RegExp(`(\\d+)(?:[\\s-]+)(?:foot|feet)\\s+(${ConfigManager.ALL_TEMPLATE_NAMES.pattern})`, 'gi'),
         priority: PRIORITY.TEMPLATE,
         handler: (match) => match,
         description: 'Consolidated area effects (standard and alternate shape names, with optional hyphen) - accepts both foot and feet'
