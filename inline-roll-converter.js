@@ -28,9 +28,13 @@ class ConfigCategory {
         }));
     }
 
-    // Helper method for converting arrays to a regex pattern (don't include any empty strings)
+    // Helper method for converting arrays to a regex pattern
     _toPattern(items) {
-        return items.filter(item => item !== '').join('|');
+        return items
+            .map(item => this._unslug(item))
+            .filter(item => item !== '') // Remove empty strings
+            .sort((a, b) => b.length - a.length) // Longest first
+            .join('|');
     }
 
     // Helper method for converting slugs to normal text (replace hyphens with spaces)
@@ -246,106 +250,6 @@ const HEALING_TERMS_PATTERN = HEALING_TERMS.join('|');
 
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
-
-// --- Parse Actions.md for action names and slugs ---
-const ACTIONS_LIST = [
-    // Action name, slug (if present)
-    ["Administer First Aid", "administer-first-aid", [["Stabilize", "stabilize"], ["Stop Bleeding", "stop-bleeding"]]],
-    ["Affix a Talisman", "affix-a-talisman"],
-    ["Aid", "aid"],
-    ["Arrest a Fall", "arrest-a-fall"],
-    ["Avert Gaze", "avert-gaze"],
-    ["Avoid Notice", ""],
-    ["Balance", ""],
-    ["Burrow", ""],
-    ["Climb", ""],
-    ["Coerce", ""],
-    ["Command an Animal", ""],
-    ["Conceal an Object", ""],
-    ["Crawl", ""],
-    ["Create a Diversion", "", [["Distracting Words", "distracting-words"], ["Gesture", "gesture"], ["Trick", "trick"]]],
-    ["Create Forgery", ""],
-    ["Decipher Writing", ""],
-    ["Delay", ""],
-    ["Demoralize", ""],
-    ["Disable Device", ""],
-    ["Disarm", ""],
-    ["Dismiss", ""],
-    ["Drop Prone", ""],
-    ["Escape", ""],
-    ["Feint", ""],
-    ["Fly", ""],
-    ["Force Open", ""],
-    ["Gather Information", ""],
-    ["Gran an Edge", ""],
-    ["Grapple", ""],
-    ["Hide", ""],
-    ["High Jump", ""],
-    ["Identify Alchemy", ""],
-    ["Identify Magic", ""],
-    ["Impersonate", ""],
-    ["Interact", ""],
-    ["Leap", ""],
-    ["Learn a Spell", ""],
-    ["Lie", ""],
-    ["Long Jump", ""],
-    ["Make an Impression", ""],
-    ["Maneuver in Flight", ""],
-    ["Mount", ""],
-    ["Palm an Object", ""],
-    ["Perform", "", [["Acting", "acting"], ["Comedy", "comedy"], ["Dance", "dance"], ["Keyboards", "keyboards"], ["Oratory", "oratory"], ["Percussion", "percussion"], ["Singing", "singing"], ["Strings", "strings"], ["Winds", "winds"]]],
-    ["Pick a Lock", ""],
-    ["Point Out", ""],
-    ["Ready", ""],
-    ["Recall Knowledge", ""],
-    ["Release", ""],
-    ["Reposition", ""],
-    ["Request", ""],
-    ["Seek", ""],
-    ["Sense Direction", ""],
-    ["Sense Motive", ""],
-    ["Shove", ""],
-    ["Sneak", ""],
-    ["Squeeze", ""],
-    ["Stand", ""],
-    ["Steal", ""],
-    ["Step", ""],
-    ["Stride", ""],
-    ["Subsist", ""],
-    ["Sustain", ""],
-    ["Swim", ""],
-    ["Take Cover", ""],
-    ["Track", ""],
-    ["Treat Disease", ""],
-    ["Treat Poison", ""],
-    ["Trip", ""],
-    ["Tumble Through", ""],
-    ["Exploit Vulnerability", ""],
-    ["Daring Swing", ""],
-    ["Haughty Correction", ""],
-    ["Entrap Confession", ""]
-];
-
-// Build action name -> slug map (case-insensitive)
-const ACTION_NAME_TO_SLUG = {};
-ACTIONS_LIST.forEach(([name, slug]) => {
-    const generatedSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    ACTION_NAME_TO_SLUG[name.toLowerCase()] = generatedSlug;
-});
-const ACTION_NAMES = Object.keys(ACTION_NAME_TO_SLUG);
-
-// Build regex for all action names (longest first for greedy match)
-const ACTION_NAMES_REGEX = ACTION_NAMES
-    .sort((a, b) => b.length - a.length)
-    .map(name => name.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&"))
-    .join('|');
-
-// --- Action pattern ---
-// Simplified: Only match the action name itself, with word boundaries
-const ACTION_PATTERN = new RegExp(
-    `\\b(${ACTION_NAMES_REGEX})\\b`,
-    'gi'
-);
 
 /**
  * Try to get condition UUID from compendium
@@ -1617,20 +1521,11 @@ class DurationReplacement extends RollReplacement {
     }
 }
 
-// Helper to get variants for a given action name
-function getActionVariants(actionName) {
-    if (!actionName) return null;
-    const entry = ACTIONS_LIST.find(([name]) => name === actionName);
-    if (!entry || entry.length < 3) return null;
-    return entry[2]; // Array of [name, slug]
-}
-
 class ActionReplacement extends Replacement {
     constructor(match, type, config) {
         super(match, type);
         this.priority = 60; // Utility level
-        this.actionName = match[1] || '';
-        this.slug = ACTION_NAME_TO_SLUG[this.actionName.toLowerCase()] || '';
+        this.action = '';
         this.variant = '';
         this.dc = '';
         this.statistic = '';
@@ -1638,37 +1533,71 @@ class ActionReplacement extends Replacement {
         this.parseMatch(match, config);
         this.originalRender = this.render();
     }
+
     parseMatch(match, config) {
         super.parseMatch(match, config);
-        this.actionName = match[1] || '';
-        this.slug = ACTION_NAME_TO_SLUG[this.actionName.toLowerCase()] || '';
-        if (getActionVariants(this.actionName)) {
-            this.variant = getActionVariants(this.actionName)[0][1];
+        // match[1] contains the unslugged action name (e.g., "administer first aid")
+        const matchedAction = match[1] || '';
+        
+        // Convert the matched text to a slug
+        this.action = this.actionToSlug(matchedAction);
+        
+        // Check if this action has variants and set default if it does
+        if (ConfigManager.actionHasVariants(this.action)) {
+            const variants = ConfigManager.ACTION_VARIANTS[this.action];
+            if (variants && variants.slugs.length > 0) {
+                this.variant = variants.slugs[0]; // Set first variant as default
+            }
         } else {
             this.variant = '';
         }
+        
         this.dc = '';
         this.statistic = '';
     }
+    
+    // Helper method to convert matched action text to slug
+    actionToSlug(actionText) {
+        // The action text from the regex will match the "unslug" pattern
+        // We need to convert it back to the slug form
+        const normalizedText = actionText.toLowerCase().trim();
+        
+        // Find the matching action slug
+        for (const slug of ConfigManager.ACTIONS.slugs) {
+            const unsluggedAction = slug.replace(/-/g, ' ');
+            if (unsluggedAction === normalizedText) {
+                return slug;
+            }
+        }
+        
+        // Fallback: create slug from text
+        return normalizedText.replace(/\s+/g, '-');
+    }
+
     render() { return super.render(); }
+
     conversionRender() {
-        // Render as [[/act <slug> <params>]]
+        // Use this.action directly as it's already the slug
         let paramsArr = [];
         if (this.variant && this.variant.trim()) paramsArr.push(`variant=${this.variant.trim()}`);
         if (this.dc && this.dc.trim()) paramsArr.push(`dc=${this.dc.trim()}`);
         if (this.statistic && this.statistic.trim()) paramsArr.push(`statistic=${this.statistic.trim()}`);
         let params = paramsArr.length ? ' ' + paramsArr.join(' ') : '';
-        let label = this.displayText && this.displayText.trim() ? this.displayText : this.actionName;
-        return `[[/act ${this.slug}${params}]]${label ? `{${label}}` : ''}`;
+        
+        // Only include display text if explicitly set
+        let label = this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '';
+            
+        return `[[/act ${this.action}${params}]]${label}`;
     }
+    
     validate() {
-        return !!this.slug;
+        return !!this.action;
     }
+
     getInteractiveParams() {
         return {
             ...super.getInteractiveParams(),
-            actionName: this.actionName,
-            slug: this.slug,
+            action: this.action,
             variant: this.variant,
             dc: this.dc,
             statistic: this.statistic,
@@ -1676,27 +1605,24 @@ class ActionReplacement extends Replacement {
         };
     }
     static get panelConfig() {
-        // Build dropdown options from ACTIONS_LIST
-        const actionOptions = ACTIONS_LIST
-            .map(([name, slug]) => ({ value: name, label: name }))
-            .sort((a, b) => a.label.localeCompare(b.label));
         return {
             ...super.panelConfig,
-            title: 'Inline Action',
+            title: 'Action',
             showTraits: false,
             fields: [
                 ENABLED_FIELD,
                 {
-                    id: 'action-name',
+                    id: 'action-select',
                     type: 'select',
                     label: 'Action',
-                    options: actionOptions,
-                    getValue: (rep) => rep.actionName || '',
+                    options: ConfigManager.ACTIONS.options,
+                    getValue: (rep) => rep.action || '',
                     setValue: (rep, value) => {
-                        rep.actionName = value;
-                        rep.slug = ACTION_NAME_TO_SLUG[value.toLowerCase()] || '';
-                        if (getActionVariants(value)) {
-                            rep.variant = getActionVariants(value)[0][1];
+                        rep.action = value;
+                        // Reset variant when action changes
+                        if (ConfigManager.actionHasVariants(value)) {
+                            const variants = ConfigManager.ACTION_VARIANTS[value];
+                            rep.variant = variants && variants.slugs.length > 0 ? variants.slugs[0] : '';
                         } else {
                             rep.variant = '';
                         }
@@ -1706,28 +1632,16 @@ class ActionReplacement extends Replacement {
                     id: 'action-variant',
                     type: 'select',
                     label: 'Variant',
-                    options: (rep) => {
-                        const action = ACTIONS_LIST.find(([name]) => name === rep.actionName);
-                        if (action && Array.isArray(action[2])) {
-                            return action[2].map(([label, value]) => ({ label, value }));
+                    options: (rep) =>{
+                        // Dynamically get options based on current selection
+                        if (ConfigManager.actionHasVariants(rep.action)) {
+                            return ConfigManager.ACTION_VARIANTS[rep.action].options;
                         }
                         return [];
                     },
                     getValue: (rep) => rep.variant || '',
-                    setValue: (rep, value) => {
-                        // Only set if value is in the current options
-                        const action = ACTIONS_LIST.find(([name]) => name === rep.actionName);
-                        const validOptions = (action && Array.isArray(action[2])) ? action[2].map(([label, value]) => value) : [];
-                        if (validOptions.includes(value)) {
-                            rep.variant = value;
-                        } else {
-                            rep.variant = '';
-                        }
-                    },
-                    hideIf: (rep) => {
-                        const action = ACTIONS_LIST.find(([name]) => name === rep.actionName);
-                        return !(action && Array.isArray(action[2]) && action[2].length > 0);
-                    }
+                    setValue: (rep, value) => { rep.variant = value; },
+                    hideIf: (rep) => !ConfigManager.actionHasVariants(rep.action) // Hide if the action has no variants
                 },
                 {
                     id: 'action-dc',
@@ -1749,12 +1663,13 @@ class ActionReplacement extends Replacement {
             ]
         };
     }
+
     resetToOriginal() {
         super.resetToOriginal();
-        // Reset slug and parameters
-        this.slug = ACTION_NAME_TO_SLUG[this.actionName.toLowerCase()] || '';
-        this.dc = '';
-        this.statistic = '';
+        // Re-parse to reset everything
+        if (this._lastMatch) {
+            this.parseMatch(this._lastMatch, this._lastConfig);
+        }
     }
 }
 
@@ -2068,7 +1983,7 @@ const PATTERN_DEFINITIONS = [
     // --- Inline Action pattern (priority 2, after saves, before basic damage/skill) ---
     {
         type: 'action',
-        regex: ACTION_PATTERN,
+        regex: new RegExp(`\\b(${ConfigManager.ACTIONS.pattern})\\b`, 'gi'),
         priority: PRIORITY.UTILITY, // Same as other utility patterns
         handler: (match) => {
             // match[1] is the action name matched (case-insensitive)
@@ -2608,7 +2523,7 @@ function showConverterDialog() {
             // === 3. Modifier Panel Handler ===
             function handleModifierChange(rep, changedFieldId) {
                 // If the replacement is an action and the action-name field was changed, re-render the panel
-                if (rep.type === 'action' && changedFieldId === 'action-name') {
+                if (rep.type === 'action' && changedFieldId === 'action-select') {
                     // Re-render the modifier panel for this replacement
                     const type = rep.type;
                     const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
