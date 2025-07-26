@@ -994,7 +994,7 @@ class CheckReplacement extends RollReplacement {
         super(match, type);
         this.rollType = 'check';
         this.priority = 90;
-        this.checkCategory = '';
+        this.checkType = '';
         this.skill = '';
         this.save = '';
         this.perception = 'perception';
@@ -1028,7 +1028,7 @@ class CheckReplacement extends RollReplacement {
 
     determineCategory(match, config) {
         // Priority 1: Explicit category from pattern handler
-        if (match && match.checkCategory) return match.checkCategory;
+        if (match && match.checkType) return match.checkType;
         // Detect from match content
         if (match && match.isLoreCheck) return 'lore';
     }
@@ -1042,7 +1042,7 @@ class CheckReplacement extends RollReplacement {
     }
 
     getCategoryOptions() {
-        switch (this.checkCategory) {
+        switch (this.checkType) {
             case 'save':
                 return [
                     { value: 'fortitude', label: 'Fortitude' },
@@ -1067,9 +1067,9 @@ class CheckReplacement extends RollReplacement {
     parseMatch(match, config) {
         super.parseMatch(match, config);
         this.resetCategoryProperties();
-        this.checkCategory = this.determineCategory(match, config);
+        this.checkType = this.determineCategory(match, config);
         // Route to category-specific parser
-        switch (this.checkCategory) {
+        switch (this.checkType) {
             case 'save':
                 this.parseSaveMatch(match, config);
                 break;
@@ -1120,7 +1120,7 @@ class CheckReplacement extends RollReplacement {
             return this.match.replacement;
         }
         // Route to category-specific renderer
-        switch (this.checkCategory) {
+        switch (this.checkType) {
             case 'save':
                 return this.renderSaveCheck();
             case 'lore':
@@ -1142,10 +1142,10 @@ class CheckReplacement extends RollReplacement {
         // Handle DC method
         if (this.dcMethod !== 'static') {
             dcParams.push(`against:${this.statistic}`);
-            if (this.checkCategory === 'save' && this.dcMethod === 'target') {
+            if (this.checkType === 'save' && this.dcMethod === 'target') {
                 dcParams.push('rollerRole:origin');
             }
-            else if (this.checkCategory !== 'save' && this.dcMethod === 'origin') {
+            else if (this.checkType !== 'save' && this.dcMethod === 'origin') {
                 dcParams.push('rollerRole:target');
             }
         }
@@ -1239,7 +1239,7 @@ class CheckReplacement extends RollReplacement {
     getInteractiveParams() {
         return {
             ...super.getInteractiveParams(),
-            checkCategory: this.checkCategory,
+            checkType: this.checkType,
             skill: this.skill,
             save: this.save,
             perception: this.perception,
@@ -1259,18 +1259,12 @@ class CheckReplacement extends RollReplacement {
             fields: [
                 ENABLED_FIELD,
                 {
-                    id: 'check-category',
+                    id: 'check-type',
                     type: 'select',
                     label: 'Type',
-                    options: [
-                        { value: 'skill', label: 'Skill Check' },
-                        { value: 'save', label: 'Saving Throw' },
-                        { value: 'perception', label: 'Perception' },
-                        { value: 'lore', label: 'Lore' },
-                        { value: 'flat', label: 'Flat Check' }
-                    ],
-                    getValue: (rep) => rep.checkCategory || 'skill',
-                    setValue: (rep, value) => { rep.checkCategory = value; }
+                    options: ConfigManager.CHECK_TYPES.options,
+                    getValue: (rep) => rep.checkType || 'skill',
+                    setValue: (rep, value) => { rep.checkType = value; }
                 },
                 {
                     id: 'check-type-skill',
@@ -1279,7 +1273,7 @@ class CheckReplacement extends RollReplacement {
                     options: SKILL_OPTIONS,
                     getValue: (rep) => rep.skill || '',
                     setValue: (rep, value) => { rep.skill = value; },
-                    hideIf: (rep) => rep.checkCategory !== 'skill'
+                    hideIf: (rep) => rep.checkType !== 'skill'
                 },
                 // Save selector
                 {
@@ -1289,7 +1283,7 @@ class CheckReplacement extends RollReplacement {
                     options: SAVE_OPTIONS,
                     getValue: (rep) => rep.save || '',
                     setValue: (rep, value) => { rep.save = value; },
-                    hideIf: (rep) => rep.checkCategory !== 'save'
+                    hideIf: (rep) => rep.checkType !== 'save'
                 },
                 {
                     id: 'lore-name',
@@ -1298,7 +1292,7 @@ class CheckReplacement extends RollReplacement {
                     placeholder: 'e.g., Warfare, Local Politics',
                     getValue: (rep) => rep.loreName || '',
                     setValue: (rep, value) => { rep.loreName = value; },
-                    hideIf: (rep) => rep.checkCategory !== 'lore'
+                    hideIf: (rep) => rep.checkType !== 'lore'
                 },
                 {
                     id: 'dc-method',
@@ -1311,7 +1305,7 @@ class CheckReplacement extends RollReplacement {
                     ],
                     getValue: (rep) => rep.dcMethod || 'static',
                     setValue: (rep, value) => { rep.dcMethod = value; },
-                    hideIf: (rep) => rep.checkCategory === 'flat'
+                    hideIf: (rep) => rep.checkType === 'flat'
                 },
                 {
                     id: 'statistic',
@@ -1320,7 +1314,7 @@ class CheckReplacement extends RollReplacement {
                     options: DEFENSE_STAT_OPTIONS,
                     getValue: (rep) => rep.statistic || '',
                     setValue: (rep, value) => { rep.statistic = value; },
-                    hideIf: (rep) => rep.dcMethod === 'static' || rep.checkCategory === 'flat'
+                    hideIf: (rep) => rep.dcMethod === 'static' || rep.checkType === 'flat'
                 },
                 // DC field
                 {
@@ -1330,7 +1324,7 @@ class CheckReplacement extends RollReplacement {
                     min: 0,
                     getValue: (rep) => rep.dc || '',
                     setValue: (rep, value) => { rep.dc = value; },
-                    hideIf: (rep) => rep.dcMethod !== 'static' && rep.checkCategory !== 'flat'
+                    hideIf: (rep) => rep.dcMethod !== 'static' && rep.checkType !== 'flat'
                 },
                 {
                     id: 'show-dc',
@@ -1351,7 +1345,7 @@ class CheckReplacement extends RollReplacement {
                     label: 'Basic Save',
                     getValue: (rep) => !!rep.basic,
                     setValue: (rep, value) => { rep.basic = value; },
-                    hideIf: (rep) => rep.checkCategory !== 'save'
+                    hideIf: (rep) => rep.checkType !== 'save'
                 },
                 {
                     id: 'damaging-effect',
@@ -1359,7 +1353,7 @@ class CheckReplacement extends RollReplacement {
                     label: 'Damaging Effect',
                     getValue: (rep) => !!rep.damagingEffect,
                     setValue: (rep, value) => { rep.damagingEffect = value; },
-                    hideIf: (rep) => rep.checkCategory !== 'save'
+                    hideIf: (rep) => rep.checkType !== 'save'
                 },
                 DISPLAY_TEXT_FIELD
             ],
@@ -1997,7 +1991,7 @@ const PATTERN_DEFINITIONS = [
         regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?\s*(?:basic)?(?:\s*[,;:\(\)]?\s*(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?(?:DC\s*(\d{1,2})\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b|(?:DC\s*(\d{1,2})\s+)?(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b)(?:\)?)/gi,
         priority: PRIORITY.SAVE,
         handler: (match) => {
-            match.checkCategory = 'save';
+            match.checkType = 'save';
             return match;
         },
         description: 'Comprehensive save pattern (all variations, does not look for save/saving throw at end at all, dc optional)'
@@ -2044,7 +2038,7 @@ const PATTERN_DEFINITIONS = [
         regex: /(?:DC\s+(\d+)\s+)?Perception(?:\s+check)?/gi,
         priority: PRIORITY.SKILL,
         handler: (match) => {
-            match.checkCategory = 'skill';
+            match.checkType = 'skill';
             return match;
         },
         description: 'Perception checks'
@@ -2056,7 +2050,7 @@ const PATTERN_DEFINITIONS = [
         handler: (match) => {
             match.isLoreCheck = true;
             match.loreName = match[2].trim();
-            match.checkCategory = 'lore';
+            match.checkType = 'lore';
             return match;
         },
         description: 'Lore skill checks (DC first)'
@@ -2071,7 +2065,7 @@ const PATTERN_DEFINITIONS = [
             const dc = match[2];
             match[1] = dc || null;
             match[2] = match.loreName;
-            match.checkCategory = 'lore';
+            match.checkType = 'lore';
             return match;
         },
         description: 'Lore skill checks (lore name first)'
@@ -2086,7 +2080,7 @@ const PATTERN_DEFINITIONS = [
             const dc = match[2];
             match[1] = dc || null;
             match[2] = match.loreName;
-            match.checkCategory = 'lore';
+            match.checkType = 'lore';
             return match;
         },
         description: 'Lore skill checks (DC at end)'
@@ -2096,7 +2090,7 @@ const PATTERN_DEFINITIONS = [
         regex: /DC\s+(\d+)\s+flat\s+check/gi,
         priority: PRIORITY.FLAT,
         handler: (match) => {
-            match.checkCategory = 'flat';
+            match.checkType = 'flat';
             return match;
         },
         description: 'Flat checks'
@@ -2115,7 +2109,7 @@ const PATTERN_DEFINITIONS = [
         regex: new RegExp(`(?:DC\\s+(\\d+)\\s+)?(${SKILL_PATTERN})\(?:\s+check)?`, 'gi'),
         priority: PRIORITY.BASIC_SKILL,
         handler: (match) => {
-            match.checkCategory = 'skill';
+            match.checkType = 'skill';
             return match;
         },
         description: 'Single skill checks'
