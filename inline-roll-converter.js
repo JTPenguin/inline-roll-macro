@@ -229,16 +229,6 @@ class ConfigManager {
 //     console.log(`${action} Variant Pattern: `, variants.pattern);
 // });
 
-// Skills list for skill check patterns
-const SKILLS = [
-    'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy', 
-    'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion', 
-    'Society', 'Stealth', 'Survival', 'Thievery'
-];
-
-const SAVES = [
-    'Reflex', 'Fortitude', 'Will'
-];
 const DEFENSE_STAT_OPTIONS = [
     // Basic Defense Statistics
     { value: 'ac', label: 'Armor Class' },
@@ -316,9 +306,6 @@ const DURATION_UNITS_PATTERN = DURATION_UNITS.join('|');
 
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
-
-// Create regex patterns from type arrays
-const SKILL_PATTERN = SKILLS.join('|');
 
 // --- Parse Actions.md for action names and slugs ---
 const ACTIONS_LIST = [
@@ -963,31 +950,6 @@ class DamageReplacement extends RollReplacement {
     }
 }
 
-const SAVE_OPTIONS = [
-    { value: 'reflex', label: 'Reflex' },
-    { value: 'fortitude', label: 'Fortitude' },
-    { value: 'will', label: 'Will' }
-];
-
-const SKILL_OPTIONS = [
-    { value: 'acrobatics', label: 'Acrobatics' },
-    { value: 'arcana', label: 'Arcana' },
-    { value: 'athletics', label: 'Athletics' },
-    { value: 'crafting', label: 'Crafting' },
-    { value: 'deception', label: 'Deception' },
-    { value: 'diplomacy', label: 'Diplomacy' },
-    { value: 'intimidation', label: 'Intimidation' },
-    { value: 'medicine', label: 'Medicine' },
-    { value: 'nature', label: 'Nature' },
-    { value: 'occultism', label: 'Occultism' },
-    { value: 'performance', label: 'Performance' },
-    { value: 'religion', label: 'Religion' },
-    { value: 'society', label: 'Society' },
-    { value: 'stealth', label: 'Stealth' },
-    { value: 'survival', label: 'Survival' },
-    { value: 'thievery', label: 'Thievery' }
-];
-
 // -------------------- Check Replacement --------------------
 class CheckReplacement extends RollReplacement {
     constructor(match, type, config) {
@@ -1033,37 +995,6 @@ class CheckReplacement extends RollReplacement {
         if (match && match.isLoreCheck) return 'lore';
     }
 
-    extractCheckType(match) {
-        // Try to extract checkType from match object
-        if (match && match.checkType) return match.checkType.toLowerCase();
-        if (match && match[2]) return match[2].toLowerCase();
-        if (match && match[1] && typeof match[1] === 'string') return match[1].toLowerCase();
-        return '';
-    }
-
-    getCategoryOptions() {
-        switch (this.checkType) {
-            case 'save':
-                return [
-                    { value: 'fortitude', label: 'Fortitude' },
-                    { value: 'reflex', label: 'Reflex' },
-                    { value: 'will', label: 'Will' }
-                ];
-            case 'skill':
-                return (typeof SKILLS !== 'undefined' ? SKILLS : [
-                    'Acrobatics', 'Arcana', 'Athletics', 'Crafting', 'Deception', 'Diplomacy',
-                    'Intimidation', 'Medicine', 'Nature', 'Occultism', 'Performance', 'Religion',
-                    'Society', 'Stealth', 'Survival', 'Thievery'
-                ]).map(skill => ({ value: skill.toLowerCase(), label: skill }));
-            case 'perception':
-                return [{ value: 'perception', label: 'Perception' }];
-            case 'flat':
-                return [{ value: 'flat', label: 'Flat Check' }];
-            default:
-                return [];
-        }
-    }
-
     parseMatch(match, config) {
         super.parseMatch(match, config);
         this.resetCategoryProperties();
@@ -1092,7 +1023,7 @@ class CheckReplacement extends RollReplacement {
 
     parseSkillMatch(match, config) {
         // Minimal logic for skill checks (already handled in previous parseMatch)
-        this.skill = this.extractCheckType(match);
+        this.skill = match[2] || '';
         this.dc = match[1] || null;
     }
 
@@ -1270,7 +1201,7 @@ class CheckReplacement extends RollReplacement {
                     id: 'check-type-skill',
                     type: 'select',
                     label: 'Skill',
-                    options: SKILL_OPTIONS,
+                    options: ConfigManager.SKILLS.options,
                     getValue: (rep) => rep.skill || '',
                     setValue: (rep, value) => { rep.skill = value; },
                     hideIf: (rep) => rep.checkType !== 'skill'
@@ -1280,7 +1211,7 @@ class CheckReplacement extends RollReplacement {
                     id: 'check-type-save',
                     type: 'select',
                     label: 'Save',
-                    options: SAVE_OPTIONS,
+                    options: ConfigManager.SAVES.options,
                     getValue: (rep) => rep.save || '',
                     setValue: (rep, value) => { rep.save = value; },
                     hideIf: (rep) => rep.checkType !== 'save'
@@ -2106,7 +2037,7 @@ const PATTERN_DEFINITIONS = [
     },
     {
         type: 'check',
-        regex: new RegExp(`(?:DC\\s+(\\d+)\\s+)?(${SKILL_PATTERN})\(?:\s+check)?`, 'gi'),
+        regex: new RegExp(`(?:DC\\s+(\\d+)\\s+)?(${ConfigManager.SKILLS.pattern})(?:\\s+check)?`, 'gi'),
         priority: PRIORITY.BASIC_SKILL,
         handler: (match) => {
             match.checkType = 'skill';
