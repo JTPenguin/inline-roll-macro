@@ -5,12 +5,229 @@
  * for the Pathfinder 2e Remaster system.
  */
 
-// Remaster damage types for validation
-const DAMAGE_TYPES = [
-    'acid', 'bludgeoning', 'cold', 'electricity', 'fire', 'force', 'mental', 
-    'piercing', 'slashing', 'sonic', 'spirit', 'vitality', 'void', 'bleed', 'poison',
-    'chaotic', 'evil', 'good', 'lawful', 'positive', 'negative'
-];
+class ConfigCategory {
+    constructor(items, customLabels = {}) {
+        // Compute all derived properties
+        this.slugs = items;
+        this.options = this._toOptions(items, customLabels);
+        this.pattern = this._toPattern(items);
+
+        this.set = new Set(items); // For fast lookup
+    }
+
+    // Check if an item is in the list
+    includes(item) {
+        return this.set.has(item);
+    }
+
+    // Helper method for converting arrays to value/label pairs
+    _toOptions(items, customLabels = {}) {
+        return items.map(item => ({
+            value: item,
+            label: customLabels[item] || this._toTitleCase(this._unslug(item))
+        }));
+    }
+
+    // Helper method for converting arrays to a regex pattern (don't include any empty strings)
+    _toPattern(items) {
+        return items.filter(item => item !== '').join('|');
+    }
+
+    // Helper method for converting slugs to normal text (replace hyphens with spaces)
+    _unslug(str) {
+        return str.replace(/-/g, ' ')
+    }
+
+    // Helper method for converting strings to title case (one and two letter words are not capitalized)
+    _toTitleCase(str) {
+        return str.replace(/\b\w{3,}/g, word => 
+            word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        );
+    }
+}
+
+class ConfigManager {
+
+    static DAMAGE_TYPES = new ConfigCategory([
+        'acid', 'cold', 'electricity', 'fire', 'force', 'sonic', 'vitality', 'void', // Energy types
+        'bleed', 'bludgeoning', 'piercing', 'slashing', // Physical types
+        'mental', 'spirit', 'poison', 'untyped' // Other types
+    ]);
+
+    static LEGACY_DAMAGE_TYPES = new ConfigCategory([
+        'chaotic', 'evil', 'good', 'lawful', 'positive', 'negative'
+    ]);
+
+    static ALL_DAMAGE_TYPES = new ConfigCategory([
+        ...this.DAMAGE_TYPES.slugs,
+        ...this.LEGACY_DAMAGE_TYPES.slugs
+    ]);
+
+    // Legacy to Remaster damage type mapping
+    static LEGACY_DAMAGE_TYPE_MAPPING = {
+        chaotic: 'spirit',
+        evil: 'spirit',
+        good: 'spirit',
+        lawful: 'spirit',
+        positive: 'vitality',
+        negative: 'void'
+    };
+
+    static DAMAGE_CATEGORIES = new ConfigCategory([ '', 'persistent', 'precision', 'splash' ]);
+
+    static CHECK_TYPES = new ConfigCategory(
+        [ 'skill', 'save', 'perception', 'lore', 'flat' ],
+        {
+            skill: 'Skill Check',
+            save: 'Saving Throw',
+            perception: 'Perception Check',
+            lore: 'Lore Check',
+            flat: 'Flat Check'
+        }
+    );
+
+    static SAVES = new ConfigCategory([ 'reflex', 'fortitude', 'will' ]);
+
+    static SKILLS = new ConfigCategory([
+        'acrobatics', 'arcana', 'athletics', 'crafting',
+        'deception', 'diplomacy', 'intimidation', 'medicine',
+        'nature', 'occultism', 'performance', 'religion',
+        'society', 'stealth', 'survival', 'thievery'
+    ]);
+
+    static DC_METHODS = new ConfigCategory(
+        [ 'static', 'target', 'origin' ],
+        {
+            static: 'Static DC',
+            target: 'Target\'s Statistic',
+            origin: 'Origin\'s Statistic'
+        }
+    );
+
+    static SHOW_DCS = new ConfigCategory(
+        [ 'owner', 'gm', 'all', 'none' ],
+        {
+            owner: 'Owner Only',
+            gm: 'GM Only',
+            all: 'Everyone',
+            none: 'No One'
+        }
+    );
+
+    static STATISTICS = new ConfigCategory(
+        [
+            'ac',
+            'perception',
+            ...this.SAVES.slugs, // Saves are also statistics
+            'spell',
+            ...this.SKILLS.slugs, // Skills are also statistics
+        ],
+        {
+            ac: 'Armor Class',
+            spell: 'Spell DC',
+        }
+    );
+
+    static CONDITIONS = new ConfigCategory(
+        [
+            'blinded', 'broken', 'clumsy', 'concealed', 'confused', 'controlled', 'dazzled',
+            'deafened', 'doomed', 'drained', 'dying', 'enfeebled', 'fascinated', 'fatigued',
+            'fleeing', 'frightened', 'grabbed', 'immobilized', 'invisible', 'off-guard',
+            'paralyzed', 'petrified', 'prone', 'quickened', 'restrained', 'sickened',
+            'slowed', 'stunned', 'stupefied', 'unconscious', 'undetected', 'wounded'
+        ],
+        {
+            'off-guard': 'Off-Guard' // Ensure we keep the hyphen in the label
+        }
+    );
+
+    // Define which conditions can have a value and legacy condition conversions
+    static CONDITION_METADATA = {
+        withValues: new Set([
+            'clumsy', 'doomed', 'drained', 'dying', 'enfeebled', 'frightened',
+            'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
+        ]),
+        legacy: {
+            'flat-footed': 'off-guard'
+        }
+    }
+
+    // Helper method for checking if a condition can have a value
+    static conditionCanHaveValue(condition) {
+        return this.CONDITION_METADATA.withValues.has(condition);
+    }
+
+    static TEMPLATE_TYPES = new ConfigCategory([ 'burst', 'cone', 'line', 'emanation' ]);
+
+    static DURATION_UNITS = new ConfigCategory([ 'rounds', 'seconds', 'minutes', 'hours', 'days' ]);
+
+    static ACTIONS = new ConfigCategory([
+            'administer-first-aid', 'affix-a-talisman', 'aid', 'arrest-a-fall',
+            'avert-gaze', 'avoid-notice', 'balance', 'burrow', 'climb', 'coerce',
+            'command-an-animal', 'conceal-an-object', 'crawl', 'create-a-diversion',
+            'create-forgery', 'decipher-writing', 'delay', 'demoralize',
+            'disable-device', 'disarm', 'dismiss', 'drop-prone', 'escape',
+            'feint', 'fly', 'force-open', 'gather-information', 'gran-an-edge',
+            'grapple', 'hide', 'high-jump', 'identify-alchemy', 'identify-magic',
+            'impersonate', 'interact', 'leap', 'learn-a-spell', 'lie', 'long-jump',
+            'make-an-impression', 'maneuver-in-flight', 'mount', 'palm-an-object',
+            'perform', 'pick-a-lock', 'point-out', 'ready', 'recall-knowledge',
+            'release', 'reposition', 'request', 'seek', 'sense-direction',
+            'sense-motive', 'shove', 'sneak', 'squeeze', 'stand', 'steal',
+            'step', 'stride', 'subsist', 'sustain', 'swim', 'take-cover',
+            'track', 'treat-disease', 'treat-poison', 'trip', 'tumble-through',
+            'exploit-vulnerability', 'daring-swing', 'haughty-correction', 'entrap-confession'
+        ]
+    );
+
+    static ACTION_VARIANTS = {
+        'administer-first-aid': new ConfigCategory([ 'stabilize', 'stop-bleeding' ]),
+        'create-a-diversion': new ConfigCategory([ 'distracting-words', 'gesture', 'trick' ]),
+        'perform': new ConfigCategory([ 'acting', 'comedy', 'dance', 'keyboards', 'oratory', 'percussion', 'singing', 'strings', 'winds' ])
+    };
+
+    // Helper method for checking if an action has variants
+    static actionHasVariants(action) {
+        return this.ACTION_VARIANTS.hasOwnProperty(action);
+    }
+}
+
+// Log each static get in ConfigManager
+// console.log('Damage Types: ', ConfigManager.DAMAGE_TYPES.slugs);
+// console.log('Damage Type Options: ', ConfigManager.DAMAGE_TYPES.options);
+// console.log('Damage Type Pattern: ', ConfigManager.DAMAGE_TYPES.pattern);
+// console.log('Damage Categories: ', ConfigManager.DAMAGE_CATEGORIES.slugs);
+// console.log('Damage Category Options: ', ConfigManager.DAMAGE_CATEGORIES.options);
+// console.log('Damage Category Pattern: ', ConfigManager.DAMAGE_CATEGORIES.pattern);
+// console.log('Check Types: ', ConfigManager.CHECK_TYPES.slugs);
+// console.log('Check Type Options: ', ConfigManager.CHECK_TYPES.options);
+// console.log('Check Type Pattern: ', ConfigManager.CHECK_TYPES.pattern);
+// console.log('Saves: ', ConfigManager.SAVES.slugs);
+// console.log('Save Options: ', ConfigManager.SAVES.options);
+// console.log('Save Pattern: ', ConfigManager.SAVES.pattern);
+// console.log('Skills: ', ConfigManager.SKILLS.slugs);
+// console.log('Skill Options: ', ConfigManager.SKILLS.options);
+// console.log('Skill Pattern: ', ConfigManager.SKILLS.pattern);
+// console.log('DC Methods: ', ConfigManager.DC_METHODS.slugs);
+// console.log('DC Method Options: ', ConfigManager.DC_METHODS.options);
+// console.log('DC Method Pattern: ', ConfigManager.DC_METHODS.pattern);
+// console.log('Show DCs: ', ConfigManager.SHOW_DCS.slugs);
+// console.log('Show DC Options: ', ConfigManager.SHOW_DCS.options);
+// console.log('Show DC Pattern: ', ConfigManager.SHOW_DCS.pattern);
+// console.log('Statistics: ', ConfigManager.STATISTICS.slugs);
+// console.log('Statistic Options: ', ConfigManager.STATISTICS.options);
+// console.log('Statistic Pattern: ', ConfigManager.STATISTICS.pattern);
+// console.log('Conditions: ', ConfigManager.CONDITIONS.slugs);
+// console.log('Condition Options: ', ConfigManager.CONDITIONS.options);
+// console.log('Condition Pattern: ', ConfigManager.CONDITIONS.pattern);
+// console.log('Actions: ', ConfigManager.ACTIONS.slugs);
+// console.log('Action Options: ', ConfigManager.ACTIONS.options);
+// console.log('Action Pattern: ', ConfigManager.ACTIONS.pattern);
+// Object.entries(ConfigManager.ACTION_VARIANTS).forEach(([action, variants]) => {
+//     console.log(`${action} Variants: `, variants.slugs);
+//     console.log(`${action} Variant Options: `, variants.options);
+//     console.log(`${action} Variant Pattern: `, variants.pattern);
+// });
 
 // Skills list for skill check patterns
 const SKILLS = [
@@ -53,16 +270,6 @@ const DEFENSE_STAT_OPTIONS = [
     { value: 'survival', label: 'Survival' },
     { value: 'thievery', label: 'Thievery' }
 ];
-
-// Legacy to Remaster damage type mapping
-const LEGACY_TO_REMASTER_DAMAGE_TYPE = {
-    chaotic: 'spirit',
-    evil: 'spirit',
-    good: 'spirit',
-    lawful: 'spirit',
-    positive: 'vitality',
-    negative: 'void'
-};
 
 // Patterns for legacy types
 const LEGACY_ALIGNMENT_PATTERN = 'chaotic|evil|good|lawful';
@@ -111,7 +318,6 @@ const DURATION_UNITS_PATTERN = DURATION_UNITS.join('|');
 let conditionMap = new Map();
 
 // Create regex patterns from type arrays
-const DAMAGE_TYPE_PATTERN = DAMAGE_TYPES.join('|');
 const SKILL_PATTERN = SKILLS.join('|');
 
 // --- Parse Actions.md for action names and slugs ---
@@ -200,14 +406,12 @@ ACTIONS_LIST.forEach(([name, slug]) => {
     ACTION_NAME_TO_SLUG[name.toLowerCase()] = generatedSlug;
 });
 const ACTION_NAMES = Object.keys(ACTION_NAME_TO_SLUG);
-console.log(ACTION_NAMES);
 
 // Build regex for all action names (longest first for greedy match)
 const ACTION_NAMES_REGEX = ACTION_NAMES
     .sort((a, b) => b.length - a.length)
     .map(name => name.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&"))
     .join('|');
-console.log('ACTION_NAMES_REGEX:', ACTION_NAMES_REGEX); // LOGGING
 
 // --- Action pattern ---
 // Simplified: Only match the action name itself, with word boundaries
@@ -419,7 +623,7 @@ class Replacement {
     // Return the original or converted text depending on the enabled state
     render() {
         // Logging for debugging render output
-        console.log(`[render] id=${this.id} enabled=${this.enabled} returning=${this.enabled ? 'converted' : 'originalText'}`);
+        // console.log(`[render] id=${this.id} enabled=${this.enabled} returning=${this.enabled ? 'converted' : 'originalText'}`);
         if (!this.enabled) return this.originalText;
         return this.conversionRender();
     }
@@ -625,8 +829,8 @@ class DamageReplacement extends RollReplacement {
     addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false) {
         // Convert legacy types to remaster types
         let remasterType = damageType;
-        if (damageType && LEGACY_TO_REMASTER_DAMAGE_TYPE[damageType]) {
-            remasterType = LEGACY_TO_REMASTER_DAMAGE_TYPE[damageType];
+        if (damageType && ConfigManager.LEGACY_DAMAGE_TYPE_MAPPING[damageType]) {
+            remasterType = ConfigManager.LEGACY_DAMAGE_TYPE_MAPPING[damageType];
         }
         
         // Determine category from boolean flags
@@ -1769,13 +1973,13 @@ const PATTERN_DEFINITIONS = [
         type: 'damage',
         // Comprehensive regex: matches a sequence of dice/type pairs including persistent, splash, precision, and basic damage
         // Updated to handle both dice expressions (3d6) and fixed numbers (4)
-        regex: new RegExp(`((?:\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s*,\\s*plus\\s*|\\s+and\\s+|\\s+plus\\s+))*\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${DAMAGE_TYPE_PATTERN})(?:\\s+persistent)?|(?:${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(?:${DAMAGE_TYPE_PATTERN})|(?:${DAMAGE_TYPE_PATTERN})\\s+precision|precision\\s+(?:${DAMAGE_TYPE_PATTERN})|precision|(?:${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?)`, 'gi'),
+        regex: new RegExp(`((?:\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+persistent)?|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+splash|splash\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+precision|precision\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|precision|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s*,\\s*plus\\s*|\\s+and\\s+|\\s+plus\\s+))*\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+persistent)?|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+splash|splash\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+precision|precision\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|precision|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?)`, 'gi'),
         priority: PRIORITY.DAMAGE + 10, // Higher than all other damage patterns
         handler: function(match) {
             // Find all dice/type pairs in the match[0] string
             // Accepts: '1d4 acid, 1d6 persistent bleed, and 1d4 slashing damage' (with or without 'damage' after each type)
             // Updated to handle both dice expressions (3d6) and fixed numbers (4)
-            const singlePattern = new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${DAMAGE_TYPE_PATTERN}))(?:\\s+persistent)?|(?:(${DAMAGE_TYPE_PATTERN}))\\s+splash|splash\\s+(${DAMAGE_TYPE_PATTERN})|(?:(${DAMAGE_TYPE_PATTERN}))\\s+precision|precision\\s+(${DAMAGE_TYPE_PATTERN})|precision|(?:(${DAMAGE_TYPE_PATTERN})))(?:\\s+damage)?`, 'gi');
+            const singlePattern = new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+persistent)?|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))\\s+splash|splash\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))\\s+precision|precision\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|precision|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern})))(?:\\s+damage)?`, 'gi');
             let m;
             const multiMatches = [];
             while ((m = singlePattern.exec(match[0])) !== null) {
@@ -1801,21 +2005,21 @@ const PATTERN_DEFINITIONS = [
     // Priority 2: Damage and skill patterns
     {
         type: 'damage',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+persistent)(?:\\s+damage)?`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+persistent)(?:\\s+damage)?`, 'gi'),
         priority: PRIORITY.DAMAGE,
         handler: (match) => match,
         description: 'Persistent damage'
     },
     {
         type: 'damage',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(${DAMAGE_TYPE_PATTERN})\\s+splash|splash\\s+(${DAMAGE_TYPE_PATTERN}))(?:\\s+damage)?`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+splash|splash\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?`, 'gi'),
         priority: PRIORITY.DAMAGE,
         handler: (match) => match,
         description: 'Splash damage'
     },
     {
         type: 'damage',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:precision\\s+(${DAMAGE_TYPE_PATTERN})|(${DAMAGE_TYPE_PATTERN})\\s+precision)(?:\\s+damage)?`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:precision\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+precision)(?:\\s+damage)?`, 'gi'),
         priority: PRIORITY.DAMAGE,
         handler: (match) => match,
         description: 'Precision damage with type'
@@ -1901,7 +2105,7 @@ const PATTERN_DEFINITIONS = [
     // Priority 3: Basic damage and skill patterns (lowered priority)
     {
         type: 'damage',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${DAMAGE_TYPE_PATTERN})(?:\\s+damage)?`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+damage)?`, 'gi'),
         priority: PRIORITY.BASIC_DAMAGE - 10, // Lowered priority
         handler: (match) => match,
         description: 'Basic damage rolls (single)'
@@ -2148,13 +2352,13 @@ class TextProcessor {
     }
     process(inputText) {
         // LOGGING: Show input text
-        console.log('[TextProcessor] Input text:', inputText);
+        // console.log('[TextProcessor] Input text:', inputText);
         // Parse and create new replacements from scratch
         // Reset linkedConditions to ensure deduplication is fresh for each parse
         this.linkedConditions = new Set();
         const rollMatches = this.detector.detectAll(inputText);
         // LOGGING: Show all matches found
-        console.log('[TextProcessor] All matches found:', rollMatches.map(m => ({type: m.type, match: m.match})));
+        // console.log('[TextProcessor] All matches found:', rollMatches.map(m => ({type: m.type, match: m.match})));
         const replacements = this.createReplacements(rollMatches);
         return replacements;
     }
@@ -2190,7 +2394,7 @@ class TextProcessor {
         let result = text;
         for (let i = 0; i < sorted.length; i++) {
             const replacement = sorted[i];
-            console.log(`[renderFromReplacements] id=${replacement.id} enabled=${replacement.enabled}`);
+            // console.log(`[renderFromReplacements] id=${replacement.id} enabled=${replacement.enabled}`); // LOGGING
             result = this.applyReplacement(result, replacement, interactive);
         }
         // After all replacements, replace any remaining 'flat-footed' with 'off-guard'
@@ -2225,32 +2429,6 @@ class MacroInterface {
 }
 
 // ===================== END OOP PIPELINE ARCHITECTURE =====================
-
-/**
- * Validate damage types in text
- * @param {string} text - Text to validate
- * @returns {object} - Validation results
- */
-function validateDamageTypes(text) {
-    const foundTypes = [];
-    
-    // Find all damage type mentions
-    const damageRegex = /(\w+)\s+damage/gi;
-    let match;
-    
-    while ((match = damageRegex.exec(text)) !== null) {
-        const damageType = match[1].toLowerCase();
-        
-        if (DAMAGE_TYPES.includes(damageType)) {
-            foundTypes.push(damageType);
-        }
-    }
-    
-    return {
-        validTypes: [...new Set(foundTypes)],
-        hasLegacyTypes: false
-    };
-}
 
 /**
  * Create a live preview with active inline rolls
@@ -2602,7 +2780,7 @@ function showConverterDialog() {
                     return;
                 }
                 // rep is the replacement object to update
-                console.log(`[handleModifierChange] id=${rep.id} enabled=${rep.enabled}`);
+                // console.log(`[handleModifierChange] id=${rep.id} enabled=${rep.enabled}`); // LOGGING
                 renderAll();
             }
 
@@ -2612,7 +2790,7 @@ function showConverterDialog() {
                 if (!window.pf2eReplacements || !lastInputText.trim()) return;
                 // Log enabled state of all replacements before rendering
                 window.pf2eReplacements.forEach(r => {
-                    console.log(`[renderAll] id=${r.id} enabled=${r.enabled}`);
+                    // console.log(`[renderAll] id=${r.id} enabled=${r.enabled}`); // LOGGING
                 });
                 // Render interactive output
                 const htmlOutput = processor.renderFromReplacements(lastInputText, window.pf2eReplacements, true).replace(/\r?\n/g, '<br>');
@@ -3185,26 +3363,6 @@ class TraitsInput {
  * // See static panelConfig on each Replacement class for configuration.
  */
 
-// Field configuration constants
-const DAMAGE_TYPE_OPTIONS = [
-    { value: '', label: 'None' },
-    { value: 'acid', label: 'Acid' },
-    { value: 'bludgeoning', label: 'Bludgeoning' },
-    { value: 'cold', label: 'Cold' },
-    { value: 'electricity', label: 'Electricity' },
-    { value: 'fire', label: 'Fire' },
-    { value: 'force', label: 'Force' },
-    { value: 'mental', label: 'Mental' },
-    { value: 'piercing', label: 'Piercing' },
-    { value: 'slashing', label: 'Slashing' },
-    { value: 'sonic', label: 'Sonic' },
-    { value: 'spirit', label: 'Spirit' },
-    { value: 'vitality', label: 'Vitality' },
-    { value: 'void', label: 'Void' },
-    { value: 'bleed', label: 'Bleed' },
-    { value: 'poison', label: 'Poison' }
-];
-
 const DAMAGE_CATEGORY_OPTIONS = [
     { value: '', label: '' },
     { value: 'persistent', label: 'Persistent' },
@@ -3225,7 +3383,7 @@ const DAMAGE_COMPONENT_FIELDS = [
         id: 'damage-type',
         type: 'select',
         label: 'Type',
-        options: DAMAGE_TYPE_OPTIONS,
+        options: ConfigManager.DAMAGE_TYPES.options,
         getValue: (component) => component.damageType || '',
         setValue: (component, value) => { component.damageType = value; }
     },
@@ -3268,7 +3426,7 @@ const ENABLED_FIELD = {
     setValue: (rep, value) => {
         const prev = rep.enabled;
         rep.enabled = value;
-        console.log(`[ENABLED_FIELD] id=${rep.id} enabled changed: ${prev} -> ${value}`);
+        // console.log(`[ENABLED_FIELD] id=${rep.id} enabled changed: ${prev} -> ${value}`); // LOGGING
     }
 };
 
