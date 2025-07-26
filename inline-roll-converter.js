@@ -182,7 +182,13 @@ class ConfigManager {
         ...this.ALTERNATE_TEMPLATE_NAMES.slugs
     ])
 
-    static DURATION_UNITS = new ConfigCategory([ 'rounds', 'seconds', 'minutes', 'hours', 'days' ]);
+    static DURATION_UNITS = new ConfigCategory([
+        'rounds', 'round',
+        'seconds', 'second',
+        'minutes', 'minute',
+        'hours', 'hour',
+        'days', 'day'
+    ]);
 
     static ACTIONS = new ConfigCategory([
             'administer-first-aid', 'affix-a-talisman', 'aid', 'arrest-a-fall',
@@ -237,10 +243,6 @@ const CONDITIONS_WITHOUT_VALUES_PATTERN = CONDITIONS_WITHOUT_VALUES.join('|');
 // Healing patterns
 const HEALING_TERMS = ['hit\\s+points?', 'HP', 'healing'];
 const HEALING_TERMS_PATTERN = HEALING_TERMS.join('|');
-
-// Duration patterns
-const DURATION_UNITS = ['rounds?', 'seconds?', 'minutes?', 'hours?', 'days?'];
-const DURATION_UNITS_PATTERN = DURATION_UNITS.join('|');
 
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
@@ -1590,20 +1592,6 @@ class DurationReplacement extends RollReplacement {
                     setValue: (rep, value) => { rep.dice = value; }
                 },
                 {
-                    id: 'duration-unit',
-                    type: 'select',
-                    label: 'Unit',
-                    options: [
-                        { value: 'rounds', label: 'Rounds' },
-                        { value: 'seconds', label: 'Seconds' },
-                        { value: 'minutes', label: 'Minutes' },
-                        { value: 'hours', label: 'Hours' },
-                        { value: 'days', label: 'Days' }
-                    ],
-                    getValue: (rep) => rep.unit.replace(/s$/, ''),
-                    setValue: (rep, value) => { rep.unit = value; }
-                },
-                {
                     id: 'duration-label',
                     type: 'text',
                     label: 'Label',
@@ -2072,7 +2060,7 @@ const PATTERN_DEFINITIONS = [
     // Duration pattern: dice expression followed by a time unit
     {
         type: 'duration',
-        regex: new RegExp(`(\\d+d\\d+(?:[+-]\\d+)?|\\d+)(?:\\s+)(rounds?|seconds?|minutes?|hours?|days?)`, 'gi'),
+        regex: new RegExp(`(\\d+d\\d+(?:[+-]\\d+)?|\\d+)(?:\\s+)(${ConfigManager.DURATION_UNITS.pattern})`, 'gi'),
         priority: 75,
         handler: (match) => match,
         description: 'Duration rolls (dice expression followed by a time unit)'
