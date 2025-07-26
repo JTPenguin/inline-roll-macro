@@ -192,75 +192,6 @@ class ConfigManager {
     }
 }
 
-// Log each static get in ConfigManager
-// console.log('Damage Types: ', ConfigManager.DAMAGE_TYPES.slugs);
-// console.log('Damage Type Options: ', ConfigManager.DAMAGE_TYPES.options);
-// console.log('Damage Type Pattern: ', ConfigManager.DAMAGE_TYPES.pattern);
-// console.log('Damage Categories: ', ConfigManager.DAMAGE_CATEGORIES.slugs);
-// console.log('Damage Category Options: ', ConfigManager.DAMAGE_CATEGORIES.options);
-// console.log('Damage Category Pattern: ', ConfigManager.DAMAGE_CATEGORIES.pattern);
-// console.log('Check Types: ', ConfigManager.CHECK_TYPES.slugs);
-// console.log('Check Type Options: ', ConfigManager.CHECK_TYPES.options);
-// console.log('Check Type Pattern: ', ConfigManager.CHECK_TYPES.pattern);
-// console.log('Saves: ', ConfigManager.SAVES.slugs);
-// console.log('Save Options: ', ConfigManager.SAVES.options);
-// console.log('Save Pattern: ', ConfigManager.SAVES.pattern);
-// console.log('Skills: ', ConfigManager.SKILLS.slugs);
-// console.log('Skill Options: ', ConfigManager.SKILLS.options);
-// console.log('Skill Pattern: ', ConfigManager.SKILLS.pattern);
-// console.log('DC Methods: ', ConfigManager.DC_METHODS.slugs);
-// console.log('DC Method Options: ', ConfigManager.DC_METHODS.options);
-// console.log('DC Method Pattern: ', ConfigManager.DC_METHODS.pattern);
-// console.log('Show DCs: ', ConfigManager.SHOW_DCS.slugs);
-// console.log('Show DC Options: ', ConfigManager.SHOW_DCS.options);
-// console.log('Show DC Pattern: ', ConfigManager.SHOW_DCS.pattern);
-// console.log('Statistics: ', ConfigManager.STATISTICS.slugs);
-// console.log('Statistic Options: ', ConfigManager.STATISTICS.options);
-// console.log('Statistic Pattern: ', ConfigManager.STATISTICS.pattern);
-// console.log('Conditions: ', ConfigManager.CONDITIONS.slugs);
-// console.log('Condition Options: ', ConfigManager.CONDITIONS.options);
-// console.log('Condition Pattern: ', ConfigManager.CONDITIONS.pattern);
-// console.log('Actions: ', ConfigManager.ACTIONS.slugs);
-// console.log('Action Options: ', ConfigManager.ACTIONS.options);
-// console.log('Action Pattern: ', ConfigManager.ACTIONS.pattern);
-// Object.entries(ConfigManager.ACTION_VARIANTS).forEach(([action, variants]) => {
-//     console.log(`${action} Variants: `, variants.slugs);
-//     console.log(`${action} Variant Options: `, variants.options);
-//     console.log(`${action} Variant Pattern: `, variants.pattern);
-// });
-
-const DEFENSE_STAT_OPTIONS = [
-    // Basic Defense Statistics
-    { value: 'ac', label: 'Armor Class' },
-    { value: 'perception', label: 'Perception' },
-    
-    // Save DCs
-    { value: 'fortitude', label: 'Fortitude' },
-    { value: 'reflex', label: 'Reflex' },
-    { value: 'will', label: 'Will' },
-    
-    // Spell DC
-    { value: 'spell', label: 'Spell DC' },
-    
-    // Skills (all should work with defense)
-    { value: 'acrobatics', label: 'Acrobatics' },
-    { value: 'arcana', label: 'Arcana' },
-    { value: 'athletics', label: 'Athletics' },
-    { value: 'crafting', label: 'Crafting' },
-    { value: 'deception', label: 'Deception' },
-    { value: 'diplomacy', label: 'Diplomacy' },
-    { value: 'intimidation', label: 'Intimidation' },
-    { value: 'medicine', label: 'Medicine' },
-    { value: 'nature', label: 'Nature' },
-    { value: 'occultism', label: 'Occultism' },
-    { value: 'performance', label: 'Performance' },
-    { value: 'religion', label: 'Religion' },
-    { value: 'society', label: 'Society' },
-    { value: 'stealth', label: 'Stealth' },
-    { value: 'survival', label: 'Survival' },
-    { value: 'thievery', label: 'Thievery' }
-];
-
 // Patterns for legacy types
 const LEGACY_ALIGNMENT_PATTERN = 'chaotic|evil|good|lawful';
 const LEGACY_POSITIVE = 'positive';
@@ -1229,11 +1160,7 @@ class CheckReplacement extends RollReplacement {
                     id: 'dc-method',
                     type: 'select',
                     label: 'DC Method',
-                    options: [
-                        { value: 'static', label: 'Static DC' },
-                        { value: 'target', label: 'Target\'s Statistic' },
-                        { value: 'origin', label: 'Origin\'s Statistic' },
-                    ],
+                    options: ConfigManager.DC_METHODS.options,
                     getValue: (rep) => rep.dcMethod || 'static',
                     setValue: (rep, value) => { rep.dcMethod = value; },
                     hideIf: (rep) => rep.checkType === 'flat'
@@ -1242,7 +1169,7 @@ class CheckReplacement extends RollReplacement {
                     id: 'statistic',
                     type: 'select',
                     label: 'Statistic',
-                    options: DEFENSE_STAT_OPTIONS,
+                    options: ConfigManager.STATISTICS.options,
                     getValue: (rep) => rep.statistic || '',
                     setValue: (rep, value) => { rep.statistic = value; },
                     hideIf: (rep) => rep.dcMethod === 'static' || rep.checkType === 'flat'
@@ -1261,12 +1188,7 @@ class CheckReplacement extends RollReplacement {
                     id: 'show-dc',
                     type: 'select',
                     label: 'Show DC',
-                    options: [
-                        { value: 'owner', label: 'Owner Only' },
-                        { value: 'gm', label: 'GM Only' },
-                        { value: 'all', label: 'Everyone' },
-                        { value: 'none', label: 'No One' }
-                    ],
+                    options: ConfigManager.SHOW_DCS.options,
                     getValue: (rep) => rep.showDC || 'owner',
                     setValue: (rep, value) => { rep.showDC = value; }
                 },
