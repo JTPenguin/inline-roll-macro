@@ -230,20 +230,6 @@ const LEGACY_ALIGNMENT_PATTERN = 'chaotic|evil|good|lawful';
 const LEGACY_POSITIVE = 'positive';
 const LEGACY_NEGATIVE = 'negative';
 
-// Condition patterns for regexes
-const CONDITIONS_WITH_VALUES = [
-    'clumsy', 'doomed', 'drained', 'dying', 'enfeebled', 'frightened', 
-    'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
-];
-const CONDITIONS_WITHOUT_VALUES = [
-    'blinded', 'broken', 'concealed', 'confused', 'controlled', 'dazzled', 
-    'deafened', 'fascinated', 'fatigued', 'fleeing', 'grabbed', 'immobilized', 
-    'invisible', 'off-guard', 'paralyzed', 'petrified', 'prone', 'quickened', 
-    'restrained', 'unconscious', 'undetected'
-];
-const CONDITIONS_WITH_VALUES_PATTERN = CONDITIONS_WITH_VALUES.join('|');
-const CONDITIONS_WITHOUT_VALUES_PATTERN = CONDITIONS_WITHOUT_VALUES.join('|');
-
 // Healing patterns
 const HEALING_TERMS = ['hit\\s+points?', 'HP', 'healing'];
 const HEALING_TERMS_PATTERN = HEALING_TERMS.join('|');
@@ -286,13 +272,7 @@ function buildConditionMap() {
     const conditionMap = new Map();
     
     // List of all conditions we want to support
-    const conditionNames = [
-        ...CONDITIONS_WITHOUT_VALUES,
-        ...CONDITIONS_WITH_VALUES
-    ];
-    
-    // Conditions that can have values (for validation and documentation)
-    const conditionsWithValues = CONDITIONS_WITH_VALUES;
+    const conditionNames = ConfigManager.CONDITIONS.slugs;
     
     // Try to get all conditions from the compendium
     for (const conditionName of conditionNames) {
@@ -309,40 +289,10 @@ function buildConditionMap() {
     }
     
     // Fallback condition UUIDs (common PF2e conditions) - Updated for Remaster
-    const fallbackConditions = {
-        'blinded': 'Compendium.pf2e.conditionitems.Item.blinded',
-        'broken': 'Compendium.pf2e.conditionitems.Item.broken',
-        'clumsy': 'Compendium.pf2e.conditionitems.Item.clumsy',
-        'concealed': 'Compendium.pf2e.conditionitems.Item.concealed',
-        'confused': 'Compendium.pf2e.conditionitems.Item.confused',
-        'controlled': 'Compendium.pf2e.conditionitems.Item.controlled',
-        'dazzled': 'Compendium.pf2e.conditionitems.Item.dazzled',
-        'deafened': 'Compendium.pf2e.conditionitems.Item.deafened',
-        'doomed': 'Compendium.pf2e.conditionitems.Item.doomed',
-        'drained': 'Compendium.pf2e.conditionitems.Item.drained',
-        'dying': 'Compendium.pf2e.conditionitems.Item.dying',
-        'enfeebled': 'Compendium.pf2e.conditionitems.Item.enfeebled',
-        'fascinated': 'Compendium.pf2e.conditionitems.Item.fascinated',
-        'fatigued': 'Compendium.pf2e.conditionitems.Item.fatigued',
-        'fleeing': 'Compendium.pf2e.conditionitems.Item.fleeing',
-        'frightened': 'Compendium.pf2e.conditionitems.Item.frightened',
-        'grabbed': 'Compendium.pf2e.conditionitems.Item.grabbed',
-        'immobilized': 'Compendium.pf2e.conditionitems.Item.immobilized',
-        'invisible': 'Compendium.pf2e.conditionitems.Item.invisible',
-        'off-guard': 'Compendium.pf2e.conditionitems.Item.off-guard',
-        'paralyzed': 'Compendium.pf2e.conditionitems.Item.paralyzed',
-        'petrified': 'Compendium.pf2e.conditionitems.Item.petrified',
-        'prone': 'Compendium.pf2e.conditionitems.Item.prone',
-        'quickened': 'Compendium.pf2e.conditionitems.Item.quickened',
-        'restrained': 'Compendium.pf2e.conditionitems.Item.restrained',
-        'sickened': 'Compendium.pf2e.conditionitems.Item.sickened',
-        'slowed': 'Compendium.pf2e.conditionitems.Item.slowed',
-        'stunned': 'Compendium.pf2e.conditionitems.Item.stunned',
-        'stupefied': 'Compendium.pf2e.conditionitems.Item.stupefied',
-        'unconscious': 'Compendium.pf2e.conditionitems.Item.unconscious',
-        'undetected': 'Compendium.pf2e.conditionitems.Item.undetected',
-        'wounded': 'Compendium.pf2e.conditionitems.Item.wounded'
-    };
+    const fallbackConditions = {};
+    ConfigManager.CONDITIONS.slugs.forEach(name => {
+        fallbackConditions[name] = `Compendium.pf2e.conditionitems.Item.${name}`;
+    });
     
     // If we didn't get any conditions from the compendium, use fallbacks
     if (conditionMap.size === 0) {
@@ -1268,18 +1218,28 @@ class ConditionReplacement extends Replacement {
         this.originalRender = this.render();
     }
     parseMatch() {
-        // args: [condition, value?]
         super.parseMatch();
         const args = this.args;
-        this.conditionName = args[0] || '';
+        this.conditionName = (args[0] || '').toLowerCase(); // Normalize to lowercase
         this.degree = args[1] || null;
         this.uuid = getConditionUUID(this.conditionName);
     }
     render() { return super.render(); }
     conversionRender() {
         if (!this.uuid) return this.originalText;
+    
         const capitalized = this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
-        let display = this.displayText && this.displayText.trim() ? this.displayText : (this.degree ? `${capitalized} ${this.degree}` : capitalized);
+        
+        // Only include degree if this condition supports values AND we have a degree
+        const shouldIncludeDegree = this.degree && ConfigManager.conditionCanHaveValue(this.conditionName);
+        
+        let display;
+        if (shouldIncludeDegree) {
+            display = `${capitalized} ${this.degree}`;
+        } else {
+            display = capitalized;
+        }
+        
         return `@UUID[${this.uuid}]{${display}}`;
     }
     validate() {
@@ -1295,9 +1255,6 @@ class ConditionReplacement extends Replacement {
         };
     }
     static get panelConfig() {
-        // Combine and sort all conditions alphabetically
-        const allConditions = [...CONDITIONS_WITH_VALUES, ...CONDITIONS_WITHOUT_VALUES]
-            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
         return {
             ...super.panelConfig,
             title: 'Condition',
@@ -1308,14 +1265,11 @@ class ConditionReplacement extends Replacement {
                     id: 'condition-select',
                     type: 'select',
                     label: 'Condition',
-                    options: allConditions.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
+                    options: ConfigManager.CONDITIONS.options,
                     getValue: (rep) => rep.conditionName || '',
                     setValue: (rep, value) => {
                         rep.conditionName = value;
                         rep.uuid = getConditionUUID(value);
-                        if (!CONDITIONS_WITH_VALUES.includes(value)) {
-                            rep.degree = null;
-                        }
                     }
                 },
                 {
@@ -1325,7 +1279,7 @@ class ConditionReplacement extends Replacement {
                     min: 1,
                     getValue: (rep) => rep.degree || '',
                     setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
-                    hideIf: (rep) => !CONDITIONS_WITH_VALUES.includes(rep.conditionName)
+                    hideIf: (rep) => !ConfigManager.conditionCanHaveValue(rep.conditionName)
                 },
             ]
         };
@@ -1924,27 +1878,21 @@ const PATTERN_DEFINITIONS = [
         regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\bflat-footed\b(?!\})/gi,
         priority: PRIORITY.LEGACY_CONDITION,
         handler: function(match) {
-            // Pass the original match object for correct span, but set args to 'off-guard'
-            return { match, args: ['off-guard'] };
+            const legacyName = 'flat-footed';
+            const remasterName = ConfigManager.CONDITION_METADATA[legacyName] || legacyName;
+            const capitalized = remasterName.charAt(0).toUpperCase() + remasterName.slice(1);
+            return { match, args: [capitalized] };
         },
         description: 'Legacy flat-footed to off-guard conversion (before condition linking)'
     },
     // Priority 6: Condition linking
     {
-        // Value-conditions: match name, optionally followed by a value
+        // Combined condition pattern: match any condition name optionally followed by a number
         type: 'condition',
-        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${CONDITIONS_WITH_VALUES_PATTERN})(?:\\s+(\\d+))?\\b(?!\\})`, 'gi'),
+        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${ConfigManager.CONDITIONS.pattern})(?:\\s+(\\d+))?\\b(?!\\})`, 'gi'),
         priority: PRIORITY.CONDITION,
         handler: match => ({ match, args: [match[1], match[2]] }),
-        description: 'Condition (with or without value) for value-conditions'
-    },
-    {
-        // Value-less conditions: match name, but not if followed by a value
-        type: 'condition',
-        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${CONDITIONS_WITHOUT_VALUES_PATTERN})\\b(?!\\s+\\d+)(?!\\})`, 'gi'),
-        priority: PRIORITY.CONDITION,
-        handler: match => ({ match, args: [match[1]] }),
-        description: 'Condition (no value allowed) for value-less conditions'
+        description: 'Condition (with or without value) - matches any condition name optionally followed by a number'
     },
     // Priority 7: Area effects (consolidated)
     {
@@ -2154,7 +2102,12 @@ class TextProcessor {
             result = this.applyReplacement(result, replacement, interactive);
         }
         // After all replacements, replace any remaining 'flat-footed' with 'off-guard'
-        result = result.replace(/\bflat-footed\b/gi, 'off-guard');
+        Object.entries(ConfigManager.CONDITION_METADATA.legacy).forEach(([legacy, remaster]) => {
+            const regex = new RegExp(`\\b${legacy}\\b`, 'gi');
+            const capitalized = remaster.charAt(0).toUpperCase() + remaster.slice(1);
+            result = result.replace(regex, capitalized);
+        });
+
         return result;
     }
     applyReplacement(text, replacement, interactive = false) {
