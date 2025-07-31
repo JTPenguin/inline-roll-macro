@@ -287,12 +287,16 @@ class ConfigManager {
             'ac',
             'perception',
             ...this.SAVES.slugs, // Saves are also statistics
+            'class',
             'spell',
+            'class-spell',
             ...this.SKILLS.slugs, // Skills are also statistics
         ],
         {
             ac: 'Armor Class',
+            class: 'Class DC',
             spell: 'Spell DC',
+            'class-spell': 'Class or Spell DC',
         }
     );
 
