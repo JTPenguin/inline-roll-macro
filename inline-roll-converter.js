@@ -957,7 +957,7 @@ class CheckReplacement extends RollReplacement {
 
     parseSkillMatch(match, config) {
         // Minimal logic for skill checks (already handled in previous parseMatch)
-        this.skill = match[2] || '';
+        this.skill = match[2].toLowerCase() || '';
         this.dc = match[1] || null;
     }
 
