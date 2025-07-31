@@ -38,15 +38,181 @@ class ConfigCategory {
     }
 
     // Helper method for converting slugs to normal text (replace hyphens with spaces)
+    // Exception: Keep hyphens for condition names that need them
     _unslug(str) {
-        return str.replace(/-/g, ' ')
+        // Special cases for conditions that should keep their hyphens
+        const keepHyphens = ['flat-footed', 'off-guard'];
+        if (keepHyphens.includes(str)) {
+            return str;
+        }
+        
+        // Default behavior: replace hyphens with spaces
+        return str.replace(/-/g, ' ');
     }
 
     // Helper method for converting strings to title case (one and two letter words are not capitalized)
     _toTitleCase(str) {
+        // Special cases for specific condition names that need custom capitalization
+        const specialCases = {
+            'off-guard': 'Off-Guard',
+            'flat-footed': 'Flat-Footed'
+        };
+        
+        if (specialCases[str]) {
+            return specialCases[str];
+        }
+        
+        // Default behavior: capitalize words with 3+ characters
         return str.replace(/\b\w{3,}/g, word => 
             word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
         );
+    }
+}
+
+class LegacyConversionManager {
+    
+    // Legacy damage type mappings (only applied within damage rolls)
+    static LEGACY_DAMAGE_MAPPINGS = {
+        'chaotic': 'spirit',
+        'evil': 'spirit', 
+        'good': 'spirit',
+        'lawful': 'spirit',
+        'positive': 'vitality',
+        'negative': 'void'
+    };
+
+    // Legacy condition mappings (applied globally, case-preserving)
+    static LEGACY_CONDITION_MAPPINGS = {
+        'flat-footed': 'off-guard'
+    };
+
+    /**
+     * Convert legacy damage type to remaster equivalent
+     * Only to be used within damage roll processing
+     */
+    static convertLegacyDamageType(damageType) {
+        if (!damageType) return damageType;
+        const normalized = damageType.toLowerCase();
+        return this.LEGACY_DAMAGE_MAPPINGS[normalized] || damageType;
+    }
+
+    /**
+     * Check if a damage type is legacy
+     */
+    static isLegacyDamageType(damageType) {
+        if (!damageType) return false;
+        return this.LEGACY_DAMAGE_MAPPINGS.hasOwnProperty(damageType.toLowerCase());
+    }
+
+    /**
+     * Convert legacy condition while preserving case
+     * Returns null if no conversion needed
+     */
+    static convertLegacyCondition(conditionText) {
+        const normalized = conditionText.toLowerCase();
+        const mapping = this.LEGACY_CONDITION_MAPPINGS[normalized];
+        
+        if (!mapping) return null;
+
+        // Preserve case pattern from input
+        return this.preserveCase(conditionText, mapping);
+    }
+
+    /**
+     * Apply case pattern from source to target string
+     * Handles different string lengths by mapping words and characters intelligently
+     */
+    static preserveCase(source, target) {
+        if (source.length === 0 || target.length === 0) return target;
+
+        // Handle simple cases first
+        if (source === source.toLowerCase()) {
+            return target.toLowerCase();
+        }
+        if (source === source.toUpperCase()) {
+            return target.toUpperCase();
+        }
+        
+        // For mixed case, try to preserve the pattern intelligently
+        // Split both strings into words (by hyphens and spaces)
+        const sourceWords = source.split(/[-\s]+/);
+        const targetWords = target.split(/[-\s]+/);
+        
+        // If we have the same number of words, map word by word
+        if (sourceWords.length === targetWords.length) {
+            const result = targetWords.map((targetWord, index) => {
+                const sourceWord = sourceWords[index];
+                return this.preserveCaseForWord(sourceWord, targetWord);
+            });
+            
+            // Reconstruct with the same separators as target
+            return target.split(/[-\s]+/).map((_, index) => result[index]).join(
+                target.includes('-') ? '-' : ' '
+            );
+        }
+        
+        // Fallback: apply the case of the first character to the whole target
+        if (source[0] === source[0].toUpperCase()) {
+            return target.charAt(0).toUpperCase() + target.slice(1).toLowerCase();
+        } else {
+            return target.toLowerCase();
+        }
+    }
+
+    /**
+     * Apply case pattern from source word to target word
+     */
+    static preserveCaseForWord(sourceWord, targetWord) {
+        if (!sourceWord || !targetWord) return targetWord;
+        
+        // All lowercase
+        if (sourceWord === sourceWord.toLowerCase()) {
+            return targetWord.toLowerCase();
+        }
+        
+        // All uppercase  
+        if (sourceWord === sourceWord.toUpperCase()) {
+            return targetWord.toUpperCase();
+        }
+        
+        // Title case (first letter uppercase, rest lowercase)
+        if (sourceWord[0] === sourceWord[0].toUpperCase() && 
+            sourceWord.slice(1) === sourceWord.slice(1).toLowerCase()) {
+            return targetWord.charAt(0).toUpperCase() + targetWord.slice(1).toLowerCase();
+        }
+        
+        // For other mixed cases, apply character by character up to the shorter length
+        let result = '';
+        const minLength = Math.min(sourceWord.length, targetWord.length);
+        
+        for (let i = 0; i < minLength; i++) {
+            if (sourceWord[i] === sourceWord[i].toUpperCase()) {
+                result += targetWord[i].toUpperCase();
+            } else {
+                result += targetWord[i].toLowerCase();
+            }
+        }
+        
+        // If target is longer, add remaining characters in lowercase
+        if (targetWord.length > minLength) {
+            result += targetWord.slice(minLength).toLowerCase();
+        }
+        
+        return result;
+    }
+
+    /**
+     * Get all legacy damage types for pattern generation
+     */
+    static getLegacyDamageTypes() {
+        return Object.keys(this.LEGACY_DAMAGE_MAPPINGS);
+    }
+
+    /**
+     * Get all legacy conditions for pattern generation
+     */
+    static getLegacyConditions() {
+        return Object.keys(this.LEGACY_CONDITION_MAPPINGS);
     }
 }
 
@@ -58,9 +224,7 @@ class ConfigManager {
         'mental', 'spirit', 'poison', 'untyped' // Other types
     ]);
 
-    static LEGACY_DAMAGE_TYPES = new ConfigCategory([
-        'chaotic', 'evil', 'good', 'lawful', 'positive', 'negative'
-    ]);
+    static LEGACY_DAMAGE_TYPES = new ConfigCategory(LegacyConversionManager.getLegacyDamageTypes());
 
     static ALL_DAMAGE_TYPES = new ConfigCategory([
         ...this.DAMAGE_TYPES.slugs,
@@ -150,11 +314,15 @@ class ConfigManager {
         withValues: new Set([
             'clumsy', 'doomed', 'drained', 'dying', 'enfeebled', 'frightened',
             'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
-        ]),
-        legacy: {
-            'flat-footed': 'off-guard'
-        }
+        ])
     }
+
+    static LEGACY_CONDITIONS = new ConfigCategory(LegacyConversionManager.getLegacyConditions());
+
+    static ALL_CONDITIONS = new ConfigCategory([
+        ...this.CONDITIONS.slugs,
+        ...this.LEGACY_CONDITIONS.slugs
+    ]);
 
     // Helper method for checking if a condition can have a value
     static conditionCanHaveValue(condition) {
@@ -223,16 +391,9 @@ class ConfigManager {
     static actionHasVariants(action) {
         return this.ACTION_VARIANTS.hasOwnProperty(action);
     }
+
+    static HEALING_TERMS = new ConfigCategory([ 'hit\\s+points?', 'HP', 'healing' ]);
 }
-
-// Patterns for legacy types
-const LEGACY_ALIGNMENT_PATTERN = 'chaotic|evil|good|lawful';
-const LEGACY_POSITIVE = 'positive';
-const LEGACY_NEGATIVE = 'negative';
-
-// Healing patterns
-const HEALING_TERMS = ['hit\\s+points?', 'HP', 'healing'];
-const HEALING_TERMS_PATTERN = HEALING_TERMS.join('|');
 
 // Condition mapping for dynamic UUID retrieval
 let conditionMap = new Map();
@@ -570,6 +731,7 @@ class DamageReplacement extends RollReplacement {
         this.parseMatch(match, config);
         this.originalRender = this.render();
     }
+
     parseMatch(match, config) {
         super.parseMatch(match, config);
         this.areaDamage = false;
@@ -585,6 +747,7 @@ class DamageReplacement extends RollReplacement {
             this._parseSingleDamage(match);
         }
     }
+
     _parseSingleDamage(match) {
         // Accepts a regex match array for a single dice/type pair
         const dice = match[1] || '';
@@ -607,11 +770,13 @@ class DamageReplacement extends RollReplacement {
         
         this.addDamageComponent(dice, type, isPersistent, isPrecision, isSplash);
     }
+
     addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false) {
-        // Convert legacy types to remaster types
+        // Convert legacy types to remaster types automatically
         let remasterType = damageType;
-        if (damageType && ConfigManager.LEGACY_DAMAGE_TYPE_MAPPING[damageType]) {
-            remasterType = ConfigManager.LEGACY_DAMAGE_TYPE_MAPPING[damageType];
+        if (damageType && LegacyConversionManager.isLegacyDamageType(damageType)) {
+            remasterType = LegacyConversionManager.convertLegacyDamageType(damageType);
+            console.log(`Legacy damage type converted: ${damageType} -> ${remasterType}`);
         }
         
         // Determine category from boolean flags
@@ -622,15 +787,12 @@ class DamageReplacement extends RollReplacement {
         
         this.damageComponents.push(new DamageComponent(dice, remasterType, category));
     }
+
     render() { return super.render(); }
     conversionRender() {
         // If match.replacement exists, use it directly
         if (this.match && this.match.replacement) {
             return this.match.replacement;
-        }
-        // Handle legacy damage type conversions
-        if (this.rollType === 'legacy') {
-            return this.renderLegacyConversion();
         }
         // Handle damage consolidation
         if (this.originalText.includes('@Damage[') && this.originalText.includes('@Damage[')) {
@@ -656,28 +818,6 @@ class DamageReplacement extends RollReplacement {
             return `${roll}{${this.displayText}} damage`;
         }
         return roll + ' damage';
-    }
-    
-    renderLegacyConversion() {
-        const originalText = this.originalText;
-        
-        // Handle alignment damage to spirit
-        if (originalText.includes('chaotic') || originalText.includes('evil') || 
-            originalText.includes('good') || originalText.includes('lawful')) {
-            return originalText.replace(/(chaotic|evil|good|lawful)/g, 'spirit');
-        }
-        
-        // Handle positive to vitality
-        if (originalText.includes('positive')) {
-            return originalText.replace(/positive/g, 'vitality');
-        }
-        
-        // Handle negative to void
-        if (originalText.includes('negative')) {
-            return originalText.replace(/negative/g, 'void');
-        }
-        
-        return originalText;
     }
     
     renderDamageConsolidation() {
@@ -1205,6 +1345,7 @@ class ConditionReplacement extends Replacement {
         this.uuid = '';
         this.linkedConditions = config && config.linkedConditions ? config.linkedConditions : new Set();
         this.args = matchObj.args || [];
+        this.originalConditionText = matchObj.originalText || matchObj.args?.[0] || ''; // Store original for case preservation
         this.parseMatch();
         let dedupKey = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
         if (dedupKey === 'flat-footed') dedupKey = 'off-guard';
@@ -1217,31 +1358,54 @@ class ConditionReplacement extends Replacement {
         this.displayText = '';
         this.originalRender = this.render();
     }
+
     parseMatch() {
         super.parseMatch();
         const args = this.args;
-        this.conditionName = (args[0] || '').toLowerCase(); // Normalize to lowercase
+        let conditionName = (args[0] || '').toLowerCase();
+        
+        // Check for legacy condition conversion
+        const converted = LegacyConversionManager.convertLegacyCondition(conditionName);
+        if (converted) {
+            this.conditionName = converted.toLowerCase();
+            this.isLegacyConversion = true;
+        } else {
+            this.conditionName = conditionName;
+            this.isLegacyConversion = false;
+        }
+        
         this.degree = args[1] || null;
         this.uuid = getConditionUUID(this.conditionName);
     }
+
     render() { return super.render(); }
     conversionRender() {
-        if (!this.uuid) return this.originalText;
+        if (!this.uuid) {
+            // If disabled and this is a legacy conversion, preserve original case
+            if (!this.enabled && this.isLegacyConversion && this.originalConditionText) {
+                return LegacyConversionManager.convertLegacyCondition(this.originalConditionText) || this.originalText;
+            }
+            return this.originalText;
+        }
     
-        const capitalized = this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
+        // Get the proper display label from ConfigManager instead of manual capitalization
+        const conditionOption = ConfigManager.CONDITIONS.options.find(opt => opt.value === this.conditionName);
+        const displayName = conditionOption ? conditionOption.label : 
+            this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
         
         // Only include degree if this condition supports values AND we have a degree
         const shouldIncludeDegree = this.degree && ConfigManager.conditionCanHaveValue(this.conditionName);
         
         let display;
         if (shouldIncludeDegree) {
-            display = `${capitalized} ${this.degree}`;
+            display = `${displayName} ${this.degree}`;
         } else {
-            display = capitalized;
+            display = displayName;
         }
         
         return `@UUID[${this.uuid}]{${display}}`;
     }
+
     validate() {
         return this.conditionName && this.uuid;
     }
@@ -1634,7 +1798,6 @@ const REPLACEMENT_CLASS_MAP = {
     check: CheckReplacement, // Unified check replacement for all check/save/flat
     template: TemplateReplacement,
     condition: ConditionReplacement,
-    legacy: DamageReplacement, // Use DamageReplacement for legacy damage type conversions
     duration: DurationReplacement, // Duration replacement
     action: ActionReplacement, // New action replacement class
 };
@@ -1744,7 +1907,7 @@ const PATTERN_DEFINITIONS = [
     // Healing patterns - consolidated handler
     {
         type: 'healing',
-        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)(?:\\s+\\b(?:${HEALING_TERMS_PATTERN})\\b)(?:\\s+(?:healed|damage))?`, 'gi'),
+        regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)(?:\\s+\\b(?:${ConfigManager.HEALING_TERMS.pattern})\\b)(?:\\s+(?:healed|damage))?`, 'gi'),
         priority: PRIORITY.HEALING,
         handler: (match) => match,
         description: 'Healing patterns (hit points, HP, healing)'
@@ -1842,28 +2005,6 @@ const PATTERN_DEFINITIONS = [
         },
         description: 'Untyped (none) damage, e.g., "3d6 damage"'
     },
-    // Priority 4: Legacy damage type conversions
-    {
-        type: 'legacy',
-        regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_ALIGNMENT_PATTERN})([^\\]]*?)\\](.*?)\\]`, 'gi'),
-        priority: PRIORITY.LEGACY,
-        handler: (match) => match,
-        description: 'Legacy alignment damage to spirit (within @Damage, anywhere in type list)'
-    },
-    {
-        type: 'legacy',
-        regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_POSITIVE})([^\\]]*?)\\](.*?)\\]`, 'gi'),
-        priority: PRIORITY.LEGACY,
-        handler: (match) => match,
-        description: 'Legacy positive damage to vitality (within @Damage, anywhere in type list)'
-    },
-    {
-        type: 'legacy',
-        regex: new RegExp(`@Damage\\[(.*?\\[)([^\\]]*?)(${LEGACY_NEGATIVE})([^\\]]*?)\\](.*?)\\]`, 'gi'),
-        priority: PRIORITY.LEGACY,
-        handler: (match) => match,
-        description: 'Legacy negative damage to void (within @Damage, anywhere in type list)'
-    },
     // Priority 5: Damage consolidation
     {
         type: 'damage',
@@ -1875,21 +2016,22 @@ const PATTERN_DEFINITIONS = [
     // Priority 5: Legacy flat-footed
     {
         type: 'condition',
-        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\bflat-footed\b(?!\})/gi,
+        regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\b(flat-footed)\b(?!\})/gi,
         priority: PRIORITY.LEGACY_CONDITION,
         handler: function(match) {
-            const legacyName = 'flat-footed';
-            const remasterName = ConfigManager.CONDITION_METADATA[legacyName] || legacyName;
-            const capitalized = remasterName.charAt(0).toUpperCase() + remasterName.slice(1);
-            return { match, args: [capitalized] };
+            return { 
+                match, 
+                args: ['flat-footed'], 
+                originalText: match[0] // Preserve original case
+            };
         },
-        description: 'Legacy flat-footed to off-guard conversion (before condition linking)'
+        description: 'Legacy flat-footed to off-guard conversion (case-preserving)'
     },
     // Priority 6: Condition linking
     {
         // Combined condition pattern: match any condition name optionally followed by a number
         type: 'condition',
-        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${ConfigManager.CONDITIONS.pattern})(?:\\s+(\\d+))?\\b(?!\\})`, 'gi'),
+        regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${ConfigManager.ALL_CONDITIONS.pattern})(?:\\s+(\\d+))?\\b(?!\\})`, 'gi'),
         priority: PRIORITY.CONDITION,
         handler: match => ({ match, args: [match[1], match[2]] }),
         description: 'Condition (with or without value) - matches any condition name optionally followed by a number'
@@ -2096,18 +2238,30 @@ class TextProcessor {
         // Apply all replacements in reverse position order
         const sorted = replacements.slice().sort((a, b) => b.startPos - a.startPos);
         let result = text;
+        
         for (let i = 0; i < sorted.length; i++) {
             const replacement = sorted[i];
-            // console.log(`[renderFromReplacements] id=${replacement.id} enabled=${replacement.enabled}`); // LOGGING
             result = this.applyReplacement(result, replacement, interactive);
         }
-        // After all replacements, replace any remaining 'flat-footed' with 'off-guard'
-        Object.entries(ConfigManager.CONDITION_METADATA.legacy).forEach(([legacy, remaster]) => {
-            const regex = new RegExp(`\\b${legacy}\\b`, 'gi');
-            const capitalized = remaster.charAt(0).toUpperCase() + remaster.slice(1);
-            result = result.replace(regex, capitalized);
+        
+        // Global legacy condition conversion for any remaining instances
+        result = this.applyGlobalLegacyConditionConversions(result);
+        
+        return result;
+    }
+    
+    /**
+     * Apply global legacy condition conversions to remaining text
+     * This is the final cleanup step for any legacy conditions not caught by replacements
+     */
+    applyGlobalLegacyConditionConversions(result) {
+        LegacyConversionManager.getLegacyConditions().forEach(legacyCondition => {
+            const regex = new RegExp(`\\b${legacyCondition}\\b`, 'gi');
+            result = result.replace(regex, (match) => {
+                return LegacyConversionManager.convertLegacyCondition(match);
+            });
         });
-
+        
         return result;
     }
     applyReplacement(text, replacement, interactive = false) {
