@@ -569,8 +569,10 @@ class ActionRenderer extends BaseRenderer {
             id: 'action-name',
             type: 'select',
             label: 'Action',
-            getValue: (r) => r.actionName || '',
-            setValue: (r, value) => { r.actionName = value; },
+            getValue: (r) => r.action || '',
+            setValue: (r, value) => {
+                r.setAction(value);
+            },
             options: ConfigManager.ACTIONS.options
         });
 
@@ -579,32 +581,44 @@ class ActionRenderer extends BaseRenderer {
             id: 'action-variant',
             type: 'select',
             label: 'Variant',
-            getValue: (r) => r.actionVariant || '',
-            setValue: (r, value) => { r.actionVariant = value; },
-            options: (r) => ConfigManager.ACTION_VARIANTS[r.actionName] || [],
-            showIf: (r) => r.actionName && ConfigManager.actionHasVariants(r.actionName)
+            options: (r) => {
+                console.log('[ActionRenderer] Getting variants for action:', r.action);
+                if (r.action && ConfigManager.actionHasVariants(r.action)) {
+                    const variants = ConfigManager.ACTION_VARIANTS[r.action];
+                    console.log('[ActionRenderer] Found variants object:', variants);
+                    if (variants && variants.options) {
+                        console.log('[ActionRenderer] Returning variant options:', variants.options);
+                        return variants.options;
+                    }
+                }
+                console.log('[ActionRenderer] No variants found, returning empty array');
+                return [];
+            },
+            getValue: (r) => r.variant || '',
+            setValue: (r, value) => { r.variant = value; },
+            showIf: (r) => r.action && ConfigManager.actionHasVariants(r.action) // Show if the action has variants
         });
 
-        // Add DC and statistic fields for actions that need them
-        configs.push({
-            id: 'dc-method',
-            type: 'select',
-            label: 'DC Method',
-            getValue: (r) => r.dcMethod || 'static',
-            setValue: (r, value) => { r.dcMethod = value; },
-            options: ConfigManager.DC_METHODS.options,
-            showIf: (r) => r.actionName && ['Shove', 'Trip', 'Grapple'].includes(r.actionName)
-        });
+        // // Add DC and statistic fields for actions that need them
+        // configs.push({
+        //     id: 'dc-method',
+        //     type: 'select',
+        //     label: 'DC Method',
+        //     getValue: (r) => r.dcMethod || 'static',
+        //     setValue: (r, value) => { r.dcMethod = value; },
+        //     options: ConfigManager.DC_METHODS.options,
+        //     showIf: (r) => r.action && ['Shove', 'Trip', 'Grapple'].includes(r.action)
+        // });
 
-        configs.push({
-            id: 'statistic',
-            type: 'select',
-            label: 'Statistic',
-            getValue: (r) => r.statistic || '',
-            setValue: (r, value) => { r.statistic = value; },
-            options: ConfigManager.STATISTICS.options,
-            showIf: (r) => r.actionName && ['Shove', 'Trip', 'Grapple'].includes(r.actionName)
-        });
+        // configs.push({
+        //     id: 'statistic',
+        //     type: 'select',
+        //     label: 'Statistic',
+        //     getValue: (r) => r.statistic || '',
+        //     setValue: (r, value) => { r.statistic = value; },
+        //     options: ConfigManager.STATISTICS.options,
+        //     showIf: (r) => r.action && ['Shove', 'Trip', 'Grapple'].includes(r.action)
+        // });
 
         return configs;
     }
@@ -941,8 +955,16 @@ class ModifierPanelManager {
             const value = this.getFieldValue(event.target);
             fieldConfig.setValue(rep, value);
             
-            // Update visibility after change
-            this.updateFieldVisibility(formElement, fieldConfigs, rep);
+            // Check if this field change affects other fields (like action changing variant options)
+            const needsFieldUpdate = this.checkForFieldDependencies(fieldId, rep.type);
+            
+            if (needsFieldUpdate) {
+                // Re-render the entire panel to update dynamic fields
+                this.regeneratePanel(formElement, rep, onChangeCallback);
+            } else {
+                // Just update visibility for simpler changes
+                this.updateFieldVisibility(formElement, fieldConfigs, rep);
+            }
             
             // Special handling for condition field changes
             if (fieldId === 'condition-select' && rep.updateUUID) {
@@ -953,6 +975,59 @@ class ModifierPanelManager {
             if (onChangeCallback) {
                 onChangeCallback(rep, fieldId);
             }
+        }
+    }
+
+    /**
+     * Check if a field change requires updating other fields
+     * @param {string} fieldId - The changed field ID
+     * @param {string} repType - The replacement type
+     * @returns {boolean} Whether field updates are needed
+     */
+    checkForFieldDependencies(fieldId, repType) {
+        // Action field changes affect variant dropdown
+        if (repType === 'action' && fieldId === 'action-name') {
+            return true;
+        }
+        
+        // Check type changes affect conditional fields in checks
+        if (repType === 'check' && fieldId === 'check-type') {
+            return true;
+        }
+        
+        // DC method changes affect statistic field visibility
+        if (repType === 'check' && fieldId === 'dc-method') {
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Regenerate the entire panel with updated field configurations
+     * @param {HTMLElement} formElement - The form element
+     * @param {Object} rep - The replacement object
+     * @param {Function} onChangeCallback - Callback function
+     */
+    regeneratePanel(formElement, rep, onChangeCallback) {
+        const renderer = this.renderers[rep.type];
+        if (!renderer) return;
+        
+        // Get fresh field configurations (important for dynamic options)
+        const fieldConfigs = renderer.getFieldConfigs(rep);
+        
+        // Clear and regenerate form content, but preserve the form element itself
+        const panelHTML = this.generatePanelHTML(rep.type, rep);
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = panelHTML;
+        const newForm = tempDiv.querySelector('form');
+        
+        if (newForm) {
+            // Replace form contents
+            formElement.innerHTML = newForm.innerHTML;
+            
+            // Re-setup event listeners on the updated form
+            this.addFormListeners(formElement, rep.type, rep, onChangeCallback);
         }
     }
     
@@ -3970,6 +4045,19 @@ class ActionReplacement extends Replacement {
         this.displayText = '';
         this.parseMatch(match, config);
         this.originalRender = this.render();
+    }
+
+    setAction(newAction) {
+        this.action = newAction;
+        // Set the variant to the first variant of the action if it has variants,
+        // or set it to an empty string if it doesn't have variants
+        if (ConfigManager.actionHasVariants(newAction)) {
+            if (ConfigManager.ACTION_VARIANTS[newAction]) {
+                this.variant = ConfigManager.ACTION_VARIANTS[newAction].slugs[0];
+            }
+        } else {
+            this.variant = '';
+        }
     }
 
     parseMatch(match, config) {
