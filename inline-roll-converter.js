@@ -613,6 +613,16 @@ class ConverterDialog {
     }
     
     /**
+     * Handle element deselection and modifier panel updates
+     */
+    deselectElement() {
+        console.log('[PF2e Converter] Deselecting element');
+        this.data.selectedElementId = null;
+        this.renderModifierPanel();
+        this.updateElementHighlighting();
+    }
+    
+    /**
      * Process input text and generate replacements
      * @param {string} inputText - Text to process
      */
@@ -703,13 +713,11 @@ class ConverterDialog {
             return;
         }
         
-        console.log('[PF2e Converter] Rendering modifier panel for element:', this.data.selectedElementId);
+        console.log('[PF2e Converter] Rendering modifier panel');
         const selectedElementId = this.data.selectedElementId;
         
         if (selectedElementId && this.data.interactiveElements[selectedElementId]) {
             const rep = this.data.interactiveElements[selectedElementId];
-            console.log('[PF2e Converter] Found replacement object:', rep.type, rep.id);
-            
             const panelHTML = this.modifierManager.generatePanelHTML(rep.type, rep);
             
             if (this.ui.modifierPanelContent) {
@@ -717,7 +725,6 @@ class ConverterDialog {
                 this.setupModifierPanelHandlers(rep);
             }
         } else {
-            console.log('[PF2e Converter] No replacement found for element:', selectedElementId);
             if (this.ui.modifierPanelContent) {
                 this.ui.modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
             }
@@ -768,7 +775,15 @@ class ConverterDialog {
                     e.preventDefault();
                     e.stopPropagation();
                     console.log('[PF2e Converter] Interactive element clicked:', elementId);
-                    this.selectElement(elementId);
+                    
+                    // Toggle selection: deselect if already selected, select if not
+                    if (this.data.selectedElementId === elementId) {
+                        console.log('[PF2e Converter] Deselecting element:', elementId);
+                        this.deselectElement();
+                    } else {
+                        console.log('[PF2e Converter] Selecting element:', elementId);
+                        this.selectElement(elementId);
+                    }
                 };
             }
         });
@@ -801,25 +816,13 @@ class ConverterDialog {
      * @param {string} changedFieldId - ID of the changed field
      */
     handleModifierChange(rep, changedFieldId) {
-        console.log('[PF2e Converter] Handling modifier change for:', rep.id, 'field:', changedFieldId);
-        
-        // Mark the replacement as modified if it has that capability
-        if (rep.markModified && typeof rep.markModified === 'function') {
+        console.log('[PF2e Converter] Handling modifier change:', changedFieldId);
+        if (rep.markModified) {
             rep.markModified();
         }
-        
-        // Force re-render of everything to reflect changes
         this.renderOutput();
         this.renderLivePreview();
         this.updateElementHighlighting();
-        
-        // If the modification changed fundamental properties, re-render the modifier panel
-        if (changedFieldId === 'action-name' || changedFieldId === 'check-type' || changedFieldId === 'enabled') {
-            console.log('[PF2e Converter] Fundamental change detected, re-rendering modifier panel');
-            setTimeout(() => {
-                this.renderModifierPanel();
-            }, 0);
-        }
     }
     
     /**
