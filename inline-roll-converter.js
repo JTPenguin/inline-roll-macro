@@ -735,7 +735,7 @@ class ConverterDialog {
      */
     copyOutput() {
         console.log('[PF2e Converter] Copying output to clipboard');
-        const outputText = this.data.lastRawOutput || this.processor.renderFromReplacements(this.data.inputText, this.data.replacements);
+        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, false, this.data);
         copyToClipboard(outputText);
     }
     
