@@ -707,6 +707,9 @@ class ConverterDialog {
         } else {
             this.updateReplacements([]);
         }
+
+        // Reset modifier panel to default state when input changes
+        this.renderModifierPanel();
     }
     
     /**
