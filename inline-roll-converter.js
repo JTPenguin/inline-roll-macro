@@ -3152,14 +3152,17 @@ class HealingReplacement extends RollReplacement {
 
 // -------------------- Condition Replacement --------------------
 class ConditionReplacement extends Replacement {
-    constructor(matchObj, type, config) {
-        super(matchObj.match, type);
+    constructor(match, type, config) {
+        // Extract the actual regex match from the matchObj wrapper if needed
+        const actualMatch = match.match || match;
+        super(actualMatch, type);
+        
         this.priority = 50;
         this.conditionName = '';
         this.degree = null;
         this.uuid = '';
         
-        // Handle the linkedConditions config properly - it's an object with a 'set' property
+        // Handle the linkedConditions config
         if (config && config.linkedConditions && config.linkedConditions.set) {
             this.linkedConditions = config.linkedConditions.set;
         } else {
@@ -3169,9 +3172,8 @@ class ConditionReplacement extends Replacement {
         // Store state reference for UUID lookups
         this._state = config?.linkedConditions?.state || null;
         
-        this.args = matchObj.args || [];
-        this.originalConditionText = matchObj.originalText || matchObj.args?.[0] || ''; // Store original for case preservation
-        this.parseMatch();
+        this.parseMatch(actualMatch, config);
+        
         let dedupKey = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
         if (dedupKey === 'flat-footed') dedupKey = 'off-guard';
         if (this.linkedConditions.has(dedupKey)) {
@@ -3184,10 +3186,12 @@ class ConditionReplacement extends Replacement {
         this.originalRender = this.render();
     }
 
-    parseMatch() {
-        super.parseMatch();
-        const args = this.args;
-        let conditionName = (args[0] || '').toLowerCase();
+    parseMatch(match, config) {
+        super.parseMatch(match, config);
+        
+        // Extract condition name and degree from the regex match
+        // match[1] is the condition name, match[2] is the optional degree
+        let conditionName = (match[1] || '').toLowerCase();
         
         // Check for legacy condition conversion
         const converted = LegacyConversionManager.convertLegacyCondition(conditionName);
@@ -3199,7 +3203,7 @@ class ConditionReplacement extends Replacement {
             this.isLegacyConversion = false;
         }
         
-        this.degree = args[1] || null;
+        this.degree = match[2] || null;
         this.updateUUID();
     }
     
@@ -3225,7 +3229,7 @@ class ConditionReplacement extends Replacement {
             return this.originalText;
         }
     
-        // Get the proper display label from ConfigManager instead of manual capitalization
+        // Get the proper display label from ConfigManager
         const conditionOption = ConfigManager.CONDITIONS.options.find(opt => opt.value === this.conditionName);
         const displayName = conditionOption ? conditionOption.label : 
             this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
@@ -3290,10 +3294,6 @@ class ConditionReplacement extends Replacement {
                 },
             ]
         };
-    }
-    
-    resetToOriginal() {
-        super.resetToOriginal();
     }
 }
 
