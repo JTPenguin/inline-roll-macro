@@ -8,6 +8,917 @@
 // Define a test input for demonstration and testing
 const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
 
+/**
+ * ModifierPanelManager - Handles the generation and management of modifier panels
+ * for interactive replacement elements
+ */
+class ModifierPanelManager {
+    // Shared label width for all modifier panel labels
+    static labelWidth = '100px';
+    
+    constructor() {
+        console.log('[PF2e Converter] Creating ModifierPanelManager instance');
+    }
+    // DRY: Render the panel header (title + reset button)
+    renderPanelHeader(title) {
+        return `
+            <div class="modifier-field-row">
+                <span class="modifier-panel-label bold panel-title">${title}</span>
+                <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" class="modifier-panel-input" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
+                    Reset
+                </button>
+            </div>
+        `;
+    }
+
+    // DRY: Render a group of fields
+    renderFields(fields, target, prefix = '') {
+        return fields.map((field, idx) => {
+            if (field.showIf && !field.showIf(target)) return '';
+            const value = field.getValue(target);
+            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
+            const commonAttrs = `id="${fieldId}" class="modifier-panel-input"`;
+            let containerStyle = '';
+            if (field.hideIf && field.hideIf(target)) {
+                containerStyle = 'display: none;';
+            }
+            // Use CSS class for all field containers
+            let rowClass = 'modifier-field-row';
+            let labelClass = 'modifier-panel-label';
+            switch (field.type) {
+                case 'select':
+                    const optionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
+                    const options = (optionsArray || []).map(option => {
+                        const optionValue = typeof option === 'object' ? option.value : option;
+                        const optionLabel = typeof option === 'object' ? option.label : option;
+                        const selected = optionValue === value ? 'selected' : '';
+                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                    }).join('');
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <select ${commonAttrs}>
+                                ${options}
+                            </select>
+                        </div>
+                    `;
+                case 'number':
+                    const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
+                        </div>
+                    `;
+                case 'checkbox':
+                    const checked = value ? 'checked' : '';
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
+                        </div>
+                    `;
+                case 'text':
+                    const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+                        </div>
+                    `;
+                case 'textarea':
+                    const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                    const rows = field.rows || 3;
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+                        </div>
+                    `;
+                case 'multiselect':
+                    const selectedValues = Array.isArray(value) ? value : [value];
+                    const multiOptionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
+                    const multiOptions = (multiOptionsArray || []).map(option => {
+                        const optionValue = typeof option === 'object' ? option.value : option;
+                        const optionLabel = typeof option === 'object' ? option.label : option;
+                        const selected = selectedValues.includes(optionValue) ? 'selected' : '';
+                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                    }).join('');
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <select ${commonAttrs} multiple>
+                                ${multiOptions}
+                            </select>
+                        </div>
+                    `;
+                case 'traits':
+                    const uniqueId = `${fieldId}-container`;
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <div id="${uniqueId}" style="flex: 1;"></div>
+                        </div>
+                    `;
+                default:
+                    return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
+            }
+        }).join('');
+    }
+
+    // DRY: Render common traits checkboxes
+    renderCommonTraits(commonTraits, rep, type) {
+        if (!commonTraits || !commonTraits.length) return '';
+        return commonTraits.map(trait => {
+                const isChecked = rep.traits && rep.traits.includes(trait);
+                return `
+                    <div class="modifier-field-row">
+                        <label class="modifier-panel-label">${trait.charAt(0).toUpperCase() + trait.slice(1)}</label>
+                        <input type="checkbox" id="${type}-trait-${trait}" class="modifier-panel-checkbox" ${isChecked ? 'checked' : ''} />
+                    </div>
+                `;
+            }).join('');
+    }
+
+    // DRY: Render traits field
+    renderTraitsField(config, type) {
+        if (config.showTraits === false) return '';
+            const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
+        return `
+                <div class="modifier-field-row">
+                    <label class="modifier-panel-label">Traits</label>
+                    <div id="${traitsContainerId}" style="flex: 1;"></div>
+                </div>
+            `;
+        }
+
+    generatePanelHTML(type, rep) {
+        const Cls = REPLACEMENT_CLASS_MAP[type];
+        const config = Cls?.panelConfig;
+        if (!config) {
+            return this.generateJSONPanel(type, rep);
+        }
+        if (type === 'damage' && config.isMultiComponent) {
+            return this.generateDamagePanelHTML(rep, config);
+        }
+        // Split out display text field if present
+        const displayTextFieldIndex = config.fields.findIndex(f => f.id === 'display-text');
+        let fieldsBeforeDisplayText = config.fields;
+        let displayTextField = null;
+        if (displayTextFieldIndex !== -1) {
+            fieldsBeforeDisplayText = config.fields.slice(0, displayTextFieldIndex).concat(config.fields.slice(displayTextFieldIndex + 1));
+            displayTextField = config.fields[displayTextFieldIndex];
+        }
+        return `
+            <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
+                ${this.renderPanelHeader(config.title)}
+                ${this.renderFields(fieldsBeforeDisplayText, rep)}
+                ${this.renderCommonTraits(config.commonTraits, rep, type)}
+                ${this.renderTraitsField(config, type)}
+                ${displayTextField ? this.renderFields([displayTextField], rep) : ''}
+            </form>
+        `;
+    }
+
+    generateDamagePanelHTML(rep, config) {
+        if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
+            rep.damageComponents = [];
+        }
+        // Render the Enabled field separately at the top
+        const enabledField = config.fields.find(f => f.id === 'enabled');
+        const enabledFieldHTML = enabledField ? this.renderFields([enabledField], rep) : '';
+        const otherFields = config.fields.filter(f => f.id !== 'enabled');
+        const componentSections = rep.damageComponents.map((component, index) => {
+            return `
+                <div class="damage-component" data-component-index="${index}">
+                    <div class="modifier-field-row" style="justify-content: space-between; align-items: center;">
+                        <div class="damage-component-label">Damage Partial ${index + 1}</div>
+                    </div>
+                    ${this.renderFields(config.componentFields, component, `damage-${index}`)}
+                </div>
+            `;
+        }).join('');
+        return `
+            <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
+                ${this.renderPanelHeader(config.title)}
+                ${enabledFieldHTML}
+                ${componentSections}
+                ${this.renderFields(otherFields, rep)}
+            </form>
+        `;
+    }
+    
+    generateFieldHTML(field, rep) {
+        const isHidden = field.showIf && !field.showIf(rep);
+        const value = field.getValue(rep);
+        const commonAttrs = `id="${field.id}" style="width: 100%;"`;
+        const labelWidth = ModifierPanelManager.labelWidth;
+        let containerStyle = '';
+        if (field.hideIf && field.hideIf(rep)) {
+            containerStyle = 'display: none;';
+        }
+        switch (field.type) {
+            case 'select':
+                const options = field.options.map(option => {
+                    const optionValue = typeof option === 'object' ? option.value : option;
+                    const optionLabel = typeof option === 'object' ? option.label : option;
+                    const selected = optionValue === value ? 'selected' : '';
+                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                }).join('');
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
+                        <select ${commonAttrs}>
+                            ${options}
+                        </select>
+                    </div>
+                `;
+            case 'number':
+                const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
+                const containerStyle = field.showIf && !field.showIf(rep) ? 'display: none;' : 'display: flex;';
+                const html = `
+                    <div id="${field.id}-container" class="${rowClass}" style="${containerStyle}; align-items: center; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
+                        <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
+                    </div>
+                `;
+                return html;
+            case 'checkbox':
+                const checked = value ? 'checked' : '';
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
+                        <input type="checkbox" id="${field.id}" ${checked} style="width: auto; margin: 0;" />
+                    </div>
+                `;
+            case 'text':
+                const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                return `
+                    <div id="${field.id}-container" style="display: flex; align-items: center; gap: 8px; ${containerStyle}">
+                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
+                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+                    </div>
+                `;
+            case 'textarea':
+                const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                const rows = field.rows || 3;
+                return `
+                    <div style="display: flex; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
+                        <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+                    </div>
+                `;
+            case 'multiselect':
+                const selectedValues = Array.isArray(value) ? value : [value];
+                const multiOptions = field.options.map(option => {
+                    const optionValue = typeof option === 'object' ? option.value : option;
+                    const optionLabel = typeof option === 'object' ? option.label : option;
+                    const selected = selectedValues.includes(optionValue) ? 'selected' : '';
+                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                }).join('');
+                return `
+                    <div style="display: flex; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
+                        <select ${commonAttrs} multiple>
+                            ${multiOptions}
+                        </select>
+                    </div>
+                `;
+            case 'traits':
+                const uniqueId = `${field.id}-container-${Math.random().toString(36).substr(2, 9)}`;
+                return `
+                    <div style="display: flex; gap: 8px;">
+                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">${field.label}</label>
+                        <div id="${uniqueId}" style="flex: 1;"></div>
+                    </div>
+                `;
+            default:
+                return `<div>Unknown field type: ${field.type}</div>`;
+        }
+    }
+    generateJSONPanel(type, rep) {
+        return `
+            <div>
+                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
+                <div><strong>Type:</strong> ${type}</div>
+                <div><strong>Parameters:</strong></div>
+                <pre style="background:#f0f0f0; border-radius:4px; padding:6px; font-size:12px; max-height:200px; overflow-y:auto;">${JSON.stringify(rep, null, 2)}</pre>
+            </div>
+        `;
+    }
+    addFormListeners(formElement, type, rep, onChangeCallback) {
+        const Cls = REPLACEMENT_CLASS_MAP[type];
+        const config = Cls?.panelConfig;
+        if (!config) return;
+        if (type === 'damage' && config.isMultiComponent) {
+            this.addDamageFormListeners(formElement, rep, config, onChangeCallback);
+            return;
+        }
+        let traitsInput = null;
+        const traitsContainer = formElement.querySelector('[id*="traits-container"]');
+        if (traitsContainer) {
+            traitsInput = new TraitsInput(traitsContainer.id, {
+                placeholder: 'Type trait name and press Enter...',
+                onChange: (selectedTraits) => {
+                    let enhancedTraits = selectedTraits.map(t => t.value);
+                    rep.traits = enhancedTraits;
+                    if (config.commonTraits) {
+                        config.commonTraits.forEach(trait => {
+                            const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
+                            if (traitCheckbox) {
+                                const hasTrait = enhancedTraits.includes(trait);
+                                if (traitCheckbox.checked !== hasTrait) {
+                                    traitCheckbox.checked = hasTrait;
+                                }
+                            }
+                        });
+                    }
+                    const secretField = config.fields.find(field => field.id.includes('secret'));
+                    if (secretField) {
+                        const secretElement = formElement.querySelector(`#${secretField.id}`);
+                        if (secretElement) {
+                            const hasSecret = enhancedTraits.includes('secret');
+                            if (secretElement.checked !== hasSecret) {
+                                secretElement.checked = hasSecret;
+                            }
+                        }
+                    }
+                    if (onChangeCallback) {
+                        onChangeCallback(rep);
+                    }
+                }
+            });
+            if (rep.traits && Array.isArray(rep.traits)) {
+                traitsInput.setValue(rep.traits);
+            }
+        }
+        // Remove custom listeners for field visibility (Lore Name, Condition Value, Template Width)
+        // Instead, use the generic updateFieldVisibility below
+        // Initial update after render
+        this.updateFieldVisibility(formElement, config.fields, rep);
+        formElement.addEventListener('input', (event) => {
+            let shouldTriggerCallback = false;
+            config.fields.forEach(field => {
+                const element = formElement.querySelector(`#${field.id}`);
+                if (element && element === event.target) {
+                    let value;
+                    switch (field.type) {
+                        case 'checkbox':
+                            value = element.checked;
+                            break;
+                        case 'number':
+                            value = element.value;
+                            break;
+                        case 'multiselect':
+                            value = Array.from(element.selectedOptions).map(option => option.value);
+                            break;
+                        case 'textarea':
+                        case 'text':
+                        default:
+                            value = element.value;
+                    }
+                    field.setValue(rep, value);
+                    shouldTriggerCallback = true;
+                    // If the action-name field was changed, force immediate re-render
+                    if (field.id === 'action-name' && typeof onChangeCallback === 'function') {
+                        onChangeCallback(rep, 'action-name');
+                        return; // Prevent double-calling below
+                    }
+                }
+            });
+            // Update all field visibility generically
+            this.updateFieldVisibility(formElement, config.fields, rep);
+            if (shouldTriggerCallback && onChangeCallback) {
+                onChangeCallback(rep, undefined);
+            }
+            if (config.commonTraits) {
+                if (!rep.traits) rep.traits = [];
+                let enhancedTraits = [];
+                if (traitsInput) {
+                    enhancedTraits = traitsInput.getValue();
+                }
+                let checkboxTraits = [];
+                config.commonTraits.forEach(trait => {
+                    const element = formElement.querySelector(`#${type}-trait-${trait}`);
+                    if (element && element.checked) {
+                        checkboxTraits.push(trait);
+                    }
+                });
+                const allTraits = [...new Set([...enhancedTraits, ...checkboxTraits])];
+                rep.traits = allTraits;
+                if (traitsInput) {
+                    const currentValues = traitsInput.getValue();
+                    const currentSet = new Set(currentValues);
+                    const newSet = new Set(allTraits);
+                    const hasChanged = currentSet.size !== newSet.size || 
+                        [...currentSet].some(trait => !newSet.has(trait)) ||
+                        [...newSet].some(trait => !currentSet.has(trait));
+                    if (hasChanged) {
+                        traitsInput.setValue(allTraits, false);
+                    }
+                }
+            }
+            if (onChangeCallback) {
+                onChangeCallback(rep, undefined);
+            }
+        });
+        formElement.addEventListener('change', (event) => {
+            let shouldTriggerCallback = false;
+            config.fields.forEach(field => {
+                const element = formElement.querySelector(`#${field.id}`);
+                if (element && element === event.target && field.type === 'checkbox') {
+                    field.setValue(rep, element.checked);
+                    shouldTriggerCallback = true;
+                }
+            });
+            // Update all field visibility generically
+            this.updateFieldVisibility(formElement, config.fields, rep);
+            if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
+                const traitName = event.target.id.replace(`${type}-trait-`, '');
+                const isChecked = event.target.checked;
+                if (!rep.traits) rep.traits = [];
+                let currentTraits = [];
+                if (traitsInput) {
+                    currentTraits = traitsInput.getValue();
+                }
+                if (isChecked && !currentTraits.includes(traitName)) {
+                    currentTraits.push(traitName);
+                } else if (!isChecked && currentTraits.includes(traitName)) {
+                    currentTraits = currentTraits.filter(trait => trait !== traitName);
+                }
+                rep.traits = currentTraits;
+                if (traitsInput) {
+                    traitsInput.setValue(currentTraits, false);
+                }
+                shouldTriggerCallback = true;
+            }
+            if (shouldTriggerCallback && onChangeCallback) {
+                onChangeCallback(rep, undefined);
+            }
+            // Update all field visibility generically
+            this.updateFieldVisibility(formElement, config.fields, rep);
+        });
+        // No need for custom listeners for select fields; generic update handles all
+    }
+    addDamageFormListeners(formElement, rep, config, onChangeCallback) {
+        if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
+            rep.damageComponents = [];
+        }
+        const updateComponents = () => {
+            rep.damageComponents.forEach((component, componentIndex) => {
+                config.componentFields.forEach(field => {
+                    const element = formElement.querySelector(`#damage-${componentIndex}-${field.id}`);
+                    if (element) {
+                        let value;
+                        switch (field.type) {
+                            case 'checkbox':
+                                value = element.checked;
+                                break;
+                            case 'select':
+                            case 'text':
+                            default:
+                                value = element.value;
+                        }
+                        field.setValue(component, value);
+                    }
+                });
+            });
+            if (config.fields) {
+                config.fields.forEach(field => {
+                    const element = formElement.querySelector(`#${field.id}`);
+                    if (element) {
+                        let value;
+                        switch (field.type) {
+                            case 'checkbox':
+                                value = element.checked;
+                                break;
+                            case 'select':
+                            case 'text':
+                            default:
+                                value = element.value;
+                        }
+                        field.setValue(rep, value);
+                    }
+                });
+            }
+            if (onChangeCallback) {
+                onChangeCallback(rep);
+            }
+        };
+        formElement.addEventListener('input', updateComponents);
+        formElement.addEventListener('change', (event) => {
+            const componentSelectMatch = event.target.id.match(/^damage-(\d+)-(category|damage-type)$/);
+            if (componentSelectMatch) {
+                const componentIndex = parseInt(componentSelectMatch[1]);
+                const fieldName = componentSelectMatch[2];
+                const component = rep.damageComponents[componentIndex];
+                if (component) {
+                    if (fieldName === 'category') {
+                        const field = config.componentFields.find(f => f.id === 'category');
+                        if (field) {
+                            field.setValue(component, event.target.value);
+                        }
+                    } else {
+                        component[fieldName] = event.target.value;
+                    }
+                    if (onChangeCallback) {
+                        onChangeCallback(rep);
+                    }
+                }
+            }
+            if (config.fields && config.fields.some(field => field.id === event.target.id)) {
+                updateComponents();
+            }
+        });
+    }
+
+    // Generic function to update field visibility based on hideIf/showIf
+    updateFieldVisibility(formElement, fields, rep, prefix = '') {
+        fields.forEach(field => {
+            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
+            const container = formElement.querySelector(`#${fieldId}-container`);
+            if (!container) return;
+            let hidden = false;
+            if (field.hideIf && field.hideIf(rep)) hidden = true;
+            if (field.showIf && !field.showIf(rep)) hidden = true;
+            container.style.display = hidden ? 'none' : '';
+        });
+    }
+}
+
+/**
+ * ConverterDialog - Central state management for the PF2e Converter
+ * Eliminates global state pollution and provides clear ownership of all dialog state
+ */
+class ConverterDialog {
+    constructor() {
+        console.log('[PF2e Converter] Creating ConverterDialog instance');
+        
+        // Centralized state object - all dialog state goes here
+        this.data = {
+            inputText: '',
+            replacements: [],
+            selectedElementId: null,
+            lastRawOutput: '',
+            conditionMap: new Map(),
+            interactiveElements: {},
+            isInitialized: false
+        };
+        
+        // Core processing components
+        console.log('[PF2e Converter] Creating TextProcessor instance');
+        this.processor = new TextProcessor();
+        console.log('[PF2e Converter] Creating ModifierPanelManager instance');
+        this.modifierManager = new ModifierPanelManager();
+        
+        // DOM element references
+        this.ui = {};
+        
+        // Initialize condition mapping
+        console.log('[PF2e Converter] Initializing condition map');
+        this.initializeConditionMap();
+        
+        console.log('[PF2e Converter] ConverterDialog constructor completed');
+    }
+    
+    /**
+     * Initialize condition mapping for the dialog instance
+     */
+    initializeConditionMap() {
+        console.log('[PF2e Converter] Building condition map');
+        this.data.conditionMap = buildConditionMap();
+        console.log('[PF2e Converter] Condition map built with', this.data.conditionMap.size, 'entries');
+    }
+    
+    /**
+     * Update replacements and trigger UI updates
+     * @param {Array} newReplacements - Array of replacement objects
+     */
+    updateReplacements(newReplacements) {
+        console.log('[PF2e Converter] Updating replacements:', newReplacements.length, 'items');
+        this.data.replacements = newReplacements;
+        this.renderOutput();
+        this.renderLivePreview();
+    }
+    
+    /**
+     * Handle element selection and modifier panel updates
+     * @param {string} elementId - ID of the selected element
+     */
+    selectElement(elementId) {
+        console.log('[PF2e Converter] Selecting element:', elementId);
+        this.data.selectedElementId = elementId;
+        this.renderModifierPanel();
+        this.updateElementHighlighting();
+    }
+    
+    /**
+     * Process input text and generate replacements
+     * @param {string} inputText - Text to process
+     */
+    processInput(inputText) {
+        console.log('[PF2e Converter] Processing input text, length:', inputText.length);
+        this.data.inputText = inputText;
+        this.data.selectedElementId = null; // Clear selection on input change
+        
+        if (inputText.trim()) {
+            const newReplacements = this.processor.process(inputText, this.data);
+            this.updateReplacements(newReplacements);
+        } else {
+            this.updateReplacements([]);
+        }
+    }
+    
+    /**
+     * Clear all state and reset UI
+     */
+    clearAll() {
+        console.log('[PF2e Converter] Clearing all data');
+        this.data.inputText = '';
+        this.data.replacements = [];
+        this.data.selectedElementId = null;
+        this.data.lastRawOutput = '';
+        
+        if (this.ui.inputTextarea) {
+            this.ui.inputTextarea.val('');
+        }
+        this.renderOutput();
+        this.renderLivePreview();
+        this.renderModifierPanel();
+    }
+    
+    /**
+     * Copy current output to clipboard
+     */
+    copyOutput() {
+        console.log('[PF2e Converter] Copying output to clipboard');
+        const outputText = this.data.lastRawOutput || this.processor.renderFromReplacements(this.data.inputText, this.data.replacements);
+        copyToClipboard(outputText);
+    }
+    
+    /**
+     * Render the converted output
+     */
+    renderOutput() {
+        if (!this.data.isInitialized) {
+            console.log('[PF2e Converter] Skipping renderOutput - not initialized');
+            return;
+        }
+        
+        console.log('[PF2e Converter] Rendering output');
+        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, true, this.data);
+        this.data.lastRawOutput = outputText;
+        
+        if (this.ui.outputHtmlDiv) {
+            this.ui.outputHtmlDiv.innerHTML = `<pre style="margin: 0; white-space: pre-wrap; font-family: monospace; font-size: 12px;">${outputText}</pre>`;
+            
+            // Setup interactive element handlers after rendering output
+            this.setupInteractiveElementHandlers();
+        }
+    }
+    
+    /**
+     * Render the live preview
+     */
+    renderLivePreview() {
+        if (!this.data.isInitialized) {
+            console.log('[PF2e Converter] Skipping renderLivePreview - not initialized');
+            return;
+        }
+        
+        console.log('[PF2e Converter] Rendering live preview');
+        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, false, this.data);
+        
+        if (this.ui.livePreview) {
+            createLivePreview(outputText, this.ui.livePreview);
+        }
+    }
+    
+    /**
+     * Render the modifier panel
+     */
+    renderModifierPanel() {
+        if (!this.data.isInitialized) {
+            console.log('[PF2e Converter] Skipping renderModifierPanel - not initialized');
+            return;
+        }
+        
+        console.log('[PF2e Converter] Rendering modifier panel for element:', this.data.selectedElementId);
+        const selectedElementId = this.data.selectedElementId;
+        
+        if (selectedElementId && this.data.interactiveElements[selectedElementId]) {
+            const rep = this.data.interactiveElements[selectedElementId];
+            console.log('[PF2e Converter] Found replacement object:', rep.type, rep.id);
+            
+            const panelHTML = this.modifierManager.generatePanelHTML(rep.type, rep);
+            
+            if (this.ui.modifierPanelContent) {
+                this.ui.modifierPanelContent.innerHTML = panelHTML;
+                this.setupModifierPanelHandlers(rep);
+            }
+        } else {
+            console.log('[PF2e Converter] No replacement found for element:', selectedElementId);
+            if (this.ui.modifierPanelContent) {
+                this.ui.modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
+            }
+        }
+    }
+    
+    /**
+     * Setup modifier panel event handlers
+     * @param {Object} rep - The replacement object
+     */
+    setupModifierPanelHandlers(rep) {
+        const formElement = this.ui.modifierPanelContent.querySelector('form');
+        if (formElement) {
+            // Setup form listeners
+            this.modifierManager.addFormListeners(
+                formElement, 
+                rep.type, 
+                rep, 
+                (modifiedRep, changedFieldId) => this.handleModifierChange(modifiedRep, changedFieldId)
+            );
+            
+            // Setup reset button handler
+            this.attachResetButtonHandler(rep, rep.type);
+        }
+    }
+    
+    /**
+     * Setup interactive element handlers for the output area
+     */
+    setupInteractiveElementHandlers() {
+        console.log('[PF2e Converter] Setting up interactive element handlers');
+        if (!this.ui.outputHtmlDiv) {
+            console.log('[PF2e Converter] No output element found');
+            return;
+        }
+        
+        const interactiveElements = this.ui.outputHtmlDiv.querySelectorAll('.pf2e-interactive');
+        console.log('[PF2e Converter] Found', interactiveElements.length, 'interactive elements');
+        
+        interactiveElements.forEach(element => {
+            const elementId = element.getAttribute('data-id');
+            if (elementId) {
+                // Remove any existing click handlers to prevent duplicates
+                element.style.cursor = 'pointer';
+                
+                // Use a new event handler each time
+                element.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[PF2e Converter] Interactive element clicked:', elementId);
+                    this.selectElement(elementId);
+                };
+            }
+        });
+    }
+    
+    /**
+     * Update element highlighting in the output area
+     */
+    updateElementHighlighting() {
+        if (!this.ui.outputHtmlDiv) return;
+        
+        // Remove previous highlighting
+        const allElements = this.ui.outputHtmlDiv.querySelectorAll('.pf2e-interactive');
+        allElements.forEach(el => {
+            el.classList.remove('selected');
+        });
+        
+        // Add highlighting to selected element
+        if (this.data.selectedElementId) {
+            const selectedElement = this.ui.outputHtmlDiv.querySelector(`[data-id="${this.data.selectedElementId}"]`);
+            if (selectedElement) {
+                selectedElement.classList.add('selected');
+            }
+        }
+    }
+    
+    /**
+     * Handle modifier changes from the panel
+     * @param {Object} rep - The replacement object
+     * @param {string} changedFieldId - ID of the changed field
+     */
+    handleModifierChange(rep, changedFieldId) {
+        console.log('[PF2e Converter] Handling modifier change for:', rep.id, 'field:', changedFieldId);
+        
+        // Mark the replacement as modified if it has that capability
+        if (rep.markModified && typeof rep.markModified === 'function') {
+            rep.markModified();
+        }
+        
+        // Force re-render of everything to reflect changes
+        this.renderOutput();
+        this.renderLivePreview();
+        this.updateElementHighlighting();
+        
+        // If the modification changed fundamental properties, re-render the modifier panel
+        if (changedFieldId === 'action-name' || changedFieldId === 'check-type' || changedFieldId === 'enabled') {
+            console.log('[PF2e Converter] Fundamental change detected, re-rendering modifier panel');
+            setTimeout(() => {
+                this.renderModifierPanel();
+            }, 0);
+        }
+    }
+    
+    /**
+     * Attach reset button handler to a replacement
+     * @param {Object} rep - The replacement object
+     * @param {string} type - The replacement type
+     */
+    attachResetButtonHandler(rep, type) {
+        const resetBtn = document.getElementById('modifier-reset-btn');
+        if (resetBtn) {
+            resetBtn.onclick = () => {
+                console.log('[PF2e Converter] Resetting replacement to original');
+                rep.resetToOriginal();
+                this.renderOutput();
+                this.renderLivePreview();
+                this.renderModifierPanel();
+                this.updateElementHighlighting();
+            };
+        }
+    }
+    
+    /**
+     * Setup all event handlers
+     */
+    setupEventHandlers() {
+        console.log('[PF2e Converter] Setting up event handlers');
+        this.setupInputHandlers();
+        this.setupButtonHandlers();
+    }
+    
+    /**
+     * Setup input handlers
+     */
+    setupInputHandlers() {
+        console.log('[PF2e Converter] Setting up input handlers');
+        if (this.ui.inputTextarea) {
+            this.ui.inputTextarea.on('input', (e) => {
+                this.processInput(e.target.value);
+            });
+        }
+    }
+    
+    /**
+     * Setup button handlers
+     */
+    setupButtonHandlers() {
+        console.log('[PF2e Converter] Setting up button handlers');
+        if (this.ui.copyButton) {
+            this.ui.copyButton.on('click', () => {
+                this.copyOutput();
+            });
+        }
+        
+        if (this.ui.clearButton) {
+            this.ui.clearButton.on('click', () => {
+                this.clearAll();
+            });
+        }
+    }
+    
+    /**
+     * Initialize UI references
+     * @param {Object} html - jQuery object containing the dialog HTML
+     */
+    initializeUI(html) {
+        console.log('[PF2e Converter] Initializing UI references');
+        this.ui.inputTextarea = html.find('#input-text');
+        this.ui.outputHtmlDiv = html.find('#output-html')[0];
+        this.ui.livePreview = html.find('#live-preview')[0];
+        this.ui.modifierPanelContent = html.find('#modifier-panel-content')[0];
+        this.ui.copyButton = html.find('#copy-output');
+        this.ui.clearButton = html.find('#clear-all');
+        
+        console.log('[PF2e Converter] UI elements found:', {
+            inputTextarea: !!this.ui.inputTextarea.length,
+            outputHtmlDiv: !!this.ui.outputHtmlDiv,
+            livePreview: !!this.ui.livePreview,
+            modifierPanelContent: !!this.ui.modifierPanelContent,
+            copyButton: !!this.ui.copyButton.length,
+            clearButton: !!this.ui.clearButton.length
+        });
+        
+        // Process initial input if present
+        const initialText = this.ui.inputTextarea.val();
+        if (initialText && initialText.trim()) {
+            this.data.inputText = initialText;
+        }
+        else {
+            console.log('[PF2e Converter] No initial input text found');
+            this.data.inputText = '';
+        }
+
+        this.data.isInitialized = true;
+        console.log('[PF2e Converter] Processing initial input text');
+        this.processInput(this.data.inputText);
+        console.log('[PF2e Converter] UI initialization completed');
+    }
+}
+
 // ConfigCategory is a class that represents a category of items.
 // It is used to store the items in the category, the options for the items,
 // the pattern for the items, and the set of items.
@@ -421,21 +1332,33 @@ let conditionMap = new Map();
  */
 function getConditionUUIDFromCompendium(conditionName) {
     try {
+        console.log('[PF2e Converter] Looking up condition UUID for:', conditionName);
+        
         const conditionCompendium = game.packs.get('pf2e.conditionitems');
-        if (!conditionCompendium) return null;
+        if (!conditionCompendium) {
+            console.warn('[PF2e Converter] Condition compendium not found');
+            return null;
+        }
         
         const normalizedName = conditionName.toLowerCase().trim();
+        console.log('[PF2e Converter] Normalized condition name:', normalizedName);
         
         // Search through the compendium index
         const entries = conditionCompendium.index.contents;
+        console.log('[PF2e Converter] Searching through', entries.length, 'compendium entries');
+        
         for (const entry of entries) {
             if (entry.name.toLowerCase() === normalizedName) {
+                console.log('[PF2e Converter] Found condition UUID:', entry.uuid);
                 return entry.uuid;
             }
         }
         
+        console.log('[PF2e Converter] Condition not found in compendium:', conditionName);
         return null;
     } catch (error) {
+        console.error('[PF2e Converter] Error looking up condition UUID:', error);
+        console.error('[PF2e Converter] Error stack:', error.stack);
         // Silently fail - fallback UUIDs will be used
         return null;
     }
@@ -446,24 +1369,30 @@ function getConditionUUIDFromCompendium(conditionName) {
  * @returns {Map} - Map of condition names to UUIDs
  */
 function buildConditionMap() {
-    const conditionMap = new Map();
+    console.log('[PF2e Converter] buildConditionMap called');
     
-    // List of all conditions we want to support
-    const conditionNames = ConfigManager.CONDITIONS.slugs;
-    
-    // Try to get all conditions from the compendium
-    for (const conditionName of conditionNames) {
-        const uuid = getConditionUUIDFromCompendium(conditionName);
-        if (uuid) {
-            conditionMap.set(conditionName, {
-                uuid: uuid,
-                name: conditionName,
-                slug: conditionName
-            });
-        } else {
-            console.warn(`PF2e Converter: Could not find UUID for condition "${conditionName}"`);
+    try {
+        const conditionMap = new Map();
+        
+        // List of all conditions we want to support
+        console.log('[PF2e Converter] Getting condition names from ConfigManager');
+        const conditionNames = ConfigManager.CONDITIONS.slugs;
+        console.log('[PF2e Converter] Found', conditionNames.length, 'condition names');
+        
+        // Try to get all conditions from the compendium
+        console.log('[PF2e Converter] Looking up condition UUIDs from compendium');
+        for (const conditionName of conditionNames) {
+            const uuid = getConditionUUIDFromCompendium(conditionName);
+            if (uuid) {
+                conditionMap.set(conditionName, {
+                    uuid: uuid,
+                    name: conditionName,
+                    slug: conditionName
+                });
+            } else {
+                console.warn(`[PF2e Converter] Could not find UUID for condition "${conditionName}"`);
+            }
         }
-    }
     
     // Fallback condition UUIDs (common PF2e conditions) - Updated for Remaster
     const fallbackConditions = {};
@@ -471,52 +1400,62 @@ function buildConditionMap() {
         fallbackConditions[name] = `Compendium.pf2e.conditionitems.Item.${name}`;
     });
     
-    // If we didn't get any conditions from the compendium, use fallbacks
-    if (conditionMap.size === 0) {
-        console.warn('PF2e Converter: No conditions found from compendium, using fallback mapping');
-        for (const [name, uuid] of Object.entries(fallbackConditions)) {
-            conditionMap.set(name, {
-                uuid: uuid,
-                name: name,
-                slug: name
-            });
-        }
-    } else {
-        // Fill in any missing conditions with fallbacks
-        for (const [name, uuid] of Object.entries(fallbackConditions)) {
-            if (!conditionMap.has(name)) {
+        // If we didn't get any conditions from the compendium, use fallbacks
+        if (conditionMap.size === 0) {
+            console.warn('[PF2e Converter] No conditions found from compendium, using fallback mapping');
+            for (const [name, uuid] of Object.entries(fallbackConditions)) {
                 conditionMap.set(name, {
                     uuid: uuid,
                     name: name,
                     slug: name
                 });
             }
+        } else {
+            // Fill in any missing conditions with fallbacks
+            for (const [name, uuid] of Object.entries(fallbackConditions)) {
+                if (!conditionMap.has(name)) {
+                    conditionMap.set(name, {
+                        uuid: uuid,
+                        name: name,
+                        slug: name
+                    });
+                }
+            }
         }
+        
+        console.log('[PF2e Converter] Condition map built successfully with', conditionMap.size, 'entries');
+        return conditionMap;
+    } catch (error) {
+        console.error('[PF2e Converter] Error building condition map:', error);
+        console.error('[PF2e Converter] Error stack:', error.stack);
+        // Return empty map as fallback
+        return new Map();
     }
-    
-    return conditionMap;
 }
 
 /**
  * Get condition UUID by name
  * @param {string} conditionName - The condition name to look up
+ * @param {Object} state - Optional state object containing conditionMap
  * @returns {string|null} - The condition UUID or null if not found
  */
-function getConditionUUID(conditionName) {
+function getConditionUUID(conditionName, state = null) {
     const normalizedName = conditionName.toLowerCase().trim();
     
-    // Get from our pre-loaded map
-    const condition = conditionMap.get(normalizedName);
+    // Get from state if provided
+    if (state && state.conditionMap) {
+        const condition = state.conditionMap.get(normalizedName);
+        return condition?.uuid || null;
+    }
     
-    return condition?.uuid || null;
+    // If no state provided, return null (should not happen in normal operation)
+    return null;
 }
 
 /**
  * Initialize condition mapping
  */
-function initializeConditionMap() {
-    conditionMap = buildConditionMap();
-}
+// Global initializeConditionMap function removed - functionality moved to ConverterDialog class
 
 // ===================== PATTERN SYSTEM =========================
 // 
@@ -1101,19 +2040,29 @@ class PatternDetector {
      * @returns {Array} - All matches with conflicts resolved
      */
     static detectAll(text) {
+        console.log('[PF2e Converter] PatternDetector.detectAll called with text length:', text?.length);
+        
         const allMatches = [];
         
         // Test each pattern class directly
+        console.log('[PF2e Converter] Testing', this.PATTERN_CLASSES.length, 'pattern classes');
         for (const PatternClass of this.PATTERN_CLASSES) {
             try {
+                console.log('[PF2e Converter] Testing pattern class:', PatternClass.type);
                 const matches = PatternClass.test(text);
+                console.log('[PF2e Converter] Pattern', PatternClass.type, 'found', matches.length, 'matches');
                 allMatches.push(...matches);
             } catch (error) {
-                console.error(`Error in pattern ${PatternClass.type}:`, error);
+                console.error(`[PF2e Converter] Error in pattern ${PatternClass.type}:`, error);
+                console.error('[PF2e Converter] Error stack:', error.stack);
             }
         }
 
-        return this.resolveConflicts(allMatches);
+        console.log('[PF2e Converter] Total matches before conflict resolution:', allMatches.length);
+        const resolvedMatches = this.resolveConflicts(allMatches);
+        console.log('[PF2e Converter] Total matches after conflict resolution:', resolvedMatches.length);
+        
+        return resolvedMatches;
     }
 
     /**
@@ -1340,7 +2289,7 @@ function runComprehensiveTestSuite() {
     return results;
 }
 
-runComprehensiveTestSuite();
+// runComprehensiveTestSuite();
 
 // ===================== REPLACEMENT CLASS SYSTEM =====================
 // Replacement base class is extended by a class for each type of replacement.
@@ -1351,11 +2300,7 @@ function generateId() {
     return '_' + Math.random().toString(36).substr(2, 9);
 }
 
-// At the top, after other globals:
-if (!window.pf2eInteractiveElements) window.pf2eInteractiveElements = {};
-
-// === 1. Persistent Replacement List ===
-if (!window.pf2eReplacements) window.pf2eReplacements = [];
+// Global variables removed - now managed by ConverterDialog class
 
 class Replacement {
     constructor(match, type) {
@@ -1390,9 +2335,14 @@ class Replacement {
         return params;
     }
     // Render the interactive element
-    renderInteractive() {
+    renderInteractive(state = null) {
         const params = this.getInteractiveParams();
-        window.pf2eInteractiveElements[this.id] = { ...params };
+        
+        // Store the actual replacement object reference in state, not just params
+        if (state && state.interactiveElements) {
+            state.interactiveElements[this.id] = this; // Store the actual object, not params
+        }
+        
         // Add 'modified' class if isModified() is true and enabled
         const modifiedClass = (this.enabled && this.isModified && this.isModified()) ? ' modified' : '';
         // Add 'disabled' class if not enabled
@@ -2157,7 +3107,14 @@ class ConditionReplacement extends Replacement {
         this.conditionName = '';
         this.degree = null;
         this.uuid = '';
-        this.linkedConditions = config && config.linkedConditions ? config.linkedConditions : new Set();
+        
+        // Handle the linkedConditions config properly - it's an object with a 'set' property
+        if (config && config.linkedConditions && config.linkedConditions.set) {
+            this.linkedConditions = config.linkedConditions.set;
+        } else {
+            this.linkedConditions = new Set();
+        }
+        
         this.args = matchObj.args || [];
         this.originalConditionText = matchObj.originalText || matchObj.args?.[0] || ''; // Store original for case preservation
         this.parseMatch();
@@ -2190,6 +3147,12 @@ class ConditionReplacement extends Replacement {
         
         this.degree = args[1] || null;
         this.uuid = getConditionUUID(this.conditionName);
+        // Store state reference for later use if available
+        this._state = this._lastConfig?.linkedConditions?.state || null;
+        // Update UUID with state if available
+        if (this._state) {
+            this.uuid = getConditionUUID(this.conditionName, this._state);
+        }
     }
 
     render() { return super.render(); }
@@ -2247,7 +3210,7 @@ class ConditionReplacement extends Replacement {
                     getValue: (rep) => rep.conditionName || '',
                     setValue: (rep, value) => {
                         rep.conditionName = value;
-                        rep.uuid = getConditionUUID(value);
+                        rep.uuid = getConditionUUID(value, rep._state);
                     }
                 },
                 {
@@ -2651,71 +3614,66 @@ const PRIORITY = {
 };
 
 // -------------------- Condition Detector --------------------
-class ConditionDetector {
-    constructor() {
-        this.conditions = new Map();
-        this.initializeConditions();
-    }
-    initializeConditions() {
-        // Build condition map from fallback (could use game.pf2e.conditions if available)
-        for (const [name, obj] of conditionMap.entries()) {
-            this.conditions.set(name, obj);
-        }
-    }
-    detectConditions(text) {
-        const found = [];
-        const processed = new Set();
-        for (const [key, condition] of this.conditions) {
-            if (!processed.has(key)) {
-                const regex = new RegExp(`\\b${key}\\b(\\s+\\d+)?`, 'gi');
-                let match;
-                while ((match = regex.exec(text)) !== null) {
-                    found.push(match);
-                    processed.add(key);
-                }
-            }
-        }
-        return found;
-    }
-}
+// ConditionDetector class removed - not used in current implementation
 
 // -------------------- Text Processor --------------------
 class TextProcessor {
     constructor() {
+        console.log('[PF2e Converter] Creating TextProcessor instance');
         this.linkedConditions = new Set(); // Only needed for condition linking
     }
 
-    process(inputText) {
-        this.linkedConditions = new Set();
+    process(inputText, state = null) {
+        console.log('[PF2e Converter] TextProcessor.process called with text length:', inputText?.length);
         
-        // Direct call to static detector - no registry needed
-        const matches = PatternDetector.detectAll(inputText);
-        const replacements = [];
-
-        for (const matchResult of matches) {
-            try {
-                let replacement;
-                
-                if (matchResult.type === 'condition') {
-                    // Special handling for condition linking
-                    replacement = PatternDetector.createReplacement({
-                        ...matchResult,
-                        config: { 
-                            ...matchResult.config, 
-                            linkedConditions: this.linkedConditions 
-                        }
-                    });
-                } else {
-                    replacement = PatternDetector.createReplacement(matchResult);
-                }
-                
-                replacements.push(replacement);
-            } catch (error) {
-                console.error('Error creating replacement:', error, matchResult);
-            }
+        if (!inputText || !inputText.trim()) {
+            console.log('[PF2e Converter] No input text to process');
+            return [];
         }
+        
+        try {
+            this.linkedConditions = new Set();
+            
+            // Direct call to static detector - no registry needed
+            console.log('[PF2e Converter] Detecting patterns in text');
+            const matches = PatternDetector.detectAll(inputText);
+            console.log('[PF2e Converter] Found', matches.length, 'pattern matches');
+            
+            const replacements = [];
 
-        return this.sortByPriority(replacements);
+            for (const matchResult of matches) {
+                try {
+                    let replacement;
+                    
+                    if (matchResult.type === 'condition') {
+                        // Special handling for condition linking with state
+                        replacement = PatternDetector.createReplacement({
+                            ...matchResult,
+                            config: { 
+                                ...matchResult.config, 
+                                linkedConditions: { 
+                                    set: this.linkedConditions,
+                                    state: state 
+                                }
+                            }
+                        });
+                    } else {
+                        replacement = PatternDetector.createReplacement(matchResult);
+                    }
+                    
+                    replacements.push(replacement);
+                } catch (error) {
+                    console.error('[PF2e Converter] Error creating replacement:', error, matchResult);
+                }
+            }
+
+            console.log('[PF2e Converter] Created', replacements.length, 'replacement objects');
+            return this.sortByPriority(replacements);
+        } catch (error) {
+            console.error('[PF2e Converter] Error in TextProcessor.process:', error);
+            console.error('[PF2e Converter] Error stack:', error.stack);
+            return [];
+        }
     }
 
     sortByPriority(replacements) {
@@ -2725,21 +3683,21 @@ class TextProcessor {
     }
 
     // Keep existing render methods unchanged
-    renderFromReplacements(text, replacements, interactive = false) {
+    renderFromReplacements(text, replacements, interactive = false, state = null) {
         const sorted = replacements.slice().sort((a, b) => b.startPos - a.startPos);
         let result = text;
         
         for (const replacement of sorted) {
-            result = this.applyReplacement(result, replacement, interactive);
+            result = this.applyReplacement(result, replacement, interactive, state);
         }
         
         return this.applyGlobalLegacyConditionConversions(result);
     }
 
-    applyReplacement(text, replacement, interactive = false) {
+    applyReplacement(text, replacement, interactive = false, state = null) {
         const before = text.substring(0, replacement.startPos);
         const after = text.substring(replacement.endPos);
-        const rendered = interactive ? replacement.renderInteractive() : replacement.render();
+        const rendered = interactive ? replacement.renderInteractive(state) : replacement.render();
         return before + rendered + after;
     }
 
@@ -2843,6 +3801,8 @@ async function copyToClipboard(text) {
  * Create and show the converter dialog
  */
 function showConverterDialog() {
+    console.log('[PF2e Converter] showConverterDialog called');
+    
     const dialogContent = `
         <div class="pf2e-converter-dialog" style="display: flex; flex-direction: row; min-width: 900px;">
             <div style="flex: 2; min-width: 0;">
@@ -3056,200 +4016,74 @@ function showConverterDialog() {
         </style>
     `;
 
+    // Create the converter dialog instance
+    console.log('[PF2e Converter] Creating ConverterDialog instance');
+    const converterDialog = new ConverterDialog();
+
+    console.log('[PF2e Converter] Creating Dialog instance');
     const dialog = new Dialog({
         title: "PF2e Inline Roll Converter",
         content: dialogContent,
         buttons: {},
         render: (html) => {
-            const inputTextarea = html.find('#input-text');
-            const outputHtmlDiv = html.find('#output-html')[0];
-            const livePreview = html.find('#live-preview')[0];
-            const modifierPanelContent = html.find('#modifier-panel-content')[0];
-            let lastRawConvertedText = '';
-            let lastInputText = '';
-            let selectedElementId = null; // Track selected element
-            const processor = new TextProcessor();
-            const modifierPanelManager = new ModifierPanelManager();
-
-            // === 2. Input Handler ===
-            function handleInputChange() {
-                const inputText = inputTextarea.val();
-                lastInputText = inputText;
-                selectedElementId = null; // Clear selection on input change
-                // Always reset the modifier panel on input change
-                modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
-                if (inputText.trim()) {
-                    // Parse and create new replacements
-                    window.pf2eReplacements = processor.process(inputText);
-                    renderAll();
-                } else {
-                    window.pf2eReplacements = [];
-                    outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
-                    livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
-                    // modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>'; // Already set above
-                }
+            console.log('[PF2e Converter] Dialog render callback called');
+            try {
+                // Initialize UI references in the converter dialog
+                console.log('[PF2e Converter] Initializing UI');
+                converterDialog.initializeUI(html);
+                
+                // Setup event handlers
+                console.log('[PF2e Converter] Setting up event handlers');
+                converterDialog.setupEventHandlers();
+                
+                console.log('[PF2e Converter] Dialog render completed successfully');
+            } catch (error) {
+                console.error('[PF2e Converter] Error in dialog render callback:', error);
+                console.error('[PF2e Converter] Error stack:', error.stack);
             }
-
-            // === 3. Modifier Panel Handler ===
-            function handleModifierChange(rep, changedFieldId) {
-                // If the replacement is an action and the action-name field was changed, re-render the panel
-                if (rep.type === 'action' && changedFieldId === 'action-select') {
-                    // Re-render the modifier panel for this replacement
-                    const type = rep.type;
-                    const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
-                    modifierPanelContent.innerHTML = panelHTML;
-                    const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
-                    if (form) {
-                        modifierPanelManager.addFormListeners(form, type, rep, (r, f) => handleModifierChange(r, f));
-                    }
-                    attachResetButtonHandler(rep, type);
-                    return;
-                }
-                // rep is the replacement object to update
-                // console.log(`[handleModifierChange] id=${rep.id} enabled=${rep.enabled}`); // LOGGING
-                renderAll();
-            }
-
-            // === 4. Rendering ===
-            function renderAll() {
-                // Render output and preview from pf2eReplacements
-                if (!window.pf2eReplacements || !lastInputText.trim()) return;
-                // Log enabled state of all replacements before rendering
-                window.pf2eReplacements.forEach(r => {
-                    // console.log(`[renderAll] id=${r.id} enabled=${r.enabled}`); // LOGGING
-                });
-                // Render interactive output
-                const htmlOutput = processor.renderFromReplacements(lastInputText, window.pf2eReplacements, true).replace(/\r?\n/g, '<br>');
-                outputHtmlDiv.innerHTML = htmlOutput;
-                // Add click handlers for interactive elements
-                const interactiveEls = outputHtmlDiv.querySelectorAll('.pf2e-interactive');
-                interactiveEls.forEach(el => {
-                    el.addEventListener('click', (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const id = el.getAttribute('data-id');
-                        // If this element is already selected, deselect it
-                        if (selectedElementId === id && el.classList.contains('selected')) {
-                            el.classList.remove('selected');
-                            selectedElementId = null;
-                            modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
-                            return;
-                        }
-                        // Otherwise, select this element and deselect others
-                        interactiveEls.forEach(e => e.classList.remove('selected'));
-                        el.classList.add('selected');
-                        selectedElementId = id; // Track selected element
-                        const type = el.getAttribute('data-type');
-                        let rep = window.pf2eReplacements.find(r => r.id === id);
-                        if (!rep) return;
-                        const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
-                        modifierPanelContent.innerHTML = panelHTML;
-                        // Add event listeners to the form
-                        const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
-                        if (form) {
-                            modifierPanelManager.addFormListeners(form, type, rep, (r, f) => handleModifierChange(r, f));
-                        }
-                        if (typeof el.scrollIntoView === 'function') {
-                            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                        }
-                        // Attach reset button handler
-                        attachResetButtonHandler(rep, type);
-                    });
-                });
-                // Re-apply selection if there was a selected element
-                if (selectedElementId) {
-                    const selectedEl = outputHtmlDiv.querySelector(`[data-id="${selectedElementId}"]`);
-                    if (selectedEl) {
-                        selectedEl.classList.add('selected');
-                    }
-                }
-                // Render non-interactive preview
-                lastRawConvertedText = processor.renderFromReplacements(lastInputText, window.pf2eReplacements, false);
-                createLivePreview(lastRawConvertedText, livePreview);
-            }
-
-            // Attach reset button handler (now has access to modifierPanelContent, outputHtmlDiv, etc.)
-            function attachResetButtonHandler(rep, type) {
-                const resetBtn = modifierPanelContent.querySelector('#modifier-reset-btn');
-                if (resetBtn) {
-                    resetBtn.onclick = function() {
-                        if (!selectedElementId) return;
-                        // Find the replacement
-                        const idx = window.pf2eReplacements.findIndex(r => r.id === selectedElementId);
-                        if (idx === -1) return;
-                        const rep = window.pf2eReplacements[idx];
-                        rep.resetToOriginal();
-                        renderAll();
-                        // Reselect in the UI and update modifier panel
-                        const selectedEl = outputHtmlDiv.querySelector(`[data-id="${selectedElementId}"]`);
-                        if (selectedEl) selectedEl.classList.add('selected');
-                        const type = rep.type;
-                        const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
-                        modifierPanelContent.innerHTML = panelHTML;
-                        const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
-                        if (form) {
-                            modifierPanelManager.addFormListeners(form, type, rep, (r, f) => handleModifierChange(r, f));
-                        }
-                        // Re-attach the reset button handler after rerender
-                        attachResetButtonHandler(rep, type);
-                    };
-                }
-            }
-
-            // === 5. Hook up events ===
-            inputTextarea.on('input', handleInputChange);
-            setTimeout(() => {
-                inputTextarea.trigger('input');
-            }, 0);
-            html.find('#copy-output').click((event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const outputText = lastRawConvertedText;
-                if (outputText.trim()) {
-                    copyToClipboard(outputText);
-                } else {
-                    ui.notifications.warn("No converted text to copy.");
-                }
-            });
-            html.find('#clear-all').click((event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                inputTextarea.val('');
-                lastRawConvertedText = '';
-                window.pf2eReplacements = [];
-                outputHtmlDiv.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
-                livePreview.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
-                modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
-            });
         }
     }, {
         width: 1000,
         height: 700,
         resizable: true
     });
+    
+    console.log('[PF2e Converter] Rendering dialog');
     dialog.render(true);
+    console.log('[PF2e Converter] Dialog render called');
 }
 
 // Main execution
+console.log('[PF2e Converter] Starting PF2e Inline Roll Converter');
+console.log('[PF2e Converter] Foundry version:', game.version);
+console.log('[PF2e Converter] Game system:', game.system?.id);
+
 try {
     // Verify we're in a PF2e game
     if (game.system.id !== 'pf2e') {
+        console.error('[PF2e Converter] Wrong game system detected:', game.system.id);
         ui.notifications.error("This macro is designed for the Pathfinder 2e system only.");
         return;
     }
     
+    console.log('[PF2e Converter] PF2e system confirmed');
+    
     // Verify minimum Foundry version
     if (!game.version || parseInt(game.version.split('.')[0]) < 12) {
+        console.warn('[PF2e Converter] Foundry version may be too old:', game.version);
         ui.notifications.warn("This macro is designed for Foundry VTT v12+. Some features may not work properly.");
     }
     
-    // Initialize condition mapping
-    initializeConditionMap();
+    console.log('[PF2e Converter] Version check completed');
     
-    // Show the converter dialog
+    // Show the converter dialog (condition mapping is now handled by ConverterDialog)
+    console.log('[PF2e Converter] Calling showConverterDialog');
     showConverterDialog();
+    console.log('[PF2e Converter] showConverterDialog completed');
     
 } catch (error) {
+    console.error('[PF2e Converter] Error during startup:', error);
+    console.error('[PF2e Converter] Error stack:', error.stack);
     ui.notifications.error("Failed to start PF2e Inline Roll Converter. Check console for details.");
 }
 
@@ -3733,562 +4567,7 @@ const ENABLED_FIELD = {
     }
 };
 
-class ModifierPanelManager {
-    // Shared label width for all modifier panel labels
-    static labelWidth = '100px';
-    // DRY: Render the panel header (title + reset button)
-    renderPanelHeader(title) {
-        return `
-            <div class="modifier-field-row">
-                <span class="modifier-panel-label bold panel-title">${title}</span>
-                <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" class="modifier-panel-input" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
-                    Reset
-                </button>
-            </div>
-        `;
-    }
-
-    // DRY: Render a group of fields
-    renderFields(fields, target, prefix = '') {
-        return fields.map((field, idx) => {
-            if (field.showIf && !field.showIf(target)) return '';
-            const value = field.getValue(target);
-            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
-            const commonAttrs = `id="${fieldId}" class="modifier-panel-input"`;
-            let containerStyle = '';
-            if (field.hideIf && field.hideIf(target)) {
-                containerStyle = 'display: none;';
-            }
-            // Use CSS class for all field containers
-            let rowClass = 'modifier-field-row';
-            let labelClass = 'modifier-panel-label';
-            switch (field.type) {
-                case 'select':
-                    const optionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
-                    const options = (optionsArray || []).map(option => {
-                        const optionValue = typeof option === 'object' ? option.value : option;
-                        const optionLabel = typeof option === 'object' ? option.label : option;
-                        const selected = optionValue === value ? 'selected' : '';
-                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                    }).join('');
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <select ${commonAttrs}>
-                                ${options}
-                            </select>
-                        </div>
-                    `;
-                case 'number':
-                    const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
-                        </div>
-                    `;
-                case 'checkbox':
-                    const checked = value ? 'checked' : '';
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
-                        </div>
-                    `;
-                case 'text':
-                    const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
-                        </div>
-                    `;
-                case 'textarea':
-                    const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                    const rows = field.rows || 3;
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
-                        </div>
-                    `;
-                case 'multiselect':
-                    const selectedValues = Array.isArray(value) ? value : [value];
-                    const multiOptionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
-                    const multiOptions = (multiOptionsArray || []).map(option => {
-                        const optionValue = typeof option === 'object' ? option.value : option;
-                        const optionLabel = typeof option === 'object' ? option.label : option;
-                        const selected = selectedValues.includes(optionValue) ? 'selected' : '';
-                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                    }).join('');
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <select ${commonAttrs} multiple>
-                                ${multiOptions}
-                            </select>
-                        </div>
-                    `;
-                case 'traits':
-                    const uniqueId = `${fieldId}-container`;
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <div id="${uniqueId}" style="flex: 1;"></div>
-                        </div>
-                    `;
-                default:
-                    return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
-            }
-        }).join('');
-    }
-
-    // DRY: Render common traits checkboxes
-    renderCommonTraits(commonTraits, rep, type) {
-        if (!commonTraits || !commonTraits.length) return '';
-        return commonTraits.map(trait => {
-                const isChecked = rep.traits && rep.traits.includes(trait);
-                return `
-                    <div class="modifier-field-row">
-                        <label class="modifier-panel-label">${trait.charAt(0).toUpperCase() + trait.slice(1)}</label>
-                        <input type="checkbox" id="${type}-trait-${trait}" class="modifier-panel-checkbox" ${isChecked ? 'checked' : ''} />
-                    </div>
-                `;
-            }).join('');
-    }
-
-    // DRY: Render traits field
-    renderTraitsField(config, type) {
-        if (config.showTraits === false) return '';
-            const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
-        return `
-                <div class="modifier-field-row">
-                    <label class="modifier-panel-label">Traits</label>
-                    <div id="${traitsContainerId}" style="flex: 1;"></div>
-                </div>
-            `;
-        }
-
-    generatePanelHTML(type, rep) {
-        const Cls = REPLACEMENT_CLASS_MAP[type];
-        const config = Cls?.panelConfig;
-        if (!config) {
-            return this.generateJSONPanel(type, rep);
-        }
-        if (type === 'damage' && config.isMultiComponent) {
-            return this.generateDamagePanelHTML(rep, config);
-        }
-        // Split out display text field if present
-        const displayTextFieldIndex = config.fields.findIndex(f => f.id === 'display-text');
-        let fieldsBeforeDisplayText = config.fields;
-        let displayTextField = null;
-        if (displayTextFieldIndex !== -1) {
-            fieldsBeforeDisplayText = config.fields.slice(0, displayTextFieldIndex).concat(config.fields.slice(displayTextFieldIndex + 1));
-            displayTextField = config.fields[displayTextFieldIndex];
-        }
-        return `
-            <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                ${this.renderPanelHeader(config.title)}
-                ${this.renderFields(fieldsBeforeDisplayText, rep)}
-                ${this.renderCommonTraits(config.commonTraits, rep, type)}
-                ${this.renderTraitsField(config, type)}
-                ${displayTextField ? this.renderFields([displayTextField], rep) : ''}
-            </form>
-        `;
-    }
-
-    generateDamagePanelHTML(rep, config) {
-        if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
-            rep.damageComponents = [];
-        }
-        // Render the Enabled field separately at the top
-        const enabledField = config.fields.find(f => f.id === 'enabled');
-        const enabledFieldHTML = enabledField ? this.renderFields([enabledField], rep) : '';
-        const otherFields = config.fields.filter(f => f.id !== 'enabled');
-        const componentSections = rep.damageComponents.map((component, index) => {
-            return `
-                <div class="damage-component" data-component-index="${index}">
-                    <div class="modifier-field-row" style="justify-content: space-between; align-items: center;">
-                        <div class="damage-component-label">Damage Partial ${index + 1}</div>
-                    </div>
-                    ${this.renderFields(config.componentFields, component, `damage-${index}`)}
-                </div>
-            `;
-        }).join('');
-        return `
-            <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                ${this.renderPanelHeader(config.title)}
-                ${enabledFieldHTML}
-                ${componentSections}
-                ${this.renderFields(otherFields, rep)}
-            </form>
-        `;
-    }
-    
-    generateFieldHTML(field, rep) {
-        const isHidden = field.showIf && !field.showIf(rep);
-        const value = field.getValue(rep);
-        const commonAttrs = `id="${field.id}" style="width: 100%;"`;
-        const labelWidth = ModifierPanelManager.labelWidth;
-        let containerStyle = '';
-        if (field.hideIf && field.hideIf(rep)) {
-            containerStyle = 'display: none;';
-        }
-        switch (field.type) {
-            case 'select':
-                const options = field.options.map(option => {
-                    const optionValue = typeof option === 'object' ? option.value : option;
-                    const optionLabel = typeof option === 'object' ? option.label : option;
-                    const selected = optionValue === value ? 'selected' : '';
-                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                }).join('');
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                        <select ${commonAttrs}>
-                            ${options}
-                        </select>
-                    </div>
-                `;
-            case 'number':
-                const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
-                const containerStyle = field.showIf && !field.showIf(rep) ? 'display: none;' : 'display: flex;';
-                const html = `
-                    <div id="${field.id}-container" class="${rowClass}" style="${containerStyle}; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                        <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
-                    </div>
-                `;
-                return html;
-            case 'checkbox':
-                const checked = value ? 'checked' : '';
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                        <input type="checkbox" id="${field.id}" ${checked} style="width: auto; margin: 0;" />
-                    </div>
-                `;
-            case 'text':
-                const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                return `
-                    <div id="${field.id}-container" style="display: flex; align-items: center; gap: 8px; ${containerStyle}">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
-                    </div>
-                `;
-            case 'textarea':
-                const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                const rows = field.rows || 3;
-                return `
-                    <div style="display: flex; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
-                        <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
-                    </div>
-                `;
-            case 'multiselect':
-                const selectedValues = Array.isArray(value) ? value : [value];
-                const multiOptions = field.options.map(option => {
-                    const optionValue = typeof option === 'object' ? option.value : option;
-                    const optionLabel = typeof option === 'object' ? option.label : option;
-                    const selected = selectedValues.includes(optionValue) ? 'selected' : '';
-                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                }).join('');
-                return `
-                    <div style="display: flex; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
-                        <select ${commonAttrs} multiple>
-                            ${multiOptions}
-                        </select>
-                    </div>
-                `;
-            case 'traits':
-                const uniqueId = `${field.id}-container-${Math.random().toString(36).substr(2, 9)}`;
-                return `
-                    <div style="display: flex; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">${field.label}</label>
-                        <div id="${uniqueId}" style="flex: 1;"></div>
-                    </div>
-                `;
-            default:
-                return `<div>Unknown field type: ${field.type}</div>`;
-        }
-    }
-    generateJSONPanel(type, rep) {
-        return `
-            <div>
-                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
-                <div><strong>Type:</strong> ${type}</div>
-                <div><strong>Parameters:</strong></div>
-                <pre style="background:#f0f0f0; border-radius:4px; padding:6px; font-size:12px; max-height:200px; overflow-y:auto;">${JSON.stringify(rep, null, 2)}</pre>
-            </div>
-        `;
-    }
-    addFormListeners(formElement, type, rep, onChangeCallback) {
-        const Cls = REPLACEMENT_CLASS_MAP[type];
-        const config = Cls?.panelConfig;
-        if (!config) return;
-        if (type === 'damage' && config.isMultiComponent) {
-            this.addDamageFormListeners(formElement, rep, config, onChangeCallback);
-            return;
-        }
-        let traitsInput = null;
-        const traitsContainer = formElement.querySelector('[id*="traits-container"]');
-        if (traitsContainer) {
-            traitsInput = new TraitsInput(traitsContainer.id, {
-                placeholder: 'Type trait name and press Enter...',
-                onChange: (selectedTraits) => {
-                    let enhancedTraits = selectedTraits.map(t => t.value);
-                    rep.traits = enhancedTraits;
-                    if (config.commonTraits) {
-                        config.commonTraits.forEach(trait => {
-                            const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
-                            if (traitCheckbox) {
-                                const hasTrait = enhancedTraits.includes(trait);
-                                if (traitCheckbox.checked !== hasTrait) {
-                                    traitCheckbox.checked = hasTrait;
-                                }
-                            }
-                        });
-                    }
-                    const secretField = config.fields.find(field => field.id.includes('secret'));
-                    if (secretField) {
-                        const secretElement = formElement.querySelector(`#${secretField.id}`);
-                        if (secretElement) {
-                            const hasSecret = enhancedTraits.includes('secret');
-                            if (secretElement.checked !== hasSecret) {
-                                secretElement.checked = hasSecret;
-                            }
-                        }
-                    }
-                    if (onChangeCallback) {
-                        onChangeCallback(rep);
-                    }
-                }
-            });
-            if (rep.traits && Array.isArray(rep.traits)) {
-                traitsInput.setValue(rep.traits);
-            }
-        }
-        // Remove custom listeners for field visibility (Lore Name, Condition Value, Template Width)
-        // Instead, use the generic updateFieldVisibility below
-        // Initial update after render
-        this.updateFieldVisibility(formElement, config.fields, rep);
-        formElement.addEventListener('input', (event) => {
-            let shouldTriggerCallback = false;
-            config.fields.forEach(field => {
-                const element = formElement.querySelector(`#${field.id}`);
-                if (element && element === event.target) {
-                    let value;
-                    switch (field.type) {
-                        case 'checkbox':
-                            value = element.checked;
-                            break;
-                        case 'number':
-                            value = element.value;
-                            break;
-                        case 'multiselect':
-                            value = Array.from(element.selectedOptions).map(option => option.value);
-                            break;
-                        case 'textarea':
-                        case 'text':
-                        default:
-                            value = element.value;
-                    }
-                    field.setValue(rep, value);
-                    shouldTriggerCallback = true;
-                    // If the action-name field was changed, force immediate re-render
-                    if (field.id === 'action-name' && typeof onChangeCallback === 'function') {
-                        onChangeCallback(rep, 'action-name');
-                        return; // Prevent double-calling below
-                    }
-                }
-            });
-            // Update all field visibility generically
-            this.updateFieldVisibility(formElement, config.fields, rep);
-            if (shouldTriggerCallback && onChangeCallback) {
-                onChangeCallback(rep, undefined);
-            }
-            if (config.commonTraits) {
-                if (!rep.traits) rep.traits = [];
-                let enhancedTraits = [];
-                if (traitsInput) {
-                    enhancedTraits = traitsInput.getValue();
-                }
-                let checkboxTraits = [];
-                config.commonTraits.forEach(trait => {
-                    const element = formElement.querySelector(`#${type}-trait-${trait}`);
-                    if (element && element.checked) {
-                        checkboxTraits.push(trait);
-                    }
-                });
-                const allTraits = [...new Set([...enhancedTraits, ...checkboxTraits])];
-                rep.traits = allTraits;
-                if (traitsInput) {
-                    const currentValues = traitsInput.getValue();
-                    const currentSet = new Set(currentValues);
-                    const newSet = new Set(allTraits);
-                    const hasChanged = currentSet.size !== newSet.size || 
-                        [...currentSet].some(trait => !newSet.has(trait)) ||
-                        [...newSet].some(trait => !currentSet.has(trait));
-                    if (hasChanged) {
-                        traitsInput.setValue(allTraits, false);
-                    }
-                }
-            }
-            if (onChangeCallback) {
-                onChangeCallback(rep, undefined);
-            }
-        });
-        formElement.addEventListener('change', (event) => {
-            let shouldTriggerCallback = false;
-            config.fields.forEach(field => {
-                const element = formElement.querySelector(`#${field.id}`);
-                if (element && element === event.target && field.type === 'checkbox') {
-                    field.setValue(rep, element.checked);
-                    shouldTriggerCallback = true;
-                }
-            });
-            // Update all field visibility generically
-            this.updateFieldVisibility(formElement, config.fields, rep);
-            if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
-                const traitName = event.target.id.replace(`${type}-trait-`, '');
-                const isChecked = event.target.checked;
-                if (!rep.traits) rep.traits = [];
-                let currentTraits = [];
-                if (traitsInput) {
-                    currentTraits = traitsInput.getValue();
-                }
-                if (isChecked && !currentTraits.includes(traitName)) {
-                    currentTraits.push(traitName);
-                } else if (!isChecked && currentTraits.includes(traitName)) {
-                    currentTraits = currentTraits.filter(trait => trait !== traitName);
-                }
-                rep.traits = currentTraits;
-                if (traitsInput) {
-                    traitsInput.setValue(currentTraits, false);
-                }
-                shouldTriggerCallback = true;
-            }
-            if (shouldTriggerCallback && onChangeCallback) {
-                onChangeCallback(rep, undefined);
-            }
-            // Update all field visibility generically
-            this.updateFieldVisibility(formElement, config.fields, rep);
-        });
-        // No need for custom listeners for select fields; generic update handles all
-    }
-    addDamageFormListeners(formElement, rep, config, onChangeCallback) {
-        if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
-            rep.damageComponents = [];
-        }
-        const updateComponents = () => {
-            rep.damageComponents.forEach((component, componentIndex) => {
-                config.componentFields.forEach(field => {
-                    const element = formElement.querySelector(`#damage-${componentIndex}-${field.id}`);
-                    if (element) {
-                        let value;
-                        switch (field.type) {
-                            case 'checkbox':
-                                value = element.checked;
-                                break;
-                            case 'select':
-                            case 'text':
-                            default:
-                                value = element.value;
-                        }
-                        field.setValue(component, value);
-                    }
-                });
-            });
-            if (config.fields) {
-                config.fields.forEach(field => {
-                    const element = formElement.querySelector(`#${field.id}`);
-                    if (element) {
-                        let value;
-                        switch (field.type) {
-                            case 'checkbox':
-                                value = element.checked;
-                                break;
-                            case 'select':
-                            case 'text':
-                            default:
-                                value = element.value;
-                        }
-                        field.setValue(rep, value);
-                    }
-                });
-            }
-            if (onChangeCallback) {
-                onChangeCallback(rep);
-            }
-        };
-        formElement.addEventListener('input', updateComponents);
-        formElement.addEventListener('change', (event) => {
-            const componentSelectMatch = event.target.id.match(/^damage-(\d+)-(category|damage-type)$/);
-            if (componentSelectMatch) {
-                const componentIndex = parseInt(componentSelectMatch[1]);
-                const fieldName = componentSelectMatch[2];
-                const component = rep.damageComponents[componentIndex];
-                if (component) {
-                    if (fieldName === 'category') {
-                        const field = config.componentFields.find(f => f.id === 'category');
-                        if (field) {
-                            field.setValue(component, event.target.value);
-                        }
-                    } else {
-                        component[fieldName] = event.target.value;
-                    }
-                    if (onChangeCallback) {
-                        onChangeCallback(rep);
-                    }
-                }
-            }
-            if (config.fields && config.fields.some(field => field.id === event.target.id)) {
-                updateComponents();
-            }
-        });
-    }
-
-    // Generic function to update field visibility based on hideIf/showIf
-    updateFieldVisibility(formElement, fields, rep, prefix = '') {
-        fields.forEach(field => {
-            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
-            const container = formElement.querySelector(`#${fieldId}-container`);
-            if (!container) return;
-            let hidden = false;
-            if (field.hideIf && field.hideIf(rep)) hidden = true;
-            if (field.showIf && !field.showIf(rep)) hidden = true;
-            container.style.display = hidden ? 'none' : '';
-        });
-    }
-}
-
-function attachResetButtonHandler(rep, type) {
-    const resetBtn = modifierPanelContent.querySelector('#modifier-reset-btn');
-    if (resetBtn) {
-        resetBtn.onclick = function() {
-            if (!selectedElementId) return;
-            // Find the replacement
-            const idx = window.pf2eReplacements.findIndex(r => r.id === selectedElementId);
-            if (idx === -1) return;
-            const rep = window.pf2eReplacements[idx];
-            rep.resetToOriginal();
-            renderAll();
-            // Reselect in the UI and update modifier panel
-            const selectedEl = outputHtmlDiv.querySelector(`[data-id="${selectedElementId}"]`);
-            if (selectedEl) selectedEl.classList.add('selected');
-            const type = rep.type;
-            const panelHTML = modifierPanelManager.generatePanelHTML(type, rep);
-            modifierPanelContent.innerHTML = panelHTML;
-            const form = modifierPanelContent.querySelector(`#${type}-modifier-form`);
-            if (form) {
-                ModifierPanelManager.addFormListeners(form, type, rep, (r, f) => handleModifierChange(r, f));
-            }
-            // Re-attach the reset button handler after rerender
-            attachResetButtonHandler(rep, type);
-        };
-    }
-}
+// Global attachResetButtonHandler function removed - functionality moved to ConverterDialog class
 
 // Utility: Check if a dice expression is just a number (no 'd' present)
 function isNumberOnlyDice(dice) {

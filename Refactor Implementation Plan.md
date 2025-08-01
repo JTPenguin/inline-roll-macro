@@ -1,0 +1,136 @@
+# PF2e Converter Macro: Implementation Task Checklist
+
+Check off tasks as they are completed. [ ] --> [x]
+
+- [ ] 1. Phase 1: State Consolidation
+    - [ ] 1.1. Create base ConverterDialog class structure
+        - [ ] 1.1.1. Define constructor with centralized state object
+        - [ ] 1.1.2. Move global variables into this.data structure
+            - [ ] 1.1.2.1. window.pf2eInteractiveElements → this.data.interactiveElements
+            - [ ] 1.1.2.2. window.pf2eReplacements → this.data.replacements
+            - [ ] 1.1.2.3. conditionMap → this.data.conditionMap
+            - [ ] 1.1.2.4. Dialog-scoped variables → this.data properties
+        - [ ] 1.1.3. Initialize existing objects (processor, modifierManager) as class properties
+        - [ ] 1.1.4. Create this.ui object for DOM references
+    - [ ] 1.2. Create state management methods
+        - [ ] 1.2.1. updateReplacements(newReplacements) method
+        - [ ] 1.2.2. selectElement(elementId) method
+        - [ ] 1.2.3. processInput() method
+        - [ ] 1.2.4. clearAll() method
+        - [ ] 1.2.5. copyOutput() method
+    - [ ] 1.3. Update global variable references
+        - [ ] 1.3.1. Update replacement creation
+            - [ ] 1.3.1.1. Find all window.pf2eReplacements references
+            - [ ] 1.3.1.2. Replace with this.data.replacements access
+            - [ ] 1.3.1.3. Update ReplacementFactory to work with instance state
+            - [ ] 1.3.1.4. Update TextProcessor to accept state parameter
+        - [ ] 1.3.2. Update interactive element management
+            - [ ] 1.3.2.1. Find all window.pf2eInteractiveElements references
+            - [ ] 1.3.2.2. Replace with this.data.interactiveElements access
+            - [ ] 1.3.2.3. Update element registration in replacement classes
+            - [ ] 1.3.2.4. Update element lookup in event handlers
+        - [ ] 1.3.3. Update condition mapping
+            - [ ] 1.3.3.1. Move conditionMap initialization into dialog constructor
+            - [ ] 1.3.3.2. Update all condition UUID lookups to use instance state
+            - [ ] 1.3.3.3. Update condition building functions
+    - [ ] 1.4. Update main dialog creation
+        - [ ] 1.4.1. Modify showConverterDialog() to create ConverterDialog instance
+        - [ ] 1.4.2. Update dialog render callback to use class methods
+        - [ ] 1.4.3. Move event handler setup into class methods
+        - [ ] 1.4.4. Update button click handlers
+
+- [ ] 2. Phase 2: Modifier Organization
+    - [ ] 2.1. Create renderer infrastructure
+        - [ ] 2.1.1. Create BaseRenderer class
+            - [ ] 2.1.1.1. Define interface methods: getTitle(), renderFields(), validate()
+            - [ ] 2.1.1.2. Create shared utility methods for common patterns
+            - [ ] 2.1.1.3. Document renderer contract and expectations
+        - [ ] 2.1.2. Create FieldRenderer utility class
+            - [ ] 2.1.2.1. render(type, id, label, value, options) static method
+            - [ ] 2.1.2.2. Support for field types: text, select, checkbox, number, textarea
+            - [ ] 2.1.2.3. renderRow(fields) method for consistent field layout
+            - [ ] 2.1.2.4. renderConditional(condition, field) method for conditional fields
+        - [ ] 2.1.3. Create renderer registry
+            - [ ] 2.1.3.1. Update ModifierPanelManager constructor to create renderer instances
+            - [ ] 2.1.3.2. Map replacement types to renderer classes
+            - [ ] 2.1.3.3. Add renderer lookup and fallback logic
+    - [ ] 2.2. Implement primary type-specific renderers
+        - [ ] 2.2.1. DamageRenderer
+            - [ ] 2.2.1.1. Implement getTitle() method
+            - [ ] 2.2.1.2. Implement renderFields() for damage-specific UI
+            - [ ] 2.2.1.3. Handle damage component iteration and rendering
+            - [ ] 2.2.1.4. Migrate existing damage panel logic
+        - [ ] 2.2.2. CheckRenderer
+            - [ ] 2.2.2.1. Implement check/save/skill/lore/flat UI logic
+            - [ ] 2.2.2.2. Conditional field rendering based on check type
+            - [ ] 2.2.2.3. Basic save and secret flag handling
+            - [ ] 2.2.2.4. Migrate existing check panel logic
+        - [ ] 2.2.3. ConditionRenderer
+            - [ ] 2.2.3.1. Condition selection dropdown
+            - [ ] 2.2.3.2. Conditional value input for numeric conditions
+            - [ ] 2.2.3.3. UUID display and validation
+            - [ ] 2.2.3.4. Migrate existing condition panel logic
+    - [ ] 2.3. Implement remaining type-specific renderers
+        - [ ] 2.3.1. TemplateRenderer
+            - [ ] 2.3.1.1. Template type selection
+            - [ ] 2.3.1.2. Distance and width configuration
+            - [ ] 2.3.1.3. Display text customization
+            - [ ] 2.3.1.4. Migrate existing template panel logic
+        - [ ] 2.3.2. HealingRenderer
+            - [ ] 2.3.2.1. Dice expression field
+            - [ ] 2.3.2.2. Traits management
+            - [ ] 2.3.2.3. Display text field
+            - [ ] 2.3.2.4. Migrate existing healing panel logic
+        - [ ] 2.3.3. DurationRenderer
+            - [ ] 2.3.3.1. Dice and unit fields
+            - [ ] 2.3.3.2. GM-only flag
+            - [ ] 2.3.3.3. Label customization
+            - [ ] 2.3.3.4. Migrate existing duration panel logic
+        - [ ] 2.3.4. ActionRenderer
+            - [ ] 2.3.4.1. Action selection dropdown
+            - [ ] 2.3.4.2. Variant selection (conditional)
+            - [ ] 2.3.4.3. DC and statistic fields
+            - [ ] 2.3.4.4. Migrate existing action panel logic
+    - [ ] 2.4. Update ModifierPanelManager integration
+        - [ ] 2.4.1. Remove type-specific logic from main class
+        - [ ] 2.4.2. Update generatePanelHTML() to use renderers
+        - [ ] 2.4.3. Update event binding to work with renderer output
+        - [ ] 2.4.4. Maintain backward compatibility with existing event patterns
+
+- [ ] 3. Phase 3: Event Streamlining
+    - [ ] 3.1. Centralize event handler setup
+        - [ ] 3.1.1. Create organized event handler methods
+            - [ ] 3.1.1.1. setupInputHandlers() method
+            - [ ] 3.1.1.2. setupButtonHandlers() method
+            - [ ] 3.1.1.3. setupModifierHandlers() method
+        - [ ] 3.1.2. Update dialog render callback
+            - [ ] 3.1.2.1. Call centralized event setup methods
+            - [ ] 3.1.2.2. Remove scattered event handler code
+            - [ ] 3.1.2.3. Ensure proper this-binding for class methods
+    - [ ] 3.2. Improve event handling patterns
+        - [ ] 3.2.1. Standardize modifier change handling
+            - [ ] 3.2.1.1. Create consistent pattern for field value updates
+            - [ ] 3.2.1.2. Implement conditional field visibility updates
+            - [ ] 3.2.1.3. Add validation feedback for invalid inputs
+            - [ ] 3.2.1.4. Ensure immediate UI updates after changes
+        - [ ] 3.2.2. Enhance interactive element handling
+            - [ ] 3.2.2.1. Improve element selection visual feedback
+            - [ ] 3.2.2.2. Add keyboard navigation support where appropriate
+            - [ ] 3.2.2.3. Optimize re-rendering for better performance
+            - [ ] 3.2.2.4. Add error handling for malformed elements
+    - [ ] 3.3. Polish and optimization
+        - [ ] 3.3.1. Add helper methods for common operations
+            - [ ] 3.3.1.1. renderOutput() method for output panel updates
+            - [ ] 3.3.1.2. renderLivePreview() method for preview panel updates
+            - [ ] 3.3.1.3. renderModifierPanel() method for modifier panel updates
+            - [ ] 3.3.1.4. updateElementHighlighting() method for selection feedback
+        - [ ] 3.3.2. Improve error handling
+            - [ ] 3.3.2.1. Add try-catch blocks around critical operations
+            - [ ] 3.3.2.2. Provide user-friendly error messages
+            - [ ] 3.3.2.3. Graceful degradation when components fail
+            - [ ] 3.3.2.4. Console logging for debugging
+        - [ ] 3.3.3. Code cleanup and documentation
+            - [ ] 3.3.3.1. Remove any remaining dead code
+            - [ ] 3.3.3.2. Add JSDoc comments to public methods
+            - [ ] 3.3.3.3. Update any inline documentation
+            - [ ] 3.3.3.4. Verify code style consistency
