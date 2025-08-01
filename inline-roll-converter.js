@@ -465,17 +465,21 @@ class ModifierPanelManager {
                     field.setValue(rep, value);
                     shouldTriggerCallback = true;
                     
-                    // Special handling for condition field changes
+                    // Special handling for condition field changes (still needed for UUID updates)
                     if (field.id === 'condition-select' && rep.updateUUID) {
                         console.log('[ModifierPanelManager] Condition changed via select, updating visibility');
-                        this.updateFieldVisibility(formElement, config.fields, rep);
                     }
                 }
             });
             
-            // Update all field visibility generically
+            // Generic updates for all field changes:
+            // 1. Update all field visibility
             this.updateFieldVisibility(formElement, config.fields, rep);
             
+            // 2. Update all dynamic select fields (this handles action variants automatically)
+            this.updateDynamicSelectFields(formElement, config.fields, rep);
+            
+            // Handle trait checkboxes
             if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
                 const traitName = event.target.id.replace(`${type}-trait-`, '');
                 const isChecked = event.target.checked;
@@ -583,6 +587,31 @@ class ModifierPanelManager {
             if (field.hideIf && field.hideIf(rep)) hidden = true;
             if (field.showIf && !field.showIf(rep)) hidden = true;
             container.style.display = hidden ? 'none' : '';
+        });
+    }
+
+    // Update the options of a select field based on the current value of the replacement
+    updateDynamicSelectFields(formElement, fields, rep) {
+        fields.forEach(field => {
+            if (field.type === 'select' && typeof field.options === 'function') {
+                const element = formElement.querySelector(`#${field.id}`);
+                if (element) {
+                    // Get current value before updating options
+                    const currentValue = field.getValue(rep);
+                    
+                    // Get new options
+                    const newOptions = field.options(rep);
+                    
+                    // Clear and repopulate the select element
+                    element.innerHTML = '';
+                    (newOptions || []).forEach(option => {
+                        const optionValue = typeof option === 'object' ? option.value : option;
+                        const optionLabel = typeof option === 'object' ? option.label : option;
+                        const selected = optionValue === currentValue ? 'selected' : '';
+                        element.innerHTML += `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                    });
+                }
+            }
         });
     }
 }
@@ -3593,6 +3622,7 @@ class ActionReplacement extends Replacement {
                     options: (rep) =>{
                         // Dynamically get options based on current selection
                         if (ConfigManager.actionHasVariants(rep.action)) {
+                            console.log('Getting variants for action', rep.action);
                             return ConfigManager.ACTION_VARIANTS[rep.action].options;
                         }
                         return [];
