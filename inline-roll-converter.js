@@ -310,10 +310,12 @@ class ModifierPanelManager {
         const Cls = REPLACEMENT_CLASS_MAP[type];
         const config = Cls?.panelConfig;
         if (!config) return;
+        
         if (type === 'damage' && config.isMultiComponent) {
             this.addDamageFormListeners(formElement, rep, config, onChangeCallback);
             return;
         }
+        
         let traitsInput = null;
         const traitsContainer = formElement.querySelector('[id*="traits-container"]');
         if (traitsContainer) {
@@ -352,12 +354,13 @@ class ModifierPanelManager {
                 traitsInput.setValue(rep.traits);
             }
         }
-        // Remove custom listeners for field visibility (Lore Name, Condition Value, Template Width)
-        // Instead, use the generic updateFieldVisibility below
+        
         // Initial update after render
         this.updateFieldVisibility(formElement, config.fields, rep);
+        
         formElement.addEventListener('input', (event) => {
             let shouldTriggerCallback = false;
+            
             config.fields.forEach(field => {
                 const element = formElement.querySelector(`#${field.id}`);
                 if (element && element === event.target) {
@@ -377,8 +380,18 @@ class ModifierPanelManager {
                         default:
                             value = element.value;
                     }
+                    
+                    console.log('[ModifierPanelManager] Field changed:', field.id, 'new value:', value);
                     field.setValue(rep, value);
                     shouldTriggerCallback = true;
+                    
+                    // Special handling for condition field changes
+                    if (field.id === 'condition-select' && rep.updateUUID) {
+                        console.log('[ModifierPanelManager] Condition changed, updating visibility');
+                        // Force immediate re-render of field visibility for condition value field
+                        this.updateFieldVisibility(formElement, config.fields, rep);
+                    }
+                    
                     // If the action-name field was changed, force immediate re-render
                     if (field.id === 'action-name' && typeof onChangeCallback === 'function') {
                         onChangeCallback(rep, 'action-name');
@@ -386,11 +399,14 @@ class ModifierPanelManager {
                     }
                 }
             });
+            
             // Update all field visibility generically
             this.updateFieldVisibility(formElement, config.fields, rep);
+            
             if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep, undefined);
             }
+            
             if (config.commonTraits) {
                 if (!rep.traits) rep.traits = [];
                 let enhancedTraits = [];
@@ -418,21 +434,48 @@ class ModifierPanelManager {
                     }
                 }
             }
+            
             if (onChangeCallback) {
                 onChangeCallback(rep, undefined);
             }
         });
+        
         formElement.addEventListener('change', (event) => {
             let shouldTriggerCallback = false;
+            
             config.fields.forEach(field => {
                 const element = formElement.querySelector(`#${field.id}`);
-                if (element && element === event.target && field.type === 'checkbox') {
-                    field.setValue(rep, element.checked);
+                if (element && element === event.target) {
+                    let value;
+                    switch (field.type) {
+                        case 'checkbox':
+                            value = element.checked;
+                            break;
+                        case 'select':
+                            value = element.value;
+                            break;
+                        case 'multiselect':
+                            value = Array.from(element.selectedOptions).map(option => option.value);
+                            break;
+                        default:
+                            value = element.value;
+                    }
+                    
+                    console.log('[ModifierPanelManager] Field changed (change event):', field.id, 'new value:', value);
+                    field.setValue(rep, value);
                     shouldTriggerCallback = true;
+                    
+                    // Special handling for condition field changes
+                    if (field.id === 'condition-select' && rep.updateUUID) {
+                        console.log('[ModifierPanelManager] Condition changed via select, updating visibility');
+                        this.updateFieldVisibility(formElement, config.fields, rep);
+                    }
                 }
             });
+            
             // Update all field visibility generically
             this.updateFieldVisibility(formElement, config.fields, rep);
+            
             if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
                 const traitName = event.target.id.replace(`${type}-trait-`, '');
                 const isChecked = event.target.checked;
@@ -452,13 +495,11 @@ class ModifierPanelManager {
                 }
                 shouldTriggerCallback = true;
             }
+            
             if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep, undefined);
             }
-            // Update all field visibility generically
-            this.updateFieldVisibility(formElement, config.fields, rep);
         });
-        // No need for custom listeners for select fields; generic update handles all
     }
     addDamageFormListeners(formElement, rep, config, onChangeCallback) {
         if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
@@ -1444,15 +1485,22 @@ function buildConditionMap() {
  */
 function getConditionUUID(conditionName, state = null) {
     const normalizedName = conditionName.toLowerCase().trim();
+    console.log('[getConditionUUID] Looking up UUID for:', normalizedName);
     
     // Get from state if provided
     if (state && state.conditionMap) {
         const condition = state.conditionMap.get(normalizedName);
-        return condition?.uuid || null;
+        if (condition?.uuid) {
+            console.log('[getConditionUUID] Found UUID in state:', condition.uuid);
+            return condition.uuid;
+        }
     }
     
-    // If no state provided, return null (should not happen in normal operation)
-    return null;
+    // Fallback: try to construct a reasonable UUID
+    // This is a fallback for when the condition map isn't available
+    const fallbackUUID = `Compendium.pf2e.conditionitems.Item.${normalizedName}`;
+    console.log('[getConditionUUID] Using fallback UUID:', fallbackUUID);
+    return fallbackUUID;
 }
 
 /**
@@ -3118,6 +3166,9 @@ class ConditionReplacement extends Replacement {
             this.linkedConditions = new Set();
         }
         
+        // Store state reference for UUID lookups
+        this._state = config?.linkedConditions?.state || null;
+        
         this.args = matchObj.args || [];
         this.originalConditionText = matchObj.originalText || matchObj.args?.[0] || ''; // Store original for case preservation
         this.parseMatch();
@@ -3149,18 +3200,24 @@ class ConditionReplacement extends Replacement {
         }
         
         this.degree = args[1] || null;
-        this.uuid = getConditionUUID(this.conditionName);
-        // Store state reference for later use if available
-        this._state = this._lastConfig?.linkedConditions?.state || null;
-        // Update UUID with state if available
+        this.updateUUID();
+    }
+    
+    // New method to update UUID when condition name changes
+    updateUUID() {
         if (this._state) {
             this.uuid = getConditionUUID(this.conditionName, this._state);
+        } else {
+            this.uuid = getConditionUUID(this.conditionName);
         }
+        console.log('[ConditionReplacement] Updated UUID for', this.conditionName, ':', this.uuid);
     }
 
     render() { return super.render(); }
+    
     conversionRender() {
         if (!this.uuid) {
+            console.warn('[ConditionReplacement] No UUID found for condition:', this.conditionName);
             // If disabled and this is a legacy conversion, preserve original case
             if (!this.enabled && this.isLegacyConversion && this.originalConditionText) {
                 return LegacyConversionManager.convertLegacyCondition(this.originalConditionText) || this.originalText;
@@ -3189,6 +3246,7 @@ class ConditionReplacement extends Replacement {
     validate() {
         return this.conditionName && this.uuid;
     }
+    
     getInteractiveParams() {
         return {
             ...super.getInteractiveParams(),
@@ -3198,6 +3256,7 @@ class ConditionReplacement extends Replacement {
             originalText: this.originalText
         };
     }
+    
     static get panelConfig() {
         return {
             ...super.panelConfig,
@@ -3212,8 +3271,9 @@ class ConditionReplacement extends Replacement {
                     options: ConfigManager.CONDITIONS.options,
                     getValue: (rep) => rep.conditionName || '',
                     setValue: (rep, value) => {
+                        console.log('[ConditionReplacement] Setting condition name to:', value);
                         rep.conditionName = value;
-                        rep.uuid = getConditionUUID(value, rep._state);
+                        rep.updateUUID(); // Update UUID when condition changes
                     }
                 },
                 {
@@ -3222,12 +3282,16 @@ class ConditionReplacement extends Replacement {
                     label: 'Value',
                     min: 1,
                     getValue: (rep) => rep.degree || '',
-                    setValue: (rep, value) => { rep.degree = value ? String(value) : null; },
+                    setValue: (rep, value) => { 
+                        rep.degree = value ? String(value) : null;
+                        console.log('[ConditionReplacement] Setting degree to:', rep.degree);
+                    },
                     hideIf: (rep) => !ConfigManager.conditionCanHaveValue(rep.conditionName)
                 },
             ]
         };
     }
+    
     resetToOriginal() {
         super.resetToOriginal();
     }
