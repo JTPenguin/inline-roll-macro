@@ -2,100 +2,100 @@
 
 Check off tasks as they are completed. [ ] --> [x]
 
-- [ ] 1. Phase 1: State Consolidation
-    - [ ] 1.1. Create base ConverterDialog class structure
-        - [ ] 1.1.1. Define constructor with centralized state object
-        - [ ] 1.1.2. Move global variables into this.data structure
-            - [ ] 1.1.2.1. window.pf2eInteractiveElements → this.data.interactiveElements
-            - [ ] 1.1.2.2. window.pf2eReplacements → this.data.replacements
-            - [ ] 1.1.2.3. conditionMap → this.data.conditionMap
-            - [ ] 1.1.2.4. Dialog-scoped variables → this.data properties
-        - [ ] 1.1.3. Initialize existing objects (processor, modifierManager) as class properties
-        - [ ] 1.1.4. Create this.ui object for DOM references
-    - [ ] 1.2. Create state management methods
-        - [ ] 1.2.1. updateReplacements(newReplacements) method
-        - [ ] 1.2.2. selectElement(elementId) method
-        - [ ] 1.2.3. processInput() method
-        - [ ] 1.2.4. clearAll() method
-        - [ ] 1.2.5. copyOutput() method
-    - [ ] 1.3. Update global variable references
-        - [ ] 1.3.1. Update replacement creation
-            - [ ] 1.3.1.1. Find all window.pf2eReplacements references
-            - [ ] 1.3.1.2. Replace with this.data.replacements access
-            - [ ] 1.3.1.3. Update ReplacementFactory to work with instance state
-            - [ ] 1.3.1.4. Update TextProcessor to accept state parameter
-        - [ ] 1.3.2. Update interactive element management
-            - [ ] 1.3.2.1. Find all window.pf2eInteractiveElements references
-            - [ ] 1.3.2.2. Replace with this.data.interactiveElements access
-            - [ ] 1.3.2.3. Update element registration in replacement classes
-            - [ ] 1.3.2.4. Update element lookup in event handlers
-        - [ ] 1.3.3. Update condition mapping
-            - [ ] 1.3.3.1. Move conditionMap initialization into dialog constructor
-            - [ ] 1.3.3.2. Update all condition UUID lookups to use instance state
-            - [ ] 1.3.3.3. Update condition building functions
-    - [ ] 1.4. Update main dialog creation
-        - [ ] 1.4.1. Modify showConverterDialog() to create ConverterDialog instance
-        - [ ] 1.4.2. Update dialog render callback to use class methods
-        - [ ] 1.4.3. Move event handler setup into class methods
-        - [ ] 1.4.4. Update button click handlers
+- [x] 1. Phase 1: State Consolidation
+    - [x] 1.1. Create base ConverterDialog class structure
+        - [x] 1.1.1. Define constructor with centralized state object
+        - [x] 1.1.2. Move global variables into this.data structure
+            - [x] 1.1.2.1. window.pf2eInteractiveElements → this.data.interactiveElements
+            - [x] 1.1.2.2. window.pf2eReplacements → this.data.replacements
+            - [x] 1.1.2.3. conditionMap → this.data.conditionMap
+            - [x] 1.1.2.4. Dialog-scoped variables → this.data properties
+        - [x] 1.1.3. Initialize existing objects (processor, modifierManager) as class properties
+        - [x] 1.1.4. Create this.ui object for DOM references
+    - [x] 1.2. Create state management methods
+        - [x] 1.2.1. updateReplacements(newReplacements) method
+        - [x] 1.2.2. selectElement(elementId) method
+        - [x] 1.2.3. processInput() method
+        - [x] 1.2.4. clearAll() method
+        - [x] 1.2.5. copyOutput() method
+    - [x] 1.3. Update global variable references
+        - [x] 1.3.1. Update replacement creation
+            - [x] 1.3.1.1. Find all window.pf2eReplacements references
+            - [x] 1.3.1.2. Replace with this.data.replacements access
+            - [x] 1.3.1.3. Update ReplacementFactory to work with instance state
+            - [x] 1.3.1.4. Update TextProcessor to accept state parameter
+        - [x] 1.3.2. Update interactive element management
+            - [x] 1.3.2.1. Find all window.pf2eInteractiveElements references
+            - [x] 1.3.2.2. Replace with this.data.interactiveElements access
+            - [x] 1.3.2.3. Update element registration in replacement classes
+            - [x] 1.3.2.4. Update element lookup in event handlers
+        - [x] 1.3.3. Update condition mapping
+            - [x] 1.3.3.1. Move conditionMap initialization into dialog constructor
+            - [x] 1.3.3.2. Update all condition UUID lookups to use instance state
+            - [x] 1.3.3.3. Update condition building functions
+    - [x] 1.4. Update main dialog creation
+        - [x] 1.4.1. Modify showConverterDialog() to create ConverterDialog instance
+        - [x] 1.4.2. Update dialog render callback to use class methods
+        - [x] 1.4.3. Move event handler setup into class methods
+        - [x] 1.4.4. Update button click handlers
 
-- [ ] 2. Phase 2: Modifier Organization
-    - [ ] 2.1. Create renderer infrastructure
-        - [ ] 2.1.1. Create BaseRenderer class
-            - [ ] 2.1.1.1. Define interface methods: getTitle(), renderFields(), validate()
-            - [ ] 2.1.1.2. Create shared utility methods for common patterns
-            - [ ] 2.1.1.3. Document renderer contract and expectations
-        - [ ] 2.1.2. Create FieldRenderer utility class
-            - [ ] 2.1.2.1. render(type, id, label, value, options) static method
-            - [ ] 2.1.2.2. Support for field types: text, select, checkbox, number, textarea
-            - [ ] 2.1.2.3. renderRow(fields) method for consistent field layout
-            - [ ] 2.1.2.4. renderConditional(condition, field) method for conditional fields
-        - [ ] 2.1.3. Create renderer registry
-            - [ ] 2.1.3.1. Update ModifierPanelManager constructor to create renderer instances
-            - [ ] 2.1.3.2. Map replacement types to renderer classes
-            - [ ] 2.1.3.3. Add renderer lookup and fallback logic
-    - [ ] 2.2. Implement primary type-specific renderers
-        - [ ] 2.2.1. DamageRenderer
-            - [ ] 2.2.1.1. Implement getTitle() method
-            - [ ] 2.2.1.2. Implement renderFields() for damage-specific UI
-            - [ ] 2.2.1.3. Handle damage component iteration and rendering
-            - [ ] 2.2.1.4. Migrate existing damage panel logic
-        - [ ] 2.2.2. CheckRenderer
-            - [ ] 2.2.2.1. Implement check/save/skill/lore/flat UI logic
-            - [ ] 2.2.2.2. Conditional field rendering based on check type
-            - [ ] 2.2.2.3. Basic save and secret flag handling
-            - [ ] 2.2.2.4. Migrate existing check panel logic
-        - [ ] 2.2.3. ConditionRenderer
-            - [ ] 2.2.3.1. Condition selection dropdown
-            - [ ] 2.2.3.2. Conditional value input for numeric conditions
-            - [ ] 2.2.3.3. UUID display and validation
-            - [ ] 2.2.3.4. Migrate existing condition panel logic
-    - [ ] 2.3. Implement remaining type-specific renderers
-        - [ ] 2.3.1. TemplateRenderer
-            - [ ] 2.3.1.1. Template type selection
-            - [ ] 2.3.1.2. Distance and width configuration
-            - [ ] 2.3.1.3. Display text customization
-            - [ ] 2.3.1.4. Migrate existing template panel logic
-        - [ ] 2.3.2. HealingRenderer
-            - [ ] 2.3.2.1. Dice expression field
-            - [ ] 2.3.2.2. Traits management
-            - [ ] 2.3.2.3. Display text field
-            - [ ] 2.3.2.4. Migrate existing healing panel logic
-        - [ ] 2.3.3. DurationRenderer
-            - [ ] 2.3.3.1. Dice and unit fields
-            - [ ] 2.3.3.2. GM-only flag
-            - [ ] 2.3.3.3. Label customization
-            - [ ] 2.3.3.4. Migrate existing duration panel logic
-        - [ ] 2.3.4. ActionRenderer
-            - [ ] 2.3.4.1. Action selection dropdown
-            - [ ] 2.3.4.2. Variant selection (conditional)
-            - [ ] 2.3.4.3. DC and statistic fields
-            - [ ] 2.3.4.4. Migrate existing action panel logic
-    - [ ] 2.4. Update ModifierPanelManager integration
-        - [ ] 2.4.1. Remove type-specific logic from main class
-        - [ ] 2.4.2. Update generatePanelHTML() to use renderers
-        - [ ] 2.4.3. Update event binding to work with renderer output
-        - [ ] 2.4.4. Maintain backward compatibility with existing event patterns
+- [x] 2. Phase 2: Modifier Organization
+    - [x] 2.1. Create renderer infrastructure
+        - [x] 2.1.1. Create BaseRenderer class
+            - [x] 2.1.1.1. Define interface methods: getTitle(), renderFields(), validate()
+            - [x] 2.1.1.2. Create shared utility methods for common patterns
+            - [x] 2.1.1.3. Document renderer contract and expectations in comments
+        - [x] 2.1.2. Create FieldRenderer utility class
+            - [x] 2.1.2.1. render(type, id, label, value, options) static method
+            - [x] 2.1.2.2. Support for field types: text, select, checkbox, number, textarea
+            - [x] 2.1.2.3. renderRow(fields) method for consistent field layout
+            - [x] 2.1.2.4. renderConditional(condition, field) method for conditional fields
+        - [x] 2.1.3. Create renderer registry
+            - [x] 2.1.3.1. Update ModifierPanelManager constructor to create renderer instances
+            - [x] 2.1.3.2. Map replacement types to renderer classes
+            - [x] 2.1.3.3. Add renderer lookup and fallback logic
+    - [x] 2.2. Implement primary type-specific renderers
+        - [x] 2.2.1. DamageRenderer
+            - [x] 2.2.1.1. Implement getTitle() method
+            - [x] 2.2.1.2. Implement renderFields() for damage-specific UI
+            - [x] 2.2.1.3. Handle damage component iteration and rendering
+            - [x] 2.2.1.4. Migrate existing damage panel logic
+        - [x] 2.2.2. CheckRenderer
+            - [x] 2.2.2.1. Implement check/save/skill/lore/flat UI logic
+            - [x] 2.2.2.2. Conditional field rendering based on check type
+            - [x] 2.2.2.3. Basic save and secret flag handling
+            - [x] 2.2.2.4. Migrate existing check panel logic
+        - [x] 2.2.3. ConditionRenderer
+            - [x] 2.2.3.1. Condition selection dropdown
+            - [x] 2.2.3.2. Conditional value input for numeric conditions
+            - [x] 2.2.3.3. UUID display and validation
+            - [x] 2.2.3.4. Migrate existing condition panel logic
+    - [x] 2.3. Implement remaining type-specific renderers
+        - [x] 2.3.1. TemplateRenderer
+            - [x] 2.3.1.1. Template type selection
+            - [x] 2.3.1.2. Distance and width configuration
+            - [x] 2.3.1.3. Display text customization
+            - [x] 2.3.1.4. Migrate existing template panel logic
+        - [x] 2.3.2. HealingRenderer
+            - [x] 2.3.2.1. Dice expression field
+            - [x] 2.3.2.2. Traits management
+            - [x] 2.3.2.3. Display text field
+            - [x] 2.3.2.4. Migrate existing healing panel logic
+        - [x] 2.3.3. DurationRenderer
+            - [x] 2.3.3.1. Dice and unit fields
+            - [x] 2.3.3.2. GM-only flag
+            - [x] 2.3.3.3. Label customization
+            - [x] 2.3.3.4. Migrate existing duration panel logic
+        - [x] 2.3.4. ActionRenderer
+            - [x] 2.3.4.1. Action selection dropdown
+            - [x] 2.3.4.2. Variant selection (conditional)
+            - [x] 2.3.4.3. DC and statistic fields
+            - [x] 2.3.4.4. Migrate existing action panel logic
+    - [x] 2.4. Update ModifierPanelManager integration
+        - [x] 2.4.1. Remove type-specific logic from main class
+        - [x] 2.4.2. Update generatePanelHTML() to use renderers
+        - [x] 2.4.3. Update event binding to work with renderer output
+        - [x] 2.4.4. Maintain backward compatibility with existing event patterns
 
 - [ ] 3. Phase 3: Event Streamlining
     - [ ] 3.1. Centralize event handler setup

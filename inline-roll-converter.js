@@ -9,8 +9,573 @@
 const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
 
 /**
+ * BaseRenderer - Base class for type-specific renderers
+ * Provides common interface and utility methods for all renderers
+ */
+class BaseRenderer {
+    /**
+     * Get the display title for this replacement type
+     * @param {Object} replacement - The replacement object
+     * @returns {string} Display title
+     */
+    getTitle(replacement) {
+        throw new Error('Must implement getTitle()');
+    }
+
+    /**
+     * Render the fields for this replacement type
+     * @param {Object} replacement - The replacement object
+     * @returns {string} HTML for the fields
+     */
+    renderFields(replacement) {
+        throw new Error('Must implement renderFields()');
+    }
+
+    /**
+     * Get conditional field configurations
+     * @param {Object} replacement - The replacement object
+     * @returns {Array} Array of conditional field configs
+     */
+    getConditionalFields(replacement) {
+        return [];
+    }
+
+    /**
+     * Validate the replacement state
+     * @param {Object} replacement - The replacement object
+     * @returns {boolean} Whether the replacement is valid
+     */
+    validate(replacement) {
+        return true;
+    }
+
+    /**
+     * Get common traits for this replacement type
+     * @param {Object} replacement - The replacement object
+     * @returns {Array} Array of common trait names
+     */
+    getCommonTraits(replacement) {
+        return [];
+    }
+
+    /**
+     * Check if this renderer supports traits input
+     * @param {Object} replacement - The replacement object
+     * @returns {boolean} Whether traits input should be shown
+     */
+    supportsTraits(replacement) {
+        return true;
+    }
+
+    /**
+     * Get display text field configuration if supported
+     * @param {Object} replacement - The replacement object
+     * @returns {Object|null} Display text field config or null
+     */
+    getDisplayTextField(replacement) {
+        return null;
+    }
+}
+
+/**
+ * FieldRenderer - Utility class for consistent field rendering
+ * Provides static methods for generating field HTML
+ */
+class FieldRenderer {
+    static labelWidth = '100px';
+
+    /**
+     * Render a field with consistent styling
+     * @param {string} type - Field type (text, select, checkbox, number, textarea, multiselect, traits)
+     * @param {string} id - Field ID
+     * @param {string} label - Field label
+     * @param {*} value - Current value
+     * @param {Object} options - Field options
+     * @returns {string} Field HTML
+     */
+    static render(type, id, label, value, options = {}) {
+        const commonAttrs = `id="${id}" class="modifier-panel-input"`;
+        const containerStyle = options.hidden ? 'display: none;' : '';
+        const rowClass = 'modifier-field-row';
+        const labelClass = 'modifier-panel-label';
+
+        switch (type) {
+            case 'select':
+                const optionsArray = options.options || [];
+                const selectOptions = optionsArray.map(option => {
+                    const optionValue = typeof option === 'object' ? option.value : option;
+                    const optionLabel = typeof option === 'object' ? option.label : option;
+                    const selected = optionValue === value ? 'selected' : '';
+                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                }).join('');
+                return `
+                    <div id="${id}-container" class="${rowClass}" style="${containerStyle}">
+                        <label class="${labelClass}">${label}</label>
+                        <select ${commonAttrs}>
+                            ${selectOptions}
+                        </select>
+                    </div>
+                `;
+
+            case 'number':
+                const minAttr = options.min !== undefined ? `min="${options.min}"` : '';
+                return `
+                    <div id="${id}-container" class="${rowClass}" style="${containerStyle}">
+                        <label class="${labelClass}">${label}</label>
+                        <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
+                    </div>
+                `;
+
+            case 'checkbox':
+                const checked = value ? 'checked' : '';
+                return `
+                    <div id="${id}-container" class="${rowClass}" style="${containerStyle}">
+                        <label class="${labelClass}">${label}</label>
+                        <input type="checkbox" id="${id}" class="modifier-panel-checkbox" ${checked} />
+                    </div>
+                `;
+
+            case 'text':
+                const placeholder = options.placeholder ? `placeholder="${options.placeholder}"` : '';
+                return `
+                    <div id="${id}-container" class="${rowClass}" style="${containerStyle}">
+                        <label class="${labelClass}">${label}</label>
+                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+                    </div>
+                `;
+
+            case 'textarea':
+                const textareaPlaceholder = options.placeholder ? `placeholder="${options.placeholder}"` : '';
+                const rows = options.rows || 3;
+                return `
+                    <div id="${id}-container" class="${rowClass}" style="${containerStyle}">
+                        <label class="${labelClass}">${label}</label>
+                        <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+                    </div>
+                `;
+
+            case 'multiselect':
+                const selectedValues = Array.isArray(value) ? value : [value];
+                const multiOptions = (options.options || []).map(option => {
+                    const optionValue = typeof option === 'object' ? option.value : option;
+                    const optionLabel = typeof option === 'object' ? option.label : option;
+                    const selected = selectedValues.includes(optionValue) ? 'selected' : '';
+                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                }).join('');
+                return `
+                    <div id="${id}-container" class="${rowClass}" style="${containerStyle}">
+                        <label class="${labelClass}">${label}</label>
+                        <select ${commonAttrs} multiple>
+                            ${multiOptions}
+                        </select>
+                    </div>
+                `;
+
+            case 'traits':
+                const uniqueId = `${id}-container-${Math.random().toString(36).substr(2, 9)}`;
+                return `
+                    <div id="${id}-container" class="${rowClass}" style="${containerStyle}">
+                        <label class="${labelClass}">${label}</label>
+                        <div id="${uniqueId}" style="flex: 1;"></div>
+                    </div>
+                `;
+
+            default:
+                return `<div>Unknown field type: ${type}</div>`;
+        }
+    }
+
+    /**
+     * Render a row of fields
+     * @param {Array} fields - Array of field configs
+     * @param {Object} target - Target object for field values
+     * @param {string} prefix - Optional prefix for field IDs
+     * @returns {string} Row HTML
+     */
+    static renderRow(fields, target, prefix = '') {
+        return fields.map((field, idx) => {
+            if (field.showIf && !field.showIf(target)) return '';
+            
+            const value = field.getValue ? field.getValue(target) : target[field.id];
+            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
+            const options = {
+                options: typeof field.options === 'function' ? field.options(target) : field.options,
+                placeholder: field.placeholder,
+                min: field.min,
+                rows: field.rows,
+                hidden: field.hideIf && field.hideIf(target)
+            };
+
+            return FieldRenderer.render(field.type, fieldId, field.label, value, options);
+        }).join('');
+    }
+
+    /**
+     * Render a conditional field
+     * @param {Function} condition - Condition function
+     * @param {Object} field - Field configuration
+     * @param {Object} target - Target object
+     * @returns {string} Conditional field HTML
+     */
+    static renderConditional(condition, field, target) {
+        if (!condition(target)) return '';
+        return FieldRenderer.render(field.type, field.id, field.label, field.getValue(target), field);
+    }
+}
+
+/**
+ * DamageRenderer - Handles damage roll modifier UI
+ */
+class DamageRenderer extends BaseRenderer {
+    getTitle(replacement) {
+        return 'Damage Roll';
+    }
+
+    renderFields(replacement) {
+        if (!replacement.damageComponents || !Array.isArray(replacement.damageComponents)) {
+            replacement.damageComponents = [];
+        }
+
+        // Render enabled field at the top
+        const enabledField = FieldRenderer.render('checkbox', 'enabled', 'Enabled', replacement.enabled !== false);
+        
+        // Render damage components
+        const componentSections = replacement.damageComponents.map((component, index) => {
+            const componentFields = [
+                { type: 'text', id: 'dice', label: 'Dice', getValue: (c) => c.dice || '' },
+                { type: 'select', id: 'damage-type', label: 'Type', getValue: (c) => c.damageType || '', options: ConfigManager.DAMAGE_TYPES.options },
+                { type: 'select', id: 'category', label: 'Category', getValue: (c) => c.category || '', options: ConfigManager.DAMAGE_CATEGORIES.options }
+            ];
+            
+            return `
+                <div class="damage-component" data-component-index="${index}">
+                    <div class="modifier-field-row" style="justify-content: space-between; align-items: center;">
+                        <div class="damage-component-label">Damage Partial ${index + 1}</div>
+                    </div>
+                    ${FieldRenderer.renderRow(componentFields, component, `damage-${index}`)}
+                </div>
+            `;
+        }).join('');
+
+        // Render other fields
+        const otherFields = [
+            { type: 'checkbox', id: 'area-damage', label: 'Area Damage', getValue: (r) => r.areaDamage || false }
+        ];
+
+        return `
+            ${enabledField}
+            ${componentSections}
+            ${FieldRenderer.renderRow(otherFields, replacement)}
+        `;
+    }
+
+    getCommonTraits(replacement) {
+        return ['secret'];
+    }
+
+    getDisplayTextField(replacement) {
+        return {
+            type: 'textarea',
+            id: 'display-text',
+            label: 'Display Text',
+            getValue: (r) => r.displayText || '',
+            placeholder: 'Custom display text...',
+            rows: 2
+        };
+    }
+}
+
+/**
+ * CheckRenderer - Handles check/save modifier UI
+ */
+class CheckRenderer extends BaseRenderer {
+    getTitle(replacement) {
+        return 'Check Roll';
+    }
+
+    renderFields(replacement) {
+        const baseFields = [
+            { type: 'select', id: 'check-type', label: 'Check Type', getValue: (r) => r.checkType || 'skill', options: ConfigManager.CHECK_TYPES.options },
+            { type: 'select', id: 'dc-method', label: 'DC Method', getValue: (r) => r.dcMethod || 'static', options: ConfigManager.DC_METHODS.options },
+            { type: 'checkbox', id: 'basic-save', label: 'Basic Save', getValue: (r) => r.basicSave || false },
+            { type: 'checkbox', id: 'secret', label: 'Secret', getValue: (r) => r.secret || false }
+        ];
+
+        // Add conditional fields based on check type
+        const conditionalFields = this.getConditionalFields(replacement);
+        
+        return FieldRenderer.renderRow([...baseFields, ...conditionalFields], replacement);
+    }
+
+    getConditionalFields(replacement) {
+        const fields = [];
+
+        // Skill-specific fields
+        if (replacement.checkType === 'skill') {
+            fields.push({
+                type: 'select',
+                id: 'skill',
+                label: 'Skill',
+                getValue: (r) => r.skill || '',
+                options: ConfigManager.SKILLS.options});
+        }
+
+        // Save-specific fields
+        if (replacement.checkType === 'save') {
+            fields.push({
+                type: 'select',
+                id: 'save',
+                label: 'Save',
+                getValue: (r) => r.save || '',
+                options: ConfigManager.SAVES.options
+            });
+        }
+
+        // Lore-specific fields
+        if (replacement.checkType === 'lore') {
+            fields.push({
+                type: 'text',
+                id: 'lore-name',
+                label: 'Lore Name',
+                getValue: (r) => r.loreName || '',
+                placeholder: 'e.g., Sailing Lore'
+            });
+        }
+
+        // DC method specific fields
+        if (replacement.dcMethod === 'static') {
+            fields.push({
+                type: 'number',
+                id: 'dc',
+                label: 'DC',
+                getValue: (r) => r.dc || '',
+                min: 1
+            });
+        } else if (replacement.dcMethod === 'target' || replacement.dcMethod === 'origin') {
+            fields.push({
+                type: 'select',
+                id: 'statistic',
+                label: 'Statistic',
+                getValue: (r) => r.statistic || '',
+                options: ConfigManager.STATISTICS.options
+            });
+        }
+
+        return fields;
+    }
+
+    getCommonTraits(replacement) {
+        return ['secret'];
+    }
+
+    getDisplayTextField(replacement) {
+        return {
+            type: 'textarea',
+            id: 'display-text',
+            label: 'Display Text',
+            getValue: (r) => r.displayText || '',
+            placeholder: 'Custom display text...',
+            rows: 2
+        };
+    }
+}
+
+/**
+ * ConditionRenderer - Handles condition link modifier UI
+ */
+class ConditionRenderer extends BaseRenderer {
+    getTitle(replacement) {
+        return 'Condition';
+    }
+
+    renderFields(replacement) {
+        const baseFields = [
+            { type: 'select', id: 'condition-select', label: 'Condition', getValue: (r) => r.condition || '', options: ConfigManager.ALL_CONDITIONS.options }
+        ];
+
+        // Add conditional value field if condition can have a value
+        const conditionalFields = this.getConditionalFields(replacement);
+
+        return FieldRenderer.renderRow([...baseFields, ...conditionalFields], replacement);
+    }
+
+    getConditionalFields(replacement) {
+        if (replacement.condition && ConfigManager.conditionCanHaveValue(replacement.condition)) {
+            return [{
+                type: 'number',
+                id: 'condition-value',
+                label: 'Value',
+                getValue: (r) => r.conditionValue || '',
+                min: 1
+            }];
+        }
+        return [];
+    }
+
+    getDisplayTextField(replacement) {
+        return {
+            type: 'textarea',
+            id: 'display-text',
+            label: 'Display Text',
+            getValue: (r) => r.displayText || '',
+            placeholder: 'Custom display text...',
+            rows: 2
+        };
+    }
+}
+
+/**
+ * TemplateRenderer - Handles template modifier UI
+ */
+class TemplateRenderer extends BaseRenderer {
+    getTitle(replacement) {
+        return 'Template';
+    }
+
+    renderFields(replacement) {
+        const fields = [
+            { type: 'select', id: 'template-type', label: 'Template Type', getValue: (r) => r.templateType || 'burst', options: ConfigManager.TEMPLATE_TYPES.options },
+            { type: 'number', id: 'distance', label: 'Distance', getValue: (r) => r.distance || '', min: 1 },
+            { type: 'number', id: 'width', label: 'Width', getValue: (r) => r.width || '', min: 1, showIf: (r) => r.templateType === 'line' }
+        ];
+
+        return FieldRenderer.renderRow(fields, replacement);
+    }
+
+    getDisplayTextField(replacement) {
+        return {
+            type: 'textarea',
+            id: 'display-text',
+            label: 'Display Text',
+            getValue: (r) => r.displayText || '',
+            placeholder: 'Custom display text...',
+            rows: 2
+        };
+    }
+}
+
+/**
+ * HealingRenderer - Handles healing modifier UI
+ */
+class HealingRenderer extends BaseRenderer {
+    getTitle(replacement) {
+        return 'Healing';
+    }
+
+    renderFields(replacement) {
+        const fields = [
+            { type: 'text', id: 'dice', label: 'Dice', getValue: (r) => r.dice || '', placeholder: 'e.g., 3d8' }
+        ];
+
+        return FieldRenderer.renderRow(fields, replacement);
+    }
+
+    getCommonTraits(replacement) {
+        return ['secret'];
+    }
+
+    getDisplayTextField(replacement) {
+        return {
+            type: 'textarea',
+            id: 'display-text',
+            label: 'Display Text',
+            getValue: (r) => r.displayText || '',
+            placeholder: 'Custom display text...',
+            rows: 2
+        };
+    }
+}
+
+/**
+ * DurationRenderer - Handles duration modifier UI
+ */
+class DurationRenderer extends BaseRenderer {
+    getTitle(replacement) {
+        return 'Duration';
+    }
+
+    renderFields(replacement) {
+        const fields = [
+            { type: 'text', id: 'dice', label: 'Dice', getValue: (r) => r.dice || '', placeholder: 'e.g., 1d4' },
+            { type: 'select', id: 'unit', label: 'Unit', getValue: (r) => r.unit || 'rounds', options: ConfigManager.DURATION_UNITS.options },
+            { type: 'checkbox', id: 'gm-only', label: 'GM Only', getValue: (r) => r.gmOnly || false }
+        ];
+
+        return FieldRenderer.renderRow(fields, replacement);
+    }
+
+    getDisplayTextField(replacement) {
+        return {
+            type: 'textarea',
+            id: 'display-text',
+            label: 'Display Text',
+            getValue: (r) => r.displayText || '',
+            placeholder: 'Custom display text...',
+            rows: 2
+        };
+    }
+}
+
+/**
+ * ActionRenderer - Handles action modifier UI
+ */
+class ActionRenderer extends BaseRenderer {
+    getTitle(replacement) {
+        return 'Action';
+    }
+
+    renderFields(replacement) {
+        const baseFields = [
+            { type: 'select', id: 'action-name', label: 'Action', getValue: (r) => r.actionName || '', options: ConfigManager.ACTIONS.options }
+        ];
+
+        // Add conditional fields based on action
+        const conditionalFields = this.getConditionalFields(replacement);
+
+        return FieldRenderer.renderRow([...baseFields, ...conditionalFields], replacement);
+    }
+
+    getConditionalFields(replacement) {
+        const fields = [];
+
+        // Add variant selection if action has variants
+        if (replacement.actionName && ConfigManager.actionHasVariants(replacement.actionName)) {
+            fields.push({
+                type: 'select',
+                id: 'action-variant',
+                label: 'Variant',
+                getValue: (r) => r.actionVariant || '',
+                options: (r) => ConfigManager.ACTION_VARIANTS[r.actionName] || []
+            });
+        }
+
+        // Add DC and statistic fields for actions that need them
+        if (replacement.actionName && ['Shove', 'Trip', 'Grapple'].includes(replacement.actionName)) {
+            fields.push(
+                { type: 'select', id: 'dc-method', label: 'DC Method', getValue: (r) => r.dcMethod || 'static', options: ConfigManager.DC_METHODS.options },
+                { type: 'select', id: 'statistic', label: 'Statistic', getValue: (r) => r.statistic || '', options: ConfigManager.STATISTICS.options }
+            );
+        }
+
+        return fields;
+    }
+
+    getDisplayTextField(replacement) {
+        return {
+            type: 'textarea',
+            id: 'display-text',
+            label: 'Display Text',
+            getValue: (r) => r.displayText || '',
+            placeholder: 'Custom display text...',
+            rows: 2
+        };
+    }
+}
+
+/**
  * ModifierPanelManager - Handles the generation and management of modifier panels
  * for interactive replacement elements
+ * Now uses organized renderer system for type-specific UI logic
  */
 class ModifierPanelManager {
     // Shared label width for all modifier panel labels
@@ -18,6 +583,17 @@ class ModifierPanelManager {
     
     constructor() {
         console.log('[PF2e Converter] Creating ModifierPanelManager instance');
+        
+        // Initialize renderer registry for type-specific UI logic
+        this.renderers = {
+            damage: new DamageRenderer(),
+            check: new CheckRenderer(),
+            condition: new ConditionRenderer(),
+            template: new TemplateRenderer(),
+            healing: new HealingRenderer(),
+            duration: new DurationRenderer(),
+            action: new ActionRenderer()
+        };
     }
     // DRY: Render the panel header (title + reset button)
     renderPanelHeader(title) {
@@ -142,160 +718,54 @@ class ModifierPanelManager {
 
     // DRY: Render traits field
     renderTraitsField(config, type) {
-        if (config.showTraits === false) return '';
-            const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
+        // Always render traits field if config is provided (indicating traits are supported)
+        const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
         return `
-                <div class="modifier-field-row">
-                    <label class="modifier-panel-label">Traits</label>
-                    <div id="${traitsContainerId}" style="flex: 1;"></div>
-                </div>
-            `;
-        }
+            <div class="modifier-field-row">
+                <label class="modifier-panel-label">Traits</label>
+                <div id="${traitsContainerId}" style="flex: 1;"></div>
+            </div>
+        `;
+    }
 
     generatePanelHTML(type, rep) {
-        const Cls = REPLACEMENT_CLASS_MAP[type];
-        const config = Cls?.panelConfig;
-        if (!config) {
+        // Get the appropriate renderer for this type
+        const renderer = this.renderers[type];
+        if (!renderer) {
             return this.generateJSONPanel(type, rep);
         }
-        if (type === 'damage' && config.isMultiComponent) {
-            return this.generateDamagePanelHTML(rep, config);
-        }
-        // Split out display text field if present
-        const displayTextFieldIndex = config.fields.findIndex(f => f.id === 'display-text');
-        let fieldsBeforeDisplayText = config.fields;
-        let displayTextField = null;
-        if (displayTextFieldIndex !== -1) {
-            fieldsBeforeDisplayText = config.fields.slice(0, displayTextFieldIndex).concat(config.fields.slice(displayTextFieldIndex + 1));
-            displayTextField = config.fields[displayTextFieldIndex];
-        }
+
+        // Get title from renderer
+        const title = renderer.getTitle(rep);
+        
+        // Get fields from renderer
+        const fields = renderer.renderFields(rep);
+        
+        // Get common traits from renderer
+        const commonTraits = renderer.getCommonTraits(rep);
+        const commonTraitsHTML = this.renderCommonTraits(commonTraits, rep, type);
+        
+        // Get traits field if supported
+        const traitsFieldHTML = renderer.supportsTraits(rep) ? this.renderTraitsField({}, type) : '';
+        
+        // Get display text field if supported
+        const displayTextField = renderer.getDisplayTextField(rep);
+        const displayTextHTML = displayTextField ? FieldRenderer.renderRow([displayTextField], rep) : '';
+
         return `
             <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                ${this.renderPanelHeader(config.title)}
-                ${this.renderFields(fieldsBeforeDisplayText, rep)}
-                ${this.renderCommonTraits(config.commonTraits, rep, type)}
-                ${this.renderTraitsField(config, type)}
-                ${displayTextField ? this.renderFields([displayTextField], rep) : ''}
+                ${this.renderPanelHeader(title)}
+                ${fields}
+                ${commonTraitsHTML}
+                ${traitsFieldHTML}
+                ${displayTextHTML}
             </form>
         `;
     }
 
-    generateDamagePanelHTML(rep, config) {
-        if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
-            rep.damageComponents = [];
-        }
-        // Render the Enabled field separately at the top
-        const enabledField = config.fields.find(f => f.id === 'enabled');
-        const enabledFieldHTML = enabledField ? this.renderFields([enabledField], rep) : '';
-        const otherFields = config.fields.filter(f => f.id !== 'enabled');
-        const componentSections = rep.damageComponents.map((component, index) => {
-            return `
-                <div class="damage-component" data-component-index="${index}">
-                    <div class="modifier-field-row" style="justify-content: space-between; align-items: center;">
-                        <div class="damage-component-label">Damage Partial ${index + 1}</div>
-                    </div>
-                    ${this.renderFields(config.componentFields, component, `damage-${index}`)}
-                </div>
-            `;
-        }).join('');
-        return `
-            <form id="damage-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
-                ${this.renderPanelHeader(config.title)}
-                ${enabledFieldHTML}
-                ${componentSections}
-                ${this.renderFields(otherFields, rep)}
-            </form>
-        `;
-    }
+
     
-    generateFieldHTML(field, rep) {
-        const isHidden = field.showIf && !field.showIf(rep);
-        const value = field.getValue(rep);
-        const commonAttrs = `id="${field.id}" style="width: 100%;"`;
-        const labelWidth = ModifierPanelManager.labelWidth;
-        let containerStyle = '';
-        if (field.hideIf && field.hideIf(rep)) {
-            containerStyle = 'display: none;';
-        }
-        switch (field.type) {
-            case 'select':
-                const options = field.options.map(option => {
-                    const optionValue = typeof option === 'object' ? option.value : option;
-                    const optionLabel = typeof option === 'object' ? option.label : option;
-                    const selected = optionValue === value ? 'selected' : '';
-                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                }).join('');
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                        <select ${commonAttrs}>
-                            ${options}
-                        </select>
-                    </div>
-                `;
-            case 'number':
-                const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
-                const containerStyle = field.showIf && !field.showIf(rep) ? 'display: none;' : 'display: flex;';
-                const html = `
-                    <div id="${field.id}-container" class="${rowClass}" style="${containerStyle}; align-items: center; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                        <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
-                    </div>
-                `;
-                return html;
-            case 'checkbox':
-                const checked = value ? 'checked' : '';
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                        <input type="checkbox" id="${field.id}" ${checked} style="width: auto; margin: 0;" />
-                    </div>
-                `;
-            case 'text':
-                const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                return `
-                    <div id="${field.id}-container" style="display: flex; align-items: center; gap: 8px; ${containerStyle}">
-                        <label style="width: ${labelWidth}; flex-shrink: 0;">${field.label}</label>
-                        <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
-                    </div>
-                `;
-            case 'textarea':
-                const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                const rows = field.rows || 3;
-                return `
-                    <div style="display: flex; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
-                        <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
-                    </div>
-                `;
-            case 'multiselect':
-                const selectedValues = Array.isArray(value) ? value : [value];
-                const multiOptions = field.options.map(option => {
-                    const optionValue = typeof option === 'object' ? option.value : option;
-                    const optionLabel = typeof option === 'object' ? option.label : option;
-                    const selected = selectedValues.includes(optionValue) ? 'selected' : '';
-                    return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                }).join('');
-                return `
-                    <div style="display: flex; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 4px;">${field.label}</label>
-                        <select ${commonAttrs} multiple>
-                            ${multiOptions}
-                        </select>
-                    </div>
-                `;
-            case 'traits':
-                const uniqueId = `${field.id}-container-${Math.random().toString(36).substr(2, 9)}`;
-                return `
-                    <div style="display: flex; gap: 8px;">
-                        <label style="width: ${labelWidth}; flex-shrink: 0; margin-top: 8px;">${field.label}</label>
-                        <div id="${uniqueId}" style="flex: 1;"></div>
-                    </div>
-                `;
-            default:
-                return `<div>Unknown field type: ${field.type}</div>`;
-        }
-    }
+
     generateJSONPanel(type, rep) {
         return `
             <div>
@@ -307,44 +777,33 @@ class ModifierPanelManager {
         `;
     }
     addFormListeners(formElement, type, rep, onChangeCallback) {
-        const Cls = REPLACEMENT_CLASS_MAP[type];
-        const config = Cls?.panelConfig;
-        if (!config) return;
+        const renderer = this.renderers[type];
+        if (!renderer) return;
         
-        if (type === 'damage' && config.isMultiComponent) {
-            this.addDamageFormListeners(formElement, rep, config, onChangeCallback);
+        // Special handling for damage components
+        if (type === 'damage') {
+            this.addDamageFormListeners(formElement, rep, renderer, onChangeCallback);
             return;
         }
         
         let traitsInput = null;
         const traitsContainer = formElement.querySelector('[id*="traits-container"]');
-        if (traitsContainer) {
+        if (traitsContainer && renderer.supportsTraits(rep)) {
             traitsInput = new TraitsInput(traitsContainer.id, {
                 placeholder: 'Type trait name and press Enter...',
                 onChange: (selectedTraits) => {
                     let enhancedTraits = selectedTraits.map(t => t.value);
                     rep.traits = enhancedTraits;
-                    if (config.commonTraits) {
-                        config.commonTraits.forEach(trait => {
-                            const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
-                            if (traitCheckbox) {
-                                const hasTrait = enhancedTraits.includes(trait);
-                                if (traitCheckbox.checked !== hasTrait) {
-                                    traitCheckbox.checked = hasTrait;
-                                }
-                            }
-                        });
-                    }
-                    const secretField = config.fields.find(field => field.id.includes('secret'));
-                    if (secretField) {
-                        const secretElement = formElement.querySelector(`#${secretField.id}`);
-                        if (secretElement) {
-                            const hasSecret = enhancedTraits.includes('secret');
-                            if (secretElement.checked !== hasSecret) {
-                                secretElement.checked = hasSecret;
+                    const commonTraits = renderer.getCommonTraits(rep);
+                    commonTraits.forEach(trait => {
+                        const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
+                        if (traitCheckbox) {
+                            const hasTrait = enhancedTraits.includes(trait);
+                            if (traitCheckbox.checked !== hasTrait) {
+                                traitCheckbox.checked = hasTrait;
                             }
                         }
-                    }
+                    });
                     if (onChangeCallback) {
                         onChangeCallback(rep);
                     }
@@ -355,66 +814,71 @@ class ModifierPanelManager {
             }
         }
         
+        // Get all fields from renderer for visibility updates
+        const allFields = this.getAllFieldsFromRenderer(renderer, rep);
+        
         // Initial update after render
-        this.updateFieldVisibility(formElement, config.fields, rep);
+        this.updateFieldVisibility(formElement, allFields, rep);
         
         formElement.addEventListener('input', (event) => {
             let shouldTriggerCallback = false;
             
-            config.fields.forEach(field => {
-                const element = formElement.querySelector(`#${field.id}`);
-                if (element && element === event.target) {
-                    let value;
-                    switch (field.type) {
-                        case 'checkbox':
-                            value = element.checked;
-                            break;
-                        case 'number':
-                            value = element.value;
-                            break;
-                        case 'multiselect':
-                            value = Array.from(element.selectedOptions).map(option => option.value);
-                            break;
-                        case 'textarea':
-                        case 'text':
-                        default:
-                            value = element.value;
-                    }
-                    
-                    console.log('[ModifierPanelManager] Field changed:', field.id, 'new value:', value);
-                    field.setValue(rep, value);
-                    shouldTriggerCallback = true;
-                    
-                    // Special handling for condition field changes
-                    if (field.id === 'condition-select' && rep.updateUUID) {
-                        console.log('[ModifierPanelManager] Condition changed, updating visibility');
-                        // Force immediate re-render of field visibility for condition value field
-                        this.updateFieldVisibility(formElement, config.fields, rep);
-                    }
-                    
-                    // If the action-name field was changed, force immediate re-render
-                    if (field.id === 'action-name' && typeof onChangeCallback === 'function') {
-                        onChangeCallback(rep, 'action-name');
-                        return; // Prevent double-calling below
-                    }
+            // Handle field changes by directly accessing the element
+            const element = event.target;
+            const fieldId = element.id;
+            
+            if (element) {
+                let value;
+                switch (element.type) {
+                    case 'checkbox':
+                        value = element.checked;
+                        break;
+                    case 'number':
+                        value = element.value;
+                        break;
+                    case 'select-one':
+                        value = element.value;
+                        break;
+                    case 'textarea':
+                    case 'text':
+                    default:
+                        value = element.value;
                 }
-            });
+                
+                console.log('[ModifierPanelManager] Field changed:', fieldId, 'new value:', value);
+                rep[fieldId] = value;
+                shouldTriggerCallback = true;
+                
+                // Special handling for condition field changes
+                if (fieldId === 'condition-select' && rep.updateUUID) {
+                    console.log('[ModifierPanelManager] Condition changed, updating visibility');
+                    // Force immediate re-render of field visibility for condition value field
+                    this.updateFieldVisibility(formElement, allFields, rep);
+                }
+                
+                // If the action-name field was changed, force immediate re-render
+                if (fieldId === 'action-name' && typeof onChangeCallback === 'function') {
+                    onChangeCallback(rep, 'action-name');
+                    return; // Prevent double-calling below
+                }
+            }
             
             // Update all field visibility generically
-            this.updateFieldVisibility(formElement, config.fields, rep);
+            this.updateFieldVisibility(formElement, allFields, rep);
             
             if (shouldTriggerCallback && onChangeCallback) {
                 onChangeCallback(rep, undefined);
             }
             
-            if (config.commonTraits) {
+            const commonTraits = renderer.getCommonTraits(rep);
+            if (commonTraits.length > 0) {
                 if (!rep.traits) rep.traits = [];
                 let enhancedTraits = [];
                 if (traitsInput) {
                     enhancedTraits = traitsInput.getValue();
                 }
                 let checkboxTraits = [];
-                config.commonTraits.forEach(trait => {
+                commonTraits.forEach(trait => {
                     const element = formElement.querySelector(`#${type}-trait-${trait}`);
                     if (element && element.checked) {
                         checkboxTraits.push(trait);
@@ -443,45 +907,47 @@ class ModifierPanelManager {
         formElement.addEventListener('change', (event) => {
             let shouldTriggerCallback = false;
             
-            config.fields.forEach(field => {
-                const element = formElement.querySelector(`#${field.id}`);
-                if (element && element === event.target) {
-                    let value;
-                    switch (field.type) {
-                        case 'checkbox':
-                            value = element.checked;
-                            break;
-                        case 'select':
-                            value = element.value;
-                            break;
-                        case 'multiselect':
-                            value = Array.from(element.selectedOptions).map(option => option.value);
-                            break;
-                        default:
-                            value = element.value;
-                    }
-                    
-                    console.log('[ModifierPanelManager] Field changed (change event):', field.id, 'new value:', value);
-                    field.setValue(rep, value);
-                    shouldTriggerCallback = true;
-                    
-                    // Special handling for condition field changes (still needed for UUID updates)
-                    if (field.id === 'condition-select' && rep.updateUUID) {
-                        console.log('[ModifierPanelManager] Condition changed via select, updating visibility');
-                    }
+            // Handle field changes by directly accessing the element
+            const element = event.target;
+            const fieldId = element.id;
+            
+            if (element) {
+                let value;
+                switch (element.type) {
+                    case 'checkbox':
+                        value = element.checked;
+                        break;
+                    case 'select-one':
+                        value = element.value;
+                        break;
+                    case 'select-multiple':
+                        value = Array.from(element.selectedOptions).map(option => option.value);
+                        break;
+                    default:
+                        value = element.value;
                 }
-            });
+                
+                console.log('[ModifierPanelManager] Field changed (change event):', fieldId, 'new value:', value);
+                rep[fieldId] = value;
+                shouldTriggerCallback = true;
+                
+                // Special handling for condition field changes (still needed for UUID updates)
+                if (fieldId === 'condition-select' && rep.updateUUID) {
+                    console.log('[ModifierPanelManager] Condition changed via select, updating visibility');
+                }
+            }
             
             // Generic updates for all field changes:
             // 1. Update all field visibility
-            this.updateFieldVisibility(formElement, config.fields, rep);
+            this.updateFieldVisibility(formElement, allFields, rep);
             
             // 2. Update all dynamic select fields (this handles action variants automatically)
-            this.updateDynamicSelectFields(formElement, config.fields, rep);
+            this.updateDynamicSelectFields(formElement, allFields, rep);
             
             // Handle trait checkboxes
-            if (config.commonTraits && config.commonTraits.includes(event.target.id.replace(`${type}-trait-`, ''))) {
-                const traitName = event.target.id.replace(`${type}-trait-`, '');
+            const commonTraits = renderer.getCommonTraits(rep);
+            const traitName = event.target.id.replace(`${type}-trait-`, '');
+            if (commonTraits.includes(traitName)) {
                 const isChecked = event.target.checked;
                 if (!rep.traits) rep.traits = [];
                 let currentTraits = [];
@@ -505,13 +971,35 @@ class ModifierPanelManager {
             }
         });
     }
-    addDamageFormListeners(formElement, rep, config, onChangeCallback) {
+
+    /**
+     * Get all fields from a renderer including base fields and conditional fields
+     * @param {BaseRenderer} renderer - The renderer instance
+     * @param {Object} rep - The replacement object
+     * @returns {Array} Array of field configurations
+     */
+    getAllFieldsFromRenderer(renderer, rep) {
+        // For now, we'll return an empty array since the renderers generate HTML directly
+        // This method is used for field visibility updates, but since renderers generate HTML
+        // directly, we don't have field configs to work with. The field visibility updates
+        // will be handled by the renderers themselves through conditional rendering.
+        return [];
+    }
+
+    addDamageFormListeners(formElement, rep, renderer, onChangeCallback) {
         if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
             rep.damageComponents = [];
         }
         const updateComponents = () => {
             rep.damageComponents.forEach((component, componentIndex) => {
-                config.componentFields.forEach(field => {
+                // Update damage component fields
+                const componentFields = [
+                    { id: 'dice', type: 'text' },
+                    { id: 'damage-type', type: 'select' },
+                    { id: 'category', type: 'select' }
+                ];
+                
+                componentFields.forEach(field => {
                     const element = formElement.querySelector(`#damage-${componentIndex}-${field.id}`);
                     if (element) {
                         let value;
@@ -524,28 +1012,34 @@ class ModifierPanelManager {
                             default:
                                 value = element.value;
                         }
-                        field.setValue(component, value);
+                        component[field.id] = value;
                     }
                 });
             });
-            if (config.fields) {
-                config.fields.forEach(field => {
-                    const element = formElement.querySelector(`#${field.id}`);
-                    if (element) {
-                        let value;
-                        switch (field.type) {
-                            case 'checkbox':
-                                value = element.checked;
-                                break;
-                            case 'select':
-                            case 'text':
-                            default:
-                                value = element.value;
-                        }
-                        field.setValue(rep, value);
+            
+            // Update main damage fields
+            const mainFields = [
+                { id: 'enabled', type: 'checkbox' },
+                { id: 'area-damage', type: 'checkbox' }
+            ];
+            
+            mainFields.forEach(field => {
+                const element = formElement.querySelector(`#${field.id}`);
+                if (element) {
+                    let value;
+                    switch (field.type) {
+                        case 'checkbox':
+                            value = element.checked;
+                            break;
+                        case 'select':
+                        case 'text':
+                        default:
+                            value = element.value;
                     }
-                });
-            }
+                    rep[field.id] = value;
+                }
+            });
+            
             if (onChangeCallback) {
                 onChangeCallback(rep);
             }
@@ -558,20 +1052,16 @@ class ModifierPanelManager {
                 const fieldName = componentSelectMatch[2];
                 const component = rep.damageComponents[componentIndex];
                 if (component) {
-                    if (fieldName === 'category') {
-                        const field = config.componentFields.find(f => f.id === 'category');
-                        if (field) {
-                            field.setValue(component, event.target.value);
-                        }
-                    } else {
-                        component[fieldName] = event.target.value;
-                    }
+                    component[fieldName] = event.target.value;
                     if (onChangeCallback) {
                         onChangeCallback(rep);
                     }
                 }
             }
-            if (config.fields && config.fields.some(field => field.id === event.target.id)) {
+            
+            // Check if it's a main damage field
+            const mainFields = ['enabled', 'area-damage'];
+            if (mainFields.includes(event.target.id)) {
                 updateComponents();
             }
         });
@@ -579,40 +1069,18 @@ class ModifierPanelManager {
 
     // Generic function to update field visibility based on hideIf/showIf
     updateFieldVisibility(formElement, fields, rep, prefix = '') {
-        fields.forEach(field => {
-            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
-            const container = formElement.querySelector(`#${fieldId}-container`);
-            if (!container) return;
-            let hidden = false;
-            if (field.hideIf && field.hideIf(rep)) hidden = true;
-            if (field.showIf && !field.showIf(rep)) hidden = true;
-            container.style.display = hidden ? 'none' : '';
-        });
+        // Since renderers generate HTML directly, field visibility is handled
+        // by the renderers themselves through conditional rendering
+        // This method is kept for backward compatibility but doesn't need to do anything
+        // when using the new renderer system
     }
 
     // Update the options of a select field based on the current value of the replacement
     updateDynamicSelectFields(formElement, fields, rep) {
-        fields.forEach(field => {
-            if (field.type === 'select' && typeof field.options === 'function') {
-                const element = formElement.querySelector(`#${field.id}`);
-                if (element) {
-                    // Get current value before updating options
-                    const currentValue = field.getValue(rep);
-                    
-                    // Get new options
-                    const newOptions = field.options(rep);
-                    
-                    // Clear and repopulate the select element
-                    element.innerHTML = '';
-                    (newOptions || []).forEach(option => {
-                        const optionValue = typeof option === 'object' ? option.value : option;
-                        const optionLabel = typeof option === 'object' ? option.label : option;
-                        const selected = optionValue === currentValue ? 'selected' : '';
-                        element.innerHTML += `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                    });
-                }
-            }
-        });
+        // Since renderers generate HTML directly, dynamic field updates are handled
+        // by the renderers themselves through conditional rendering
+        // This method is kept for backward compatibility but doesn't need to do anything
+        // when using the new renderer system
     }
 }
 
