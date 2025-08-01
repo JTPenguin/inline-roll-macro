@@ -8,7 +8,7 @@
 // Define a test input for demonstration and testing
 const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
 
-// Field configuration object template
+// Enhanced field configuration object template
 // const fieldConfig = {
 //     id: 'field-name',           // Unique field identifier
 //     type: 'select',             // Field type (select, text, checkbox, etc.)
@@ -26,7 +26,13 @@ const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage a
 //     hideIf: (rep) => false,     // Function to determine if field should be hidden
     
 //     // Dynamic options (for selects that change based on other fields)
-//     dynamicOptions: (rep) => [...] // Function returning options array
+//     dynamicOptions: (rep) => [...], // Function returning options array
+    
+//     // Phase 3: Enhanced dependency and update properties
+//     affects: ['other-field-id'],           // Fields this field affects
+//     dependsOn: ['source-field-id'],        // Fields this field depends on
+//     triggersUpdate: 'panel-partial',       // Update scope when changed
+//     validate: (value, rep) => boolean      // Field validation function
 // };
 
 /**
@@ -85,6 +91,25 @@ class BaseRenderer {
             placeholder: 'Custom display text...'
         };
     }
+
+    /**
+     * Get enhanced field configurations with dependency information
+     * @param {Object} replacement - The replacement object
+     * @returns {Array} Array of enhanced field configuration objects
+     */
+    getEnhancedFieldConfigs(replacement) {
+        const baseConfigs = this.getFieldConfigs(replacement);
+        
+        // Enhance field configurations with dependency information
+        return baseConfigs.map(config => ({
+            ...config,
+            // Ensure all required properties are present with defaults
+            affects: config.affects || [],
+            dependsOn: config.dependsOn || [],
+            triggersUpdate: config.triggersUpdate || 'field-only',
+            validate: config.validate || null
+        }));
+    }
 }
 
 /**
@@ -119,7 +144,7 @@ class FieldRenderer {
                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
                 }).join('');
                 return `
-                    <div class="${rowClass}" style="${containerStyle}">
+                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
                         <label class="${labelClass}">${label}</label>
                         <select id="${fieldId}" class="modifier-panel-input">
                             ${selectOptions}
@@ -130,7 +155,7 @@ class FieldRenderer {
             case 'number':
                 const minAttr = options.min !== undefined ? `min="${options.min}"` : '';
                 return `
-                    <div class="${rowClass}" style="${containerStyle}">
+                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
                         <label class="${labelClass}">${label}</label>
                         <input type="number" id="${fieldId}" class="modifier-panel-input" ${minAttr} value="${value}" />
                     </div>
@@ -139,7 +164,7 @@ class FieldRenderer {
             case 'checkbox':
                 const checked = value ? 'checked' : '';
                 return `
-                    <div class="${rowClass}" style="${containerStyle}">
+                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
                         <label class="${labelClass}">${label}</label>
                         <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
                     </div>
@@ -148,7 +173,7 @@ class FieldRenderer {
             case 'text':
                 const placeholder = options.placeholder ? `placeholder="${options.placeholder}"` : '';
                 return `
-                    <div class="${rowClass}" style="${containerStyle}">
+                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
                         <label class="${labelClass}">${label}</label>
                         <input type="text" id="${fieldId}" class="modifier-panel-input" ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                     </div>
@@ -158,7 +183,7 @@ class FieldRenderer {
                 const textareaPlaceholder = options.placeholder ? `placeholder="${options.placeholder}"` : '';
                 const rows = options.rows || 3;
                 return `
-                    <div class="${rowClass}" style="${containerStyle}">
+                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
                         <label class="${labelClass}">${label}</label>
                         <textarea id="${fieldId}" class="modifier-panel-input" ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                     </div>
@@ -167,14 +192,14 @@ class FieldRenderer {
             case 'traits':
                 const uniqueId = `traits-container-${Math.random().toString(36).substr(2, 9)}`;
                 return `
-                    <div class="${rowClass}" style="${containerStyle}">
+                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
                         <label class="${labelClass}">${label}</label>
                         <div id="${uniqueId}" style="flex: 1;"></div>
                     </div>
                 `;
 
             default:
-                return `<div>Unknown field type: ${type}</div>`;
+                return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">Unknown field type: ${type}</div>`;
         }
     }
 
@@ -316,7 +341,9 @@ class CheckRenderer extends BaseRenderer {
             label: 'Check Type',
             getValue: (r) => r.checkType || 'skill',
             setValue: (r, value) => { r.checkType = value; },
-            options: ConfigManager.CHECK_TYPES.options
+            options: ConfigManager.CHECK_TYPES.options,
+            affects: ['skill', 'save', 'lore-name'], // Check type affects conditional fields
+            triggersUpdate: ModifierPanelManager.UpdateScope.VISIBILITY
         });
         
         configs.push({
@@ -325,7 +352,9 @@ class CheckRenderer extends BaseRenderer {
             label: 'DC Method',
             getValue: (r) => r.dcMethod || 'static',
             setValue: (r, value) => { r.dcMethod = value; },
-            options: ConfigManager.DC_METHODS.options
+            options: ConfigManager.DC_METHODS.options,
+            affects: ['dc', 'statistic'], // DC method affects DC and statistic fields
+            triggersUpdate: ModifierPanelManager.UpdateScope.VISIBILITY
         });
         
         configs.push({
@@ -333,7 +362,8 @@ class CheckRenderer extends BaseRenderer {
             type: 'checkbox',
             label: 'Basic Save',
             getValue: (r) => r.basicSave || false,
-            setValue: (r, value) => { r.basicSave = value; }
+            setValue: (r, value) => { r.basicSave = value; },
+            showIf: (r) => r.checkType === 'save' // Only show for save checks
         });
         
         configs.push({
@@ -352,6 +382,7 @@ class CheckRenderer extends BaseRenderer {
             getValue: (r) => r.skill || '',
             setValue: (r, value) => { r.skill = value; },
             options: ConfigManager.SKILLS.options,
+            dependsOn: ['check-type'],
             showIf: (r) => r.checkType === 'skill'
         });
 
@@ -362,6 +393,7 @@ class CheckRenderer extends BaseRenderer {
             getValue: (r) => r.save || '',
             setValue: (r, value) => { r.save = value; },
             options: ConfigManager.SAVES.options,
+            dependsOn: ['check-type'],
             showIf: (r) => r.checkType === 'save'
         });
 
@@ -372,6 +404,7 @@ class CheckRenderer extends BaseRenderer {
             getValue: (r) => r.loreName || '',
             setValue: (r, value) => { r.loreName = value; },
             placeholder: 'e.g., Sailing Lore',
+            dependsOn: ['check-type'],
             showIf: (r) => r.checkType === 'lore'
         });
 
@@ -383,6 +416,7 @@ class CheckRenderer extends BaseRenderer {
             getValue: (r) => r.dc || '',
             setValue: (r, value) => { r.dc = value; },
             min: 1,
+            dependsOn: ['dc-method'],
             showIf: (r) => r.dcMethod === 'static'
         });
 
@@ -393,6 +427,7 @@ class CheckRenderer extends BaseRenderer {
             getValue: (r) => r.statistic || '',
             setValue: (r, value) => { r.statistic = value; },
             options: ConfigManager.STATISTICS.options,
+            dependsOn: ['dc-method'],
             showIf: (r) => r.dcMethod === 'target' || r.dcMethod === 'origin'
         });
 
@@ -459,7 +494,9 @@ class TemplateRenderer extends BaseRenderer {
             label: 'Template Type',
             getValue: (r) => r.shape || 'burst',
             setValue: (r, value) => { r.shape = value; },
-            options: ConfigManager.TEMPLATE_TYPES.options
+            options: ConfigManager.TEMPLATE_TYPES.options,
+            affects: ['width'], // Template type affects width field visibility
+            triggersUpdate: ModifierPanelManager.UpdateScope.VISIBILITY
         });
         
         configs.push({
@@ -478,6 +515,7 @@ class TemplateRenderer extends BaseRenderer {
             getValue: (r) => r.width || '',
             setValue: (r, value) => { r.width = value; },
             min: 1,
+            dependsOn: ['template-type'], // Depends on template type
             showIf: (r) => r.shape === 'line'
         });
 
@@ -573,7 +611,9 @@ class ActionRenderer extends BaseRenderer {
             setValue: (r, value) => {
                 r.setAction(value);
             },
-            options: ConfigManager.ACTIONS.options
+            options: ConfigManager.ACTIONS.options,
+            affects: ['action-variant'], // Action selection affects variant options
+            triggersUpdate: ModifierPanelManager.UpdateScope.PANEL_PARTIAL
         });
 
         // Add variant selection if action has variants
@@ -581,7 +621,7 @@ class ActionRenderer extends BaseRenderer {
             id: 'action-variant',
             type: 'select',
             label: 'Variant',
-            options: (r) => {
+            dynamicOptions: (r) => {
                 console.log('[ActionRenderer] Getting variants for action:', r.action);
                 if (r.action && ConfigManager.actionHasVariants(r.action)) {
                     const variants = ConfigManager.ACTION_VARIANTS[r.action];
@@ -596,6 +636,7 @@ class ActionRenderer extends BaseRenderer {
             },
             getValue: (r) => r.variant || '',
             setValue: (r, value) => { r.variant = value; },
+            dependsOn: ['action-name'], // Depends on action selection
             showIf: (r) => r.action && ConfigManager.actionHasVariants(r.action) // Show if the action has variants
         });
 
@@ -633,6 +674,14 @@ class ModifierPanelManager {
     // Shared label width for all modifier panel labels
     static labelWidth = '100px';
     
+    // Update scope constants for targeted updates
+    static UpdateScope = {
+        FIELD_ONLY: 'field-only',      // No additional updates needed
+        VISIBILITY: 'visibility',      // Update field visibility only
+        PANEL_PARTIAL: 'panel-partial', // Update dependent fields
+        PANEL_FULL: 'panel-full'       // Complete panel regeneration
+    };
+    
     constructor() {
         console.log('[PF2e Converter] Creating ModifierPanelManager instance');
         
@@ -646,7 +695,279 @@ class ModifierPanelManager {
             duration: new DurationRenderer(),
             action: new ActionRenderer()
         };
+        
+        // Store current form state for updates
+        this.currentForm = null;
+        this.currentFieldConfigs = null;
+        this.currentReplacement = null;
+        this.currentOnChangeCallback = null;
+        this.attachedListeners = new Map(); // Track attached listeners to prevent duplicates
     }
+    /**
+     * Get the optimal event type for a field type
+     * @param {string} fieldType - The field type
+     * @returns {string} The optimal event type
+     */
+    getOptimalEventType(fieldType) {
+        switch (fieldType) {
+            case 'checkbox':
+            case 'select':
+            case 'multiselect':
+                return 'change';
+            case 'text':
+            case 'number':
+            case 'textarea':
+            default:
+                return 'input';
+        }
+    }
+
+    /**
+     * Extract value from a form element based on its type
+     * @param {HTMLElement} element - The form element
+     * @returns {any} The extracted value
+     */
+    extractFieldValue(element) {
+        switch (element.type) {
+            case 'checkbox':
+                return element.checked;
+            case 'number':
+                return element.value === '' ? '' : Number(element.value);
+            case 'select-one':
+            case 'select-multiple':
+                if (element.multiple) {
+                    return Array.from(element.selectedOptions).map(option => option.value);
+                }
+                return element.value;
+            case 'textarea':
+            case 'text':
+            default:
+                return element.value;
+        }
+    }
+
+    /**
+     * Set value on a form element based on its type
+     * @param {HTMLElement} element - The form element
+     * @param {any} value - The value to set
+     */
+    setFieldValue(element, value) {
+        switch (element.type) {
+            case 'checkbox':
+                element.checked = Boolean(value);
+                break;
+            case 'number':
+                element.value = value === '' ? '' : String(value);
+                break;
+            case 'select-one':
+                element.value = String(value);
+                break;
+            case 'select-multiple':
+                if (Array.isArray(value)) {
+                    Array.from(element.options).forEach(option => {
+                        option.selected = value.includes(option.value);
+                    });
+                }
+                break;
+            case 'textarea':
+            case 'text':
+            default:
+                element.value = String(value);
+                break;
+        }
+    }
+
+    /**
+     * Determine the update scope for a field change
+     * @param {Object} fieldConfig - The field configuration
+     * @param {any} oldValue - The old value
+     * @param {any} newValue - The new value
+     * @returns {string} The update scope
+     */
+    getUpdateScope(fieldConfig, oldValue, newValue) {
+        // Check if field config specifies update scope
+        if (fieldConfig.triggersUpdate) {
+            return fieldConfig.triggersUpdate;
+        }
+        
+        // Check if field has dependencies that require updates
+        if (fieldConfig.affects && fieldConfig.affects.length > 0) {
+            return ModifierPanelManager.UpdateScope.PANEL_PARTIAL;
+        }
+        
+        // Check if field has visibility conditions
+        if (fieldConfig.showIf || fieldConfig.hideIf) {
+            return ModifierPanelManager.UpdateScope.VISIBILITY;
+        }
+        
+        // Default to field-only updates
+        return ModifierPanelManager.UpdateScope.FIELD_ONLY;
+    }
+
+    /**
+     * Setup unified event listener for a field
+     * @param {HTMLElement} fieldElement - The field element
+     * @param {Object} fieldConfig - The field configuration
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - The change callback
+     */
+    setupFieldListener(fieldElement, fieldConfig, replacement, onChangeCallback) {
+        const eventType = this.getOptimalEventType(fieldConfig.type);
+        const listenerKey = `${fieldElement.id}-${eventType}`;
+        
+        // Prevent duplicate listeners
+        if (this.attachedListeners.has(listenerKey)) {
+            return;
+        }
+        
+        const listener = (event) => {
+            const oldValue = fieldConfig.getValue(replacement);
+            const newValue = this.extractFieldValue(event.target);
+            
+            // Only proceed if value actually changed
+            if (oldValue !== newValue) {
+                // Set the new value if setValue function is provided
+                if (fieldConfig.setValue) {
+                    fieldConfig.setValue(replacement, newValue);
+                }
+                
+                // Enhanced dynamic options handling
+                if (fieldConfig.dynamicOptions && fieldConfig.affects && fieldConfig.affects.length > 0) {
+                    // Force partial panel update for fields with dynamic options that affect other fields
+                    const updateScope = ModifierPanelManager.UpdateScope.PANEL_PARTIAL;
+                    this.handleFieldUpdate(replacement, fieldConfig, updateScope, onChangeCallback);
+                } else {
+                    // Use normal update scope detection
+                    const updateScope = this.getUpdateScope(fieldConfig, oldValue, newValue);
+                    this.handleFieldUpdate(replacement, fieldConfig, updateScope, onChangeCallback);
+                }
+            }
+        };
+        
+        fieldElement.addEventListener(eventType, listener);
+        this.attachedListeners.set(listenerKey, { element: fieldElement, type: eventType, listener });
+    }
+
+    /**
+     * Handle field updates based on update scope
+     * @param {Object} replacement - The replacement object
+     * @param {Object} fieldConfig - The field configuration
+     * @param {string} updateScope - The update scope
+     * @param {Function} onChangeCallback - The change callback
+     */
+    handleFieldUpdate(replacement, fieldConfig, updateScope, onChangeCallback) {
+        try {
+            // Debug logging
+            const oldValue = fieldConfig.getValue(replacement);
+            this.debugFieldUpdate(fieldConfig.id, oldValue, fieldConfig.getValue(replacement), updateScope);
+            
+            // Validate new value if validation function is provided
+            if (fieldConfig.validate) {
+                const currentValue = fieldConfig.getValue(replacement);
+                if (!fieldConfig.validate(currentValue, replacement)) {
+                    this.showFieldError(fieldConfig.id, 'Invalid value');
+                    return;
+                }
+            }
+            
+            this.clearFieldError(fieldConfig.id);
+            
+            // Handle updates based on scope
+            switch (updateScope) {
+                case ModifierPanelManager.UpdateScope.FIELD_ONLY:
+                    // No additional updates needed
+                    break;
+                    
+                case ModifierPanelManager.UpdateScope.VISIBILITY:
+                    this.updateFieldVisibility(this.currentForm, this.currentFieldConfigs, replacement);
+                    break;
+                    
+                case ModifierPanelManager.UpdateScope.PANEL_PARTIAL:
+                    this.updateDependentFields(fieldConfig, replacement);
+                    break;
+                    
+                case ModifierPanelManager.UpdateScope.PANEL_FULL:
+                    this.regeneratePanel(this.currentForm, replacement, onChangeCallback);
+                    break;
+            }
+            
+            // Special handling for condition field changes
+            if (fieldConfig.id === 'condition-select' && replacement.updateUUID) {
+                console.log('[ModifierPanelManager] Condition changed, updating UUID');
+                replacement.updateUUID();
+            }
+            
+            // Always call the change callback
+            if (onChangeCallback) {
+                onChangeCallback(replacement, fieldConfig.id);
+            }
+            
+        } catch (error) {
+            console.error(`[ModifierPanelManager] Error updating field ${fieldConfig.id}:`, error);
+            this.showFieldError(fieldConfig.id, 'Update failed');
+        }
+    }
+
+    /**
+     * Show field error
+     * @param {string} fieldId - The field ID
+     * @param {string} message - The error message
+     */
+    showFieldError(fieldId, message) {
+        const fieldElement = this.currentForm?.querySelector(`#${fieldId}`);
+        if (fieldElement) {
+            fieldElement.style.borderColor = '#ff4444';
+            fieldElement.title = message;
+        }
+    }
+
+    /**
+     * Clear field error
+     * @param {string} fieldId - The field ID
+     */
+    clearFieldError(fieldId) {
+        const fieldElement = this.currentForm?.querySelector(`#${fieldId}`);
+        if (fieldElement) {
+            fieldElement.style.borderColor = '';
+            fieldElement.title = '';
+        }
+    }
+
+    /**
+     * Debug logging for field updates
+     * @param {string} fieldId - The field ID
+     * @param {any} oldValue - The old value
+     * @param {any} newValue - The new value
+     * @param {string} updateScope - The update scope
+     */
+    debugFieldUpdate(fieldId, oldValue, newValue, updateScope) {
+        if (console.debug) {
+            console.debug(`[ModifierPanelManager] Field update: ${fieldId}`, {
+                oldValue,
+                newValue,
+                updateScope,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    /**
+     * Debug logging for dependency resolution
+     * @param {Object} fieldConfig - The field configuration
+     * @param {Array} affectedFields - The affected fields
+     */
+    debugDependencyResolution(fieldConfig, affectedFields) {
+        if (console.debug) {
+            console.debug(`[ModifierPanelManager] Dependency resolution:`, {
+                fieldId: fieldConfig.id,
+                affects: fieldConfig.affects,
+                dependsOn: fieldConfig.dependsOn,
+                affectedFields,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
     // DRY: Render the panel header (title + reset button)
     renderPanelHeader(title) {
         return `
@@ -851,156 +1172,165 @@ class ModifierPanelManager {
         const renderer = this.renderers[type];
         if (!renderer) return;
         
+        // Store current form state for updates
+        this.currentForm = formElement;
+        this.currentReplacement = rep;
+        this.currentOnChangeCallback = onChangeCallback;
+        
+        // Get enhanced field configurations from renderer
+        const fieldConfigs = renderer.getEnhancedFieldConfigs(rep);
+        this.currentFieldConfigs = fieldConfigs;
+        
+        // Setup standard field listeners
+        this.setupStandardFieldListeners(formElement, fieldConfigs, rep, onChangeCallback);
+        
+        // Setup special component listeners
+        this.setupSpecialComponentListeners(formElement, type, rep, onChangeCallback);
+        
+        // Initial state sync
+        this.updateAllFieldVisibility(formElement, fieldConfigs, rep);
+    }
+
+    /**
+     * Setup standard field listeners using unified event system
+     * @param {HTMLElement} formElement - The form element
+     * @param {Array} fieldConfigs - Array of field configurations
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - The change callback
+     */
+    setupStandardFieldListeners(formElement, fieldConfigs, replacement, onChangeCallback) {
+        fieldConfigs.forEach(config => {
+            const fieldElement = formElement.querySelector(`#${config.id}`);
+            if (fieldElement) {
+                this.setupFieldListener(fieldElement, config, replacement, onChangeCallback);
+            }
+        });
+    }
+
+    /**
+     * Setup special component listeners (damage, traits, etc.)
+     * @param {HTMLElement} formElement - The form element
+     * @param {string} type - The replacement type
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - The change callback
+     */
+    setupSpecialComponentListeners(formElement, type, replacement, onChangeCallback) {
+        const renderer = this.renderers[type];
+        
         // Special handling for damage components
         if (type === 'damage') {
-            this.addDamageFormListeners(formElement, rep, renderer, onChangeCallback);
-            return;
+            this.addDamageFormListeners(formElement, replacement, renderer, onChangeCallback);
         }
         
-        let traitsInput = null;
-        const traitsContainer = formElement.querySelector('[id*="traits-container"]');
-        if (traitsContainer && renderer.supportsTraits(rep)) {
-            traitsInput = new TraitsInput(traitsContainer.id, {
-                placeholder: 'Type trait name and press Enter...',
-                onChange: (selectedTraits) => {
-                    let enhancedTraits = selectedTraits.map(t => t.value);
-                    rep.traits = enhancedTraits;
-                    const commonTraits = renderer.getCommonTraits(rep);
-                    commonTraits.forEach(trait => {
-                        const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
-                        if (traitCheckbox) {
-                            const hasTrait = enhancedTraits.includes(trait);
-                            if (traitCheckbox.checked !== hasTrait) {
-                                traitCheckbox.checked = hasTrait;
-                            }
-                        }
-                    });
-                    if (onChangeCallback) {
-                        onChangeCallback(rep);
-                    }
-                }
-            });
-            if (rep.traits && Array.isArray(rep.traits)) {
-                traitsInput.setValue(rep.traits);
-            }
-        }
-        
-        // Get field configurations from renderer for event handling
-        const fieldConfigs = renderer.getFieldConfigs(rep);
-        
-        // Initial update after render
-        this.updateFieldVisibility(formElement, fieldConfigs, rep);
-        
-        formElement.addEventListener('input', (event) => {
-            this.handleFieldChange(event, fieldConfigs, rep, onChangeCallback, formElement);
+        // Setup traits inputs
+        const traitsContainers = formElement.querySelectorAll('[id*="traits-container"]');
+        traitsContainers.forEach(container => {
+            this.setupTraitsInput(container, replacement, onChangeCallback);
         });
         
-        formElement.addEventListener('change', (event) => {
-            // Handle field changes using the helper method
-            this.handleFieldChange(event, fieldConfigs, rep, onChangeCallback, formElement);
-            
-            // Handle trait checkboxes separately
-            const commonTraits = renderer.getCommonTraits(rep);
-            const traitName = event.target.id.replace(`${type}-trait-`, '');
-            if (commonTraits.includes(traitName)) {
-                const isChecked = event.target.checked;
-                if (!rep.traits) rep.traits = [];
-                let currentTraits = [];
-                if (traitsInput) {
-                    currentTraits = traitsInput.getValue();
-                }
-                if (isChecked && !currentTraits.includes(traitName)) {
-                    currentTraits.push(traitName);
-                } else if (!isChecked && currentTraits.includes(traitName)) {
-                    currentTraits = currentTraits.filter(trait => trait !== traitName);
-                }
-                rep.traits = currentTraits;
-                if (traitsInput) {
-                    traitsInput.setValue(currentTraits, false);
-                }
+        // Setup common trait checkboxes
+        this.setupCommonTraitCheckboxes(formElement, type, replacement, onChangeCallback);
+    }
+
+    /**
+     * Setup traits input component
+     * @param {HTMLElement} container - The traits container
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - The change callback
+     */
+    setupTraitsInput(container, replacement, onChangeCallback) {
+        const renderer = this.renderers[replacement.type];
+        if (!renderer || !renderer.supportsTraits(replacement)) return;
+        
+        const traitsInput = new TraitsInput(container.id, {
+            placeholder: 'Type trait name and press Enter...',
+            onChange: (selectedTraits) => {
+                let enhancedTraits = selectedTraits.map(t => t.value);
+                replacement.traits = enhancedTraits;
+                
+                // Sync with common trait checkboxes
+                const commonTraits = renderer.getCommonTraits(replacement);
+                commonTraits.forEach(trait => {
+                    const traitCheckbox = this.currentForm?.querySelector(`#${replacement.type}-trait-${trait}`);
+                    if (traitCheckbox) {
+                        const hasTrait = enhancedTraits.includes(trait);
+                        if (traitCheckbox.checked !== hasTrait) {
+                            traitCheckbox.checked = hasTrait;
+                        }
+                    }
+                });
                 
                 if (onChangeCallback) {
-                    onChangeCallback(rep, undefined);
+                    onChangeCallback(replacement);
                 }
+            }
+        });
+        
+        if (replacement.traits && Array.isArray(replacement.traits)) {
+            traitsInput.setValue(replacement.traits);
+        }
+    }
+
+    /**
+     * Setup common trait checkboxes
+     * @param {HTMLElement} formElement - The form element
+     * @param {string} type - The replacement type
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - The change callback
+     */
+    setupCommonTraitCheckboxes(formElement, type, replacement, onChangeCallback) {
+        const renderer = this.renderers[type];
+        const commonTraits = renderer.getCommonTraits(replacement);
+        
+        commonTraits.forEach(trait => {
+            const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
+            if (traitCheckbox) {
+                const listenerKey = `${traitCheckbox.id}-change`;
+                
+                // Prevent duplicate listeners
+                if (this.attachedListeners.has(listenerKey)) {
+                    return;
+                }
+                
+                const listener = (event) => {
+                    const isChecked = event.target.checked;
+                    if (!replacement.traits) replacement.traits = [];
+                    
+                    if (isChecked && !replacement.traits.includes(trait)) {
+                        replacement.traits.push(trait);
+                    } else if (!isChecked && replacement.traits.includes(trait)) {
+                        replacement.traits = replacement.traits.filter(t => t !== trait);
+                    }
+                    
+                    if (onChangeCallback) {
+                        onChangeCallback(replacement, undefined);
+                    }
+                };
+                
+                traitCheckbox.addEventListener('change', listener);
+                this.attachedListeners.set(listenerKey, { element: traitCheckbox, type: 'change', listener });
             }
         });
     }
 
-    /**
-     * Get all fields from a renderer including base fields and conditional fields
-     * @param {BaseRenderer} renderer - The renderer instance
-     * @param {Object} rep - The replacement object
-     * @returns {Array} Array of field configurations
-     */
-    getAllFieldsFromRenderer(renderer, rep) {
-        // Return field configurations from the renderer
-        return renderer.getFieldConfigs(rep);
-    }
-    
-    /**
-     * Handle field change events consistently
-     * @param {Event} event - The input/change event
-     * @param {Array} fieldConfigs - Array of field configurations
-     * @param {Object} rep - The replacement object
-     * @param {Function} onChangeCallback - Callback function
-     * @param {HTMLElement} formElement - The form element
-     */
-    handleFieldChange(event, fieldConfigs, rep, onChangeCallback, formElement) {
-        const fieldId = event.target.id;
-        const fieldConfig = fieldConfigs.find(config => config.id === fieldId);
-        
-        if (!fieldConfig) return; // Skip unknown fields
-        
-        if (fieldConfig.setValue) {
-            const value = this.getFieldValue(event.target);
-            fieldConfig.setValue(rep, value);
-            
-            // Check if this field change affects other fields (like action changing variant options)
-            const needsFieldUpdate = this.checkForFieldDependencies(fieldId, rep.type);
-            
-            if (needsFieldUpdate) {
-                // Re-render the entire panel to update dynamic fields
-                this.regeneratePanel(formElement, rep, onChangeCallback);
-            } else {
-                // Just update visibility for simpler changes
-                this.updateFieldVisibility(formElement, fieldConfigs, rep);
-            }
-            
-            // Special handling for condition field changes
-            if (fieldId === 'condition-select' && rep.updateUUID) {
-                console.log('[ModifierPanelManager] Condition changed, updating UUID');
-                rep.updateUUID();
-            }
-            
-            if (onChangeCallback) {
-                onChangeCallback(rep, fieldId);
-            }
-        }
-    }
+
 
     /**
-     * Check if a field change requires updating other fields
-     * @param {string} fieldId - The changed field ID
-     * @param {string} repType - The replacement type
-     * @returns {boolean} Whether field updates are needed
+     * Clean up event listeners to prevent memory leaks
      */
-    checkForFieldDependencies(fieldId, repType) {
-        // Action field changes affect variant dropdown
-        if (repType === 'action' && fieldId === 'action-name') {
-            return true;
-        }
+    cleanupEventListeners() {
+        this.attachedListeners.forEach(({ element, type, listener }) => {
+            if (element && element.removeEventListener) {
+                element.removeEventListener(type, listener);
+            }
+        });
+        this.attachedListeners.clear();
         
-        // Check type changes affect conditional fields in checks
-        if (repType === 'check' && fieldId === 'check-type') {
-            return true;
-        }
-        
-        // DC method changes affect statistic field visibility
-        if (repType === 'check' && fieldId === 'dc-method') {
-            return true;
-        }
-        
-        return false;
+        // Clear stored references
+        this.currentForm = null;
+        this.currentFieldConfigs = null;
+        this.currentReplacement = null;
+        this.currentOnChangeCallback = null;
     }
 
     /**
@@ -1013,8 +1343,15 @@ class ModifierPanelManager {
         const renderer = this.renderers[rep.type];
         if (!renderer) return;
         
-        // Get fresh field configurations (important for dynamic options)
-        const fieldConfigs = renderer.getFieldConfigs(rep);
+        // Store current state before regeneration
+        const currentValues = this.preserveFormState(formElement);
+        const focusedElement = document.activeElement;
+        
+        // Clean up existing listeners
+        this.cleanupEventListeners();
+        
+        // Get fresh enhanced field configurations (important for dynamic options)
+        const fieldConfigs = renderer.getEnhancedFieldConfigs(rep);
         
         // Clear and regenerate form content, but preserve the form element itself
         const panelHTML = this.generatePanelHTML(rep.type, rep);
@@ -1028,7 +1365,55 @@ class ModifierPanelManager {
             
             // Re-setup event listeners on the updated form
             this.addFormListeners(formElement, rep.type, rep, onChangeCallback);
+            
+            // Restore form state
+            this.restoreFormState(formElement, currentValues, focusedElement);
         }
+    }
+
+    /**
+     * Preserve form state before regeneration
+     * @param {HTMLElement} formElement - The form element
+     * @returns {Object} Object containing form state
+     */
+    preserveFormState(formElement) {
+        const state = {};
+        const inputs = formElement.querySelectorAll('input, select, textarea');
+        
+        inputs.forEach(input => {
+            if (input.id) {
+                state[input.id] = {
+                    value: this.extractFieldValue(input),
+                    hasFocus: input === document.activeElement,
+                    cursorPosition: input === document.activeElement ? input.selectionStart : null
+                };
+            }
+        });
+        
+        return state;
+    }
+
+    /**
+     * Restore form state after regeneration
+     * @param {HTMLElement} formElement - The form element
+     * @param {Object} state - The preserved state
+     * @param {HTMLElement} focusedElement - The previously focused element
+     */
+    restoreFormState(formElement, state, focusedElement) {
+        Object.entries(state).forEach(([id, fieldState]) => {
+            const element = formElement.querySelector(`#${id}`);
+            if (element) {
+                this.setFieldValue(element, fieldState.value);
+                
+                // Restore focus and cursor position
+                if (fieldState.hasFocus && focusedElement && focusedElement.id === id) {
+                    element.focus();
+                    if (fieldState.cursorPosition !== null && element.setSelectionRange) {
+                        element.setSelectionRange(fieldState.cursorPosition, fieldState.cursorPosition);
+                    }
+                }
+            }
+        });
     }
     
     /**
@@ -1115,17 +1500,323 @@ class ModifierPanelManager {
         });
     }
 
+    /**
+     * Update dependent fields when a field changes
+     * @param {Object} changedFieldConfig - The field configuration that changed
+     * @param {Object} replacement - The replacement object
+     */
+    updateDependentFields(changedFieldConfig, replacement) {
+        const affectedFields = changedFieldConfig.affects || [];
+        
+        // Debug logging
+        this.debugDependencyResolution(changedFieldConfig, affectedFields);
+        
+        // Build dependency map for this update cycle
+        const dependencyMap = this.buildDependencyMap(this.currentFieldConfigs);
+        
+        // Get all fields that need updating (including transitive dependencies)
+        const fieldsToUpdate = this.getTransitiveDependencies(changedFieldConfig.id, dependencyMap);
+        
+        // Update fields in dependency order (least dependent first)
+        const sortedFields = this.sortByDependencyOrder(fieldsToUpdate, dependencyMap);
+        
+        sortedFields.forEach(fieldId => {
+            const fieldElement = this.currentForm?.querySelector(`#${fieldId}`);
+            const fieldConfig = this.currentFieldConfigs?.find(config => config.id === fieldId);
+            
+            if (fieldElement && fieldConfig) {
+                this.updateSingleField(fieldElement, fieldConfig, replacement);
+            } else {
+                console.warn(`[ModifierPanelManager] Could not find field or config for: ${fieldId}`);
+            }
+        });
+        
+        // Update field visibility after dependent field updates
+        this.updateFieldVisibility(this.currentForm, this.currentFieldConfigs, replacement);
+    }
+
+    /**
+     * Build a dependency map from field configurations
+     * @param {Array} fieldConfigs - Array of field configurations
+     * @returns {Map} Map of field ID to array of dependent field IDs
+     */
+    buildDependencyMap(fieldConfigs) {
+        const dependencyMap = new Map();
+        
+        fieldConfigs.forEach(config => {
+            const dependents = fieldConfigs
+                .filter(otherConfig => otherConfig.dependsOn && otherConfig.dependsOn.includes(config.id))
+                .map(otherConfig => otherConfig.id);
+            
+            dependencyMap.set(config.id, dependents);
+        });
+        
+        // Detect circular dependencies
+        const circularDependencies = this.detectCircularDependencies(dependencyMap);
+        if (circularDependencies.length > 0) {
+            console.warn('[ModifierPanelManager] Circular dependencies detected:', circularDependencies);
+        }
+        
+        return dependencyMap;
+    }
+
+    /**
+     * Detect circular dependencies in the dependency map
+     * @param {Map} dependencyMap - The dependency map
+     * @returns {Array} Array of circular dependency cycles
+     */
+    detectCircularDependencies(dependencyMap) {
+        const visited = new Set();
+        const recursionStack = new Set();
+        const cycles = [];
+        
+        const dfs = (fieldId, path = []) => {
+            if (recursionStack.has(fieldId)) {
+                // Found a cycle
+                const cycleStart = path.indexOf(fieldId);
+                const cycle = path.slice(cycleStart);
+                cycles.push([...cycle, fieldId]);
+                return;
+            }
+            
+            if (visited.has(fieldId)) {
+                return;
+            }
+            
+            visited.add(fieldId);
+            recursionStack.add(fieldId);
+            
+            const dependents = dependencyMap.get(fieldId) || [];
+            dependents.forEach(dependent => {
+                dfs(dependent, [...path, fieldId]);
+            });
+            
+            recursionStack.delete(fieldId);
+        };
+        
+        Array.from(dependencyMap.keys()).forEach(fieldId => {
+            if (!visited.has(fieldId)) {
+                dfs(fieldId);
+            }
+        });
+        
+        return cycles;
+    }
+
+    /**
+     * Get all transitive dependencies for a field
+     * @param {string} fieldId - The field ID
+     * @param {Map} dependencyMap - The dependency map
+     * @returns {Set} Set of field IDs that depend on the given field
+     */
+    getTransitiveDependencies(fieldId, dependencyMap) {
+        const visited = new Set();
+        const toVisit = [fieldId];
+        const result = new Set();
+        
+        while (toVisit.length > 0) {
+            const current = toVisit.pop();
+            
+            if (visited.has(current)) {
+                continue;
+            }
+            
+            visited.add(current);
+            result.add(current);
+            
+            const dependents = dependencyMap.get(current) || [];
+            dependents.forEach(dependent => {
+                if (!visited.has(dependent)) {
+                    toVisit.push(dependent);
+                }
+            });
+        }
+        
+        return result;
+    }
+
+    /**
+     * Sort fields by dependency order (least dependent first)
+     * @param {Set} fieldIds - Set of field IDs to sort
+     * @param {Map} dependencyMap - The dependency map
+     * @returns {Array} Sorted array of field IDs
+     */
+    sortByDependencyOrder(fieldIds, dependencyMap) {
+        const visited = new Set();
+        const result = [];
+        
+        const visit = (fieldId) => {
+            if (visited.has(fieldId)) return;
+            visited.add(fieldId);
+            
+            const dependents = dependencyMap.get(fieldId) || [];
+            dependents.forEach(dependent => {
+                if (fieldIds.has(dependent)) {
+                    visit(dependent);
+                }
+            });
+            
+            result.push(fieldId);
+        };
+        
+        Array.from(fieldIds).forEach(visit);
+        return result;
+    }
+
+    /**
+     * Update a single field with new data
+     * @param {HTMLElement} fieldElement - The field element
+     * @param {Object} fieldConfig - The field configuration
+     * @param {Object} replacement - The replacement object
+     */
+    updateSingleField(fieldElement, fieldConfig, replacement) {
+        // Store current focus and cursor position
+        const hasFocus = fieldElement === document.activeElement;
+        const cursorPosition = hasFocus ? fieldElement.selectionStart : null;
+        
+        // Update dynamic options for select fields
+        if (fieldConfig.type === 'select' && fieldConfig.dynamicOptions) {
+            this.updateSelectOptions(fieldElement, fieldConfig, replacement);
+        }
+        
+        // Sync field value with replacement object
+        const currentValue = fieldConfig.getValue(replacement);
+        this.setFieldValue(fieldElement, currentValue);
+        
+        // Update field visibility
+        this.updateFieldVisibility(this.currentForm, [fieldConfig], replacement);
+        
+        // Restore focus and cursor position if field had focus
+        if (hasFocus) {
+            fieldElement.focus();
+            if (cursorPosition !== null && fieldElement.setSelectionRange) {
+                fieldElement.setSelectionRange(cursorPosition, cursorPosition);
+            }
+        }
+    }
+
+    /**
+     * Update select field options dynamically
+     * @param {HTMLElement} selectElement - The select element
+     * @param {Object} fieldConfig - The field configuration
+     * @param {Object} replacement - The replacement object
+     */
+    updateSelectOptions(selectElement, fieldConfig, replacement) {
+        try {
+            const currentValue = fieldConfig.getValue(replacement);
+            const newOptions = fieldConfig.dynamicOptions(replacement);
+            
+            // Validate that newOptions is an array
+            if (!Array.isArray(newOptions)) {
+                console.warn(`[ModifierPanelManager] Dynamic options for ${fieldConfig.id} is not an array:`, newOptions);
+                return;
+            }
+            
+            // Store current selection state
+            const wasSelected = selectElement.value === currentValue;
+            
+            // Clear existing options
+            selectElement.innerHTML = '';
+            
+            // Add new options
+            newOptions.forEach(option => {
+                const optionValue = typeof option === 'object' ? option.value : option;
+                const optionLabel = typeof option === 'object' ? option.label : option;
+                const optionElement = document.createElement('option');
+                optionElement.value = optionValue;
+                optionElement.textContent = optionLabel;
+                
+                // Preserve selected value if still valid
+                if (optionValue === currentValue) {
+                    optionElement.selected = true;
+                }
+                
+                selectElement.appendChild(optionElement);
+            });
+            
+            // Clear selection if current value is no longer valid
+            const isValidOption = newOptions.some(opt => (typeof opt === 'object' ? opt.value : opt) === currentValue);
+            if (currentValue && !isValidOption) {
+                console.log(`[ModifierPanelManager] Clearing invalid selection for ${fieldConfig.id}: ${currentValue}`);
+                fieldConfig.setValue(replacement, '');
+                selectElement.value = '';
+            }
+            
+            // Debug logging
+            if (console.debug) {
+                console.debug(`[ModifierPanelManager] Updated select options for ${fieldConfig.id}:`, {
+                    currentValue,
+                    newOptions: newOptions.length,
+                    wasSelected,
+                    isValidOption
+                });
+            }
+            
+        } catch (error) {
+            console.error(`[ModifierPanelManager] Error updating select options for ${fieldConfig.id}:`, error);
+        }
+    }
+
+    /**
+     * Update all field visibility based on current replacement state
+     * @param {HTMLElement} formElement - The form element
+     * @param {Array} fieldConfigs - Array of field configurations
+     * @param {Object} replacement - The replacement object
+     */
+    updateAllFieldVisibility(formElement, fieldConfigs, replacement) {
+        fieldConfigs.forEach(config => {
+            this.updateFieldVisibility(formElement, [config], replacement);
+        });
+    }
+
+    /**
+     * Check if a field should be visible based on its conditions
+     * @param {Object} fieldConfig - The field configuration
+     * @param {Object} replacement - The replacement object
+     * @returns {boolean} Whether the field should be visible
+     */
+    shouldFieldBeVisible(fieldConfig, replacement) {
+        const shouldShow = !fieldConfig.hideIf || !fieldConfig.hideIf(replacement);
+        const shouldShowConditional = !fieldConfig.showIf || fieldConfig.showIf(replacement);
+        return shouldShow && shouldShowConditional;
+    }
+
     // Generic function to update field visibility based on hideIf/showIf
     updateFieldVisibility(formElement, fieldConfigs, rep, prefix = '') {
         fieldConfigs.forEach(config => {
-            const field = formElement.querySelector(`#${config.id}`);
-            const container = formElement.querySelector(`#${config.id}-container`);
+            // Try multiple container selectors for better compatibility
+            const containerSelectors = [
+                `#${config.id}-container`,
+                `[data-field-id="${config.id}"]`,
+                `.modifier-field-row:has(#${config.id})`,
+                `#${config.id}`.replace(/-/g, '\\-') + '-container' // Escape hyphens for CSS
+            ];
+            
+            let container = null;
+            for (const selector of containerSelectors) {
+                container = formElement.querySelector(selector);
+                if (container) break;
+            }
+            
+            // Fallback: find container by looking for parent with modifier-field-row class
+            if (!container) {
+                const field = formElement.querySelector(`#${config.id}`);
+                if (field) {
+                    container = field.closest('.modifier-field-row') || field.parentElement;
+                }
+            }
             
             if (container) {
-                const shouldShow = !config.hideIf || !config.hideIf(rep);
-                const shouldShowConditional = !config.showIf || config.showIf(rep);
-                const isVisible = shouldShow && shouldShowConditional;
+                const isVisible = this.shouldFieldBeVisible(config, rep);
                 container.style.display = isVisible ? '' : 'none';
+                
+                // Debug logging for visibility updates
+                if (console.debug) {
+                    console.debug(`[ModifierPanelManager] Field visibility update: ${config.id} -> ${isVisible ? 'visible' : 'hidden'}`);
+                }
+            } else {
+                // Log warning for missing containers
+                console.warn(`[ModifierPanelManager] Could not find container for field: ${config.id}`);
             }
         });
     }
@@ -1236,6 +1927,17 @@ class ConverterDialog {
     }
     
     /**
+     * Clean up resources when dialog is closed
+     */
+    cleanup() {
+        console.log('[PF2e Converter] Cleaning up dialog resources');
+        if (this.modifierManager) {
+            this.modifierManager.cleanupEventListeners();
+        }
+        this.data.selectedElementId = null;
+    }
+
+    /**
      * Clear all state and reset UI
      */
     clearAll() {
@@ -1332,6 +2034,11 @@ class ConverterDialog {
      * @param {Object} rep - The replacement object
      */
     setupModifierPanelHandlers(rep) {
+        // Clean up existing panel manager if it exists
+        if (this.modifierManager) {
+            this.modifierManager.cleanupEventListeners();
+        }
+        
         const formElement = this.ui.modifierPanelContent.querySelector('form');
         if (formElement) {
             // Setup form listeners
@@ -5204,4 +5911,76 @@ const ENABLED_FIELD = {
 // Utility: Check if a dice expression is just a number (no 'd' present)
 function isNumberOnlyDice(dice) {
     return /^\s*\d+\s*$/.test(dice);
+}
+
+/**
+ * Test function for Phase 3 event handling system
+ * This function can be called from the browser console to test the new unified event system
+ */
+function testPhase3EventSystem() {
+    console.log('[Phase 3 Test] Starting Phase 3 event system test...');
+    
+    // Test UpdateScope constants
+    console.log('[Phase 3 Test] UpdateScope constants:', ModifierPanelManager.UpdateScope);
+    
+    // Test field configuration enhancement
+    const testRenderer = new ActionRenderer();
+    const testReplacement = { action: 'Shove', variant: 'test' };
+    const enhancedConfigs = testRenderer.getEnhancedFieldConfigs(testReplacement);
+    
+    console.log('[Phase 3 Test] Enhanced field configurations:', enhancedConfigs);
+    
+    // Test dependency resolution
+    const actionField = enhancedConfigs.find(config => config.id === 'action-name');
+    const variantField = enhancedConfigs.find(config => config.id === 'action-variant');
+    
+    console.log('[Phase 3 Test] Action field affects:', actionField?.affects);
+    console.log('[Phase 3 Test] Variant field depends on:', variantField?.dependsOn);
+    
+    // Test update scope detection
+    const panelManager = new ModifierPanelManager();
+    const actionScope = panelManager.getUpdateScope(actionField, 'old', 'new');
+    const variantScope = panelManager.getUpdateScope(variantField, 'old', 'new');
+    
+    console.log('[Phase 3 Test] Action field update scope:', actionScope);
+    console.log('[Phase 3 Test] Variant field update scope:', variantScope);
+    
+    // Test dependency map building
+    const dependencyMap = panelManager.buildDependencyMap(enhancedConfigs);
+    console.log('[Phase 3 Test] Dependency map:', dependencyMap);
+    
+    // Test circular dependency detection
+    const circularDependencies = panelManager.detectCircularDependencies(dependencyMap);
+    console.log('[Phase 3 Test] Circular dependencies:', circularDependencies);
+    
+    // Test transitive dependencies
+    const transitiveDeps = panelManager.getTransitiveDependencies('action-name', dependencyMap);
+    console.log('[Phase 3 Test] Transitive dependencies for action-name:', transitiveDeps);
+    
+    // Test dependency ordering
+    const sortedFields = panelManager.sortByDependencyOrder(transitiveDeps, dependencyMap);
+    console.log('[Phase 3 Test] Sorted fields by dependency order:', sortedFields);
+    
+    // Test container resolution
+    const testContainerSelectors = [
+        '#action-name-container',
+        '[data-field-id="action-name"]',
+        '.modifier-field-row:has(#action-name)'
+    ];
+    console.log('[Phase 3 Test] Container selectors for testing:', testContainerSelectors);
+    
+    console.log('[Phase 3 Test] Phase 3 event system test completed successfully!');
+    return {
+        updateScopes: ModifierPanelManager.UpdateScope,
+        enhancedConfigs,
+        actionField,
+        variantField,
+        actionScope,
+        variantScope,
+        dependencyMap,
+        circularDependencies,
+        transitiveDeps,
+        sortedFields,
+        containerSelectors: testContainerSelectors
+    };
 }
