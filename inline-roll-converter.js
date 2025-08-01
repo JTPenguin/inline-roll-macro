@@ -8,45 +8,48 @@
 // Define a test input for demonstration and testing
 const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
 
+// Field configuration object template
+// const fieldConfig = {
+//     id: 'field-name',           // Unique field identifier
+//     type: 'select',             // Field type (select, text, checkbox, etc.)
+//     label: 'Field Label',       // Display label
+//     getValue: (rep) => rep.value, // Function to get current value
+//     setValue: (rep, val) => {},  // Function to set new value (optional)
+    
+//     // Type-specific options
+//     options: [...],             // For select/multiselect fields
+//     placeholder: 'text...',     // For text fields
+//     min: 0,                     // For number fields
+    
+//     // Conditional display
+//     showIf: (rep) => true,      // Function to determine if field should be shown
+//     hideIf: (rep) => false,     // Function to determine if field should be hidden
+    
+//     // Dynamic options (for selects that change based on other fields)
+//     dynamicOptions: (rep) => [...] // Function returning options array
+// };
+
 /**
  * BaseRenderer - Base class for type-specific renderers
  * Provides common interface and utility methods for all renderers
  */
 class BaseRenderer {
     /**
-     * Get the display title for this replacement type
+     * Get field configurations for this replacement type
      * @param {Object} replacement - The replacement object
+     * @returns {Array} Array of field configuration objects
+     */
+    getFieldConfigs(replacement) {
+        throw new Error('Must implement getFieldConfigs()');
+    }
+
+    /**
+     * Get the display title for this replacement type
+     * @param {Object} replacement - The replacement object  
      * @returns {string} Display title
      */
     getTitle(replacement) {
         throw new Error('Must implement getTitle()');
-    }
-
-    /**
-     * Render the fields for this replacement type
-     * @param {Object} replacement - The replacement object
-     * @returns {string} HTML for the fields
-     */
-    renderFields(replacement) {
-        throw new Error('Must implement renderFields()');
-    }
-
-    /**
-     * Get conditional field configurations
-     * @param {Object} replacement - The replacement object
-     * @returns {Array} Array of conditional field configs
-     */
-    getConditionalFields(replacement) {
-        return [];
-    }
-
-    /**
-     * Validate the replacement state
-     * @param {Object} replacement - The replacement object
-     * @returns {boolean} Whether the replacement is valid
-     */
-    validate(replacement) {
-        return true;
     }
 
     /**
@@ -221,42 +224,73 @@ class DamageRenderer extends BaseRenderer {
         return 'Damage Roll';
     }
 
-    renderFields(replacement) {
+    getFieldConfigs(replacement) {
+        const configs = [];
+        
+        // Enabled field
+        configs.push({
+            id: 'enabled',
+            type: 'checkbox',
+            label: 'Enabled',
+            getValue: (r) => r.enabled !== false,
+            setValue: (r, value) => { r.enabled = value; }
+        });
+
+        // Damage components (special handling)
         if (!replacement.damageComponents || !Array.isArray(replacement.damageComponents)) {
             replacement.damageComponents = [];
         }
-
-        // Render enabled field at the top
-        const enabledField = FieldRenderer.render('checkbox', 'enabled', 'Enabled', replacement.enabled !== false);
         
-        // Render damage components
-        const componentSections = replacement.damageComponents.map((component, index) => {
-            const componentFields = [
-                { type: 'text', id: 'dice', label: 'Dice', getValue: (c) => c.dice || '' },
-                { type: 'select', id: 'damage-type', label: 'Type', getValue: (c) => c.damageType || '', options: ConfigManager.DAMAGE_TYPES.options },
-                { type: 'select', id: 'category', label: 'Category', getValue: (c) => c.category || '', options: ConfigManager.DAMAGE_CATEGORIES.options }
-            ];
+        replacement.damageComponents.forEach((component, index) => {
+            configs.push({
+                id: `dice`,
+                type: 'text',
+                label: `Component ${index + 1} Dice`,
+                getValue: (r) => r.damageComponents[index]?.dice || '',
+                setValue: (r, value) => {
+                    if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
+                    r.damageComponents[index].dice = value;
+                },
+                group: `component-${index}` // For grouping related fields
+            });
             
-            return `
-                <div class="damage-component" data-component-index="${index}">
-                    <div class="modifier-field-row" style="justify-content: space-between; align-items: center;">
-                        <div class="damage-component-label">Damage Partial ${index + 1}</div>
-                    </div>
-                    ${FieldRenderer.renderRow(componentFields, component)}
-                </div>
-            `;
-        }).join('');
+            configs.push({
+                id: `damage-type`,
+                type: 'select',
+                label: `Component ${index + 1} Type`,
+                options: ConfigManager.DAMAGE_TYPES.options,
+                getValue: (r) => r.damageComponents[index]?.damageType || '',
+                setValue: (r, value) => {
+                    if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
+                    r.damageComponents[index].damageType = value;
+                },
+                group: `component-${index}`
+            });
+            
+            configs.push({
+                id: `damage-category`,
+                type: 'select',
+                label: `Component ${index + 1} Category`,
+                options: ConfigManager.DAMAGE_CATEGORIES.options,
+                getValue: (r) => r.damageComponents[index]?.category || '',
+                setValue: (r, value) => {
+                    if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
+                    r.damageComponents[index].category = value;
+                },
+                group: `component-${index}`
+            });
+        });
 
-        // Render other fields
-        const otherFields = [
-            { type: 'checkbox', id: 'area-damage', label: 'Area Damage', getValue: (r) => r.areaDamage || false }
-        ];
+        // Area damage field
+        configs.push({
+            id: 'area-damage',
+            type: 'checkbox',
+            label: 'Area Damage',
+            getValue: (r) => r.areaDamage || false,
+            setValue: (r, value) => { r.areaDamage = value; }
+        });
 
-        return `
-            ${enabledField}
-            ${componentSections}
-            ${FieldRenderer.renderRow(otherFields, replacement)}
-        `;
+        return configs;
     }
 
     getCommonTraits(replacement) {
@@ -272,75 +306,97 @@ class CheckRenderer extends BaseRenderer {
         return 'Check Roll';
     }
 
-    renderFields(replacement) {
-        const baseFields = [
-            { type: 'select', id: 'check-type', label: 'Check Type', getValue: (r) => r.checkType || 'skill', options: ConfigManager.CHECK_TYPES.options },
-            { type: 'select', id: 'dc-method', label: 'DC Method', getValue: (r) => r.dcMethod || 'static', options: ConfigManager.DC_METHODS.options },
-            { type: 'checkbox', id: 'basic-save', label: 'Basic Save', getValue: (r) => r.basicSave || false },
-            { type: 'checkbox', id: 'secret', label: 'Secret', getValue: (r) => r.secret || false }
-        ];
-
-        // Add conditional fields based on check type
-        const conditionalFields = this.getConditionalFields(replacement);
+    getFieldConfigs(replacement) {
+        const configs = [];
         
-        return FieldRenderer.renderRow([...baseFields, ...conditionalFields], replacement);
-    }
+        // Base fields
+        configs.push({
+            id: 'check-type',
+            type: 'select',
+            label: 'Check Type',
+            getValue: (r) => r.checkType || 'skill',
+            setValue: (r, value) => { r.checkType = value; },
+            options: ConfigManager.CHECK_TYPES.options
+        });
+        
+        configs.push({
+            id: 'dc-method',
+            type: 'select',
+            label: 'DC Method',
+            getValue: (r) => r.dcMethod || 'static',
+            setValue: (r, value) => { r.dcMethod = value; },
+            options: ConfigManager.DC_METHODS.options
+        });
+        
+        configs.push({
+            id: 'basic-save',
+            type: 'checkbox',
+            label: 'Basic Save',
+            getValue: (r) => r.basicSave || false,
+            setValue: (r, value) => { r.basicSave = value; }
+        });
+        
+        configs.push({
+            id: 'secret',
+            type: 'checkbox',
+            label: 'Secret',
+            getValue: (r) => r.secret || false,
+            setValue: (r, value) => { r.secret = value; }
+        });
 
-    getConditionalFields(replacement) {
-        const fields = [];
+        // Conditional fields based on check type
+        configs.push({
+            id: 'skill',
+            type: 'select',
+            label: 'Skill',
+            getValue: (r) => r.skill || '',
+            setValue: (r, value) => { r.skill = value; },
+            options: ConfigManager.SKILLS.options,
+            showIf: (r) => r.checkType === 'skill'
+        });
 
-        // Skill-specific fields
-        if (replacement.checkType === 'skill') {
-            fields.push({
-                type: 'select',
-                id: 'skill',
-                label: 'Skill',
-                getValue: (r) => r.skill || '',
-                options: ConfigManager.SKILLS.options});
-        }
+        configs.push({
+            id: 'save',
+            type: 'select',
+            label: 'Save',
+            getValue: (r) => r.save || '',
+            setValue: (r, value) => { r.save = value; },
+            options: ConfigManager.SAVES.options,
+            showIf: (r) => r.checkType === 'save'
+        });
 
-        // Save-specific fields
-        if (replacement.checkType === 'save') {
-            fields.push({
-                type: 'select',
-                id: 'save',
-                label: 'Save',
-                getValue: (r) => r.save || '',
-                options: ConfigManager.SAVES.options
-            });
-        }
-
-        // Lore-specific fields
-        if (replacement.checkType === 'lore') {
-            fields.push({
-                type: 'text',
-                id: 'lore-name',
-                label: 'Lore Name',
-                getValue: (r) => r.loreName || '',
-                placeholder: 'e.g., Sailing Lore'
-            });
-        }
+        configs.push({
+            id: 'lore-name',
+            type: 'text',
+            label: 'Lore Name',
+            getValue: (r) => r.loreName || '',
+            setValue: (r, value) => { r.loreName = value; },
+            placeholder: 'e.g., Sailing Lore',
+            showIf: (r) => r.checkType === 'lore'
+        });
 
         // DC method specific fields
-        if (replacement.dcMethod === 'static') {
-            fields.push({
-                type: 'number',
-                id: 'dc',
-                label: 'DC',
-                getValue: (r) => r.dc || '',
-                min: 1
-            });
-        } else if (replacement.dcMethod === 'target' || replacement.dcMethod === 'origin') {
-            fields.push({
-                type: 'select',
-                id: 'statistic',
-                label: 'Statistic',
-                getValue: (r) => r.statistic || '',
-                options: ConfigManager.STATISTICS.options
-            });
-        }
+        configs.push({
+            id: 'dc',
+            type: 'number',
+            label: 'DC',
+            getValue: (r) => r.dc || '',
+            setValue: (r, value) => { r.dc = value; },
+            min: 1,
+            showIf: (r) => r.dcMethod === 'static'
+        });
 
-        return fields;
+        configs.push({
+            id: 'statistic',
+            type: 'select',
+            label: 'Statistic',
+            getValue: (r) => r.statistic || '',
+            setValue: (r, value) => { r.statistic = value; },
+            options: ConfigManager.STATISTICS.options,
+            showIf: (r) => r.dcMethod === 'target' || r.dcMethod === 'origin'
+        });
+
+        return configs;
     }
 
     getCommonTraits(replacement) {
@@ -356,28 +412,30 @@ class ConditionRenderer extends BaseRenderer {
         return 'Condition';
     }
 
-    renderFields(replacement) {
-        const baseFields = [
-            { type: 'select', id: 'condition-select', label: 'Condition', getValue: (r) => r.condition || '', options: ConfigManager.ALL_CONDITIONS.options }
-        ];
+    getFieldConfigs(replacement) {
+        const configs = [];
+        
+        configs.push({
+            id: 'condition-select',
+            type: 'select',
+            label: 'Condition',
+            getValue: (r) => r.conditionName || '',
+            setValue: (r, value) => { r.conditionName = value; },
+            options: ConfigManager.ALL_CONDITIONS.options
+        });
 
-        // Add conditional value field if condition can have a value
-        const conditionalFields = this.getConditionalFields(replacement);
+        // Add value field if condition can have a value
+        configs.push({
+            id: 'condition-value',
+            type: 'number',
+            label: 'Value',
+            getValue: (r) => r.conditionValue || '',
+            setValue: (r, value) => { r.conditionValue = value; },
+            min: 1,
+            showIf: (r) => r.condition && ConfigManager.conditionCanHaveValue(r.condition)
+        });
 
-        return FieldRenderer.renderRow([...baseFields, ...conditionalFields], replacement);
-    }
-
-    getConditionalFields(replacement) {
-        if (replacement.condition && ConfigManager.conditionCanHaveValue(replacement.condition)) {
-            return [{
-                type: 'number',
-                id: 'condition-value',
-                label: 'Value',
-                getValue: (r) => r.conditionValue || '',
-                min: 1
-            }];
-        }
-        return [];
+        return configs;
     }
 
     // Conditions don't support display text
@@ -392,14 +450,38 @@ class TemplateRenderer extends BaseRenderer {
         return 'Template';
     }
 
-    renderFields(replacement) {
-        const fields = [
-            { type: 'select', id: 'template-type', label: 'Template Type', getValue: (r) => r.templateType || 'burst', options: ConfigManager.TEMPLATE_TYPES.options },
-            { type: 'number', id: 'distance', label: 'Distance', getValue: (r) => r.distance || '', min: 1 },
-            { type: 'number', id: 'width', label: 'Width', getValue: (r) => r.width || '', min: 1, showIf: (r) => r.templateType === 'line' }
-        ];
+    getFieldConfigs(replacement) {
+        const configs = [];
+        
+        configs.push({
+            id: 'template-type',
+            type: 'select',
+            label: 'Template Type',
+            getValue: (r) => r.shape || 'burst',
+            setValue: (r, value) => { r.shape = value; },
+            options: ConfigManager.TEMPLATE_TYPES.options
+        });
+        
+        configs.push({
+            id: 'distance',
+            type: 'number',
+            label: 'Distance',
+            getValue: (r) => r.distance || '',
+            setValue: (r, value) => { r.distance = value; },
+            min: 1
+        });
+        
+        configs.push({
+            id: 'width',
+            type: 'number',
+            label: 'Width',
+            getValue: (r) => r.width || '',
+            setValue: (r, value) => { r.width = value; },
+            min: 1,
+            showIf: (r) => r.shape === 'line'
+        });
 
-        return FieldRenderer.renderRow(fields, replacement);
+        return configs;
     }
 }
 
@@ -411,12 +493,19 @@ class HealingRenderer extends BaseRenderer {
         return 'Healing';
     }
 
-    renderFields(replacement) {
-        const fields = [
-            { type: 'text', id: 'dice', label: 'Dice', getValue: (r) => r.dice || '', placeholder: 'e.g., 3d8' }
-        ];
+    getFieldConfigs(replacement) {
+        const configs = [];
+        
+        configs.push({
+            id: 'dice',
+            type: 'text',
+            label: 'Dice',
+            getValue: (r) => r.dice || '',
+            setValue: (r, value) => { r.dice = value; },
+            placeholder: 'e.g., 3d8'
+        });
 
-        return FieldRenderer.renderRow(fields, replacement);
+        return configs;
     }
 
     getCommonTraits(replacement) {
@@ -432,14 +521,36 @@ class DurationRenderer extends BaseRenderer {
         return 'Duration';
     }
 
-    renderFields(replacement) {
-        const fields = [
-            { type: 'text', id: 'dice', label: 'Dice', getValue: (r) => r.dice || '', placeholder: 'e.g., 1d4' },
-            { type: 'select', id: 'unit', label: 'Unit', getValue: (r) => r.unit || 'rounds', options: ConfigManager.DURATION_UNITS.options },
-            { type: 'checkbox', id: 'gm-only', label: 'GM Only', getValue: (r) => r.gmOnly || false }
-        ];
+    getFieldConfigs(replacement) {
+        const configs = [];
+        
+        configs.push({
+            id: 'dice',
+            type: 'text',
+            label: 'Dice',
+            getValue: (r) => r.dice || '',
+            setValue: (r, value) => { r.dice = value; },
+            placeholder: 'e.g., 1d4'
+        });
+        
+        configs.push({
+            id: 'unit',
+            type: 'select',
+            label: 'Unit',
+            getValue: (r) => r.unit || 'rounds',
+            setValue: (r, value) => { r.unit = value; },
+            options: ConfigManager.DURATION_UNITS.options
+        });
+        
+        configs.push({
+            id: 'gm-only',
+            type: 'checkbox',
+            label: 'GM Only',
+            getValue: (r) => r.gmOnly || false,
+            setValue: (r, value) => { r.gmOnly = value; }
+        });
 
-        return FieldRenderer.renderRow(fields, replacement);
+        return configs;
     }
 }
 
@@ -451,40 +562,51 @@ class ActionRenderer extends BaseRenderer {
         return 'Action';
     }
 
-    renderFields(replacement) {
-        const baseFields = [
-            { type: 'select', id: 'action-name', label: 'Action', getValue: (r) => r.actionName || '', options: ConfigManager.ACTIONS.options }
-        ];
-
-        // Add conditional fields based on action
-        const conditionalFields = this.getConditionalFields(replacement);
-
-        return FieldRenderer.renderRow([...baseFields, ...conditionalFields], replacement);
-    }
-
-    getConditionalFields(replacement) {
-        const fields = [];
+    getFieldConfigs(replacement) {
+        const configs = [];
+        
+        configs.push({
+            id: 'action-name',
+            type: 'select',
+            label: 'Action',
+            getValue: (r) => r.actionName || '',
+            setValue: (r, value) => { r.actionName = value; },
+            options: ConfigManager.ACTIONS.options
+        });
 
         // Add variant selection if action has variants
-        if (replacement.actionName && ConfigManager.actionHasVariants(replacement.actionName)) {
-            fields.push({
-                type: 'select',
-                id: 'action-variant',
-                label: 'Variant',
-                getValue: (r) => r.actionVariant || '',
-                options: (r) => ConfigManager.ACTION_VARIANTS[r.actionName] || []
-            });
-        }
+        configs.push({
+            id: 'action-variant',
+            type: 'select',
+            label: 'Variant',
+            getValue: (r) => r.actionVariant || '',
+            setValue: (r, value) => { r.actionVariant = value; },
+            options: (r) => ConfigManager.ACTION_VARIANTS[r.actionName] || [],
+            showIf: (r) => r.actionName && ConfigManager.actionHasVariants(r.actionName)
+        });
 
         // Add DC and statistic fields for actions that need them
-        if (replacement.actionName && ['Shove', 'Trip', 'Grapple'].includes(replacement.actionName)) {
-            fields.push(
-                { type: 'select', id: 'dc-method', label: 'DC Method', getValue: (r) => r.dcMethod || 'static', options: ConfigManager.DC_METHODS.options },
-                { type: 'select', id: 'statistic', label: 'Statistic', getValue: (r) => r.statistic || '', options: ConfigManager.STATISTICS.options }
-            );
-        }
+        configs.push({
+            id: 'dc-method',
+            type: 'select',
+            label: 'DC Method',
+            getValue: (r) => r.dcMethod || 'static',
+            setValue: (r, value) => { r.dcMethod = value; },
+            options: ConfigManager.DC_METHODS.options,
+            showIf: (r) => r.actionName && ['Shove', 'Trip', 'Grapple'].includes(r.actionName)
+        });
 
-        return fields;
+        configs.push({
+            id: 'statistic',
+            type: 'select',
+            label: 'Statistic',
+            getValue: (r) => r.statistic || '',
+            setValue: (r, value) => { r.statistic = value; },
+            options: ConfigManager.STATISTICS.options,
+            showIf: (r) => r.actionName && ['Shove', 'Trip', 'Grapple'].includes(r.actionName)
+        });
+
+        return configs;
     }
 }
 
@@ -654,8 +776,11 @@ class ModifierPanelManager {
         // Get title from renderer
         const title = renderer.getTitle(rep);
         
-        // Get fields from renderer
-        const fields = renderer.renderFields(rep);
+        // Get field configurations from renderer
+        const fieldConfigs = renderer.getFieldConfigs(rep);
+        
+        // Render field configs as HTML
+        const fields = fieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
         
         // Get common traits from renderer
         const commonTraits = renderer.getCommonTraits(rep);
@@ -677,6 +802,24 @@ class ModifierPanelManager {
                 ${displayTextHTML}
             </form>
         `;
+    }
+    
+    renderFieldFromConfig(config, rep) {
+        const value = config.getValue(rep);
+        const shouldShow = !config.hideIf || !config.hideIf(rep);
+        const shouldShowConditional = !config.showIf || config.showIf(rep);
+        const isVisible = shouldShow && shouldShowConditional;
+        
+        const options = {
+            hidden: !isVisible,
+            options: typeof config.options === 'function' ? config.options(rep) : config.options,
+            placeholder: config.placeholder,
+            min: config.min,
+            max: config.max,
+            rows: config.rows
+        };
+        
+        return FieldRenderer.render(config.type, config.id, config.label, value, options);
     }
 
     generateJSONPanel(type, rep) {
@@ -728,95 +871,21 @@ class ModifierPanelManager {
             }
         }
         
-        // Get all fields from renderer for visibility updates
-        const allFields = this.getAllFieldsFromRenderer(renderer, rep);
+        // Get field configurations from renderer for event handling
+        const fieldConfigs = renderer.getFieldConfigs(rep);
         
         // Initial update after render
-        this.updateFieldVisibility(formElement, allFields, rep);
+        this.updateFieldVisibility(formElement, fieldConfigs, rep);
         
         formElement.addEventListener('input', (event) => {
-            const element = event.target;
-            const fieldId = element.id;
-            
-            if (!element || !fieldId) return;
-            
-            let value;
-            switch (element.type) {
-                case 'checkbox':
-                    value = element.checked;
-                    break;
-                case 'number':
-                    value = element.value;
-                    break;
-                case 'select-one':
-                    value = element.value;
-                    break;
-                case 'textarea':
-                case 'text':
-                default:
-                    value = element.value;
-            }
-            
-            console.log('[ModifierPanelManager] Field changed:', fieldId, 'new value:', value);
-            
-            // Direct field mapping (works for most replacement types)
-            rep[fieldId] = value;
-            
-            // Special handling for condition field changes
-            if (fieldId === 'condition-select' && rep.updateUUID) {
-                console.log('[ModifierPanelManager] Condition changed, updating UUID');
-                rep.updateUUID();
-            }
-            
-            // Update field visibility and dynamic selects
-            this.updateFieldVisibility(formElement, allFields, rep);
-            
-            if (onChangeCallback) {
-                onChangeCallback(rep, fieldId);
-            }
+            this.handleFieldChange(event, fieldConfigs, rep, onChangeCallback, formElement);
         });
         
         formElement.addEventListener('change', (event) => {
-            let shouldTriggerCallback = false;
+            // Handle field changes using the helper method
+            this.handleFieldChange(event, fieldConfigs, rep, onChangeCallback, formElement);
             
-            // Handle field changes by directly accessing the element
-            const element = event.target;
-            const fieldId = element.id;
-            
-            if (element) {
-                let value;
-                switch (element.type) {
-                    case 'checkbox':
-                        value = element.checked;
-                        break;
-                    case 'select-one':
-                        value = element.value;
-                        break;
-                    case 'select-multiple':
-                        value = Array.from(element.selectedOptions).map(option => option.value);
-                        break;
-                    default:
-                        value = element.value;
-                }
-                
-                console.log('[ModifierPanelManager] Field changed (change event):', fieldId, 'new value:', value);
-                rep[fieldId] = value;
-                shouldTriggerCallback = true;
-                
-                // Special handling for condition field changes (still needed for UUID updates)
-                if (fieldId === 'condition-select' && rep.updateUUID) {
-                    console.log('[ModifierPanelManager] Condition changed via select, updating visibility');
-                }
-            }
-            
-            // Generic updates for all field changes:
-            // 1. Update all field visibility
-            this.updateFieldVisibility(formElement, allFields, rep);
-            
-            // 2. Update all dynamic select fields (this handles action variants automatically)
-            this.updateDynamicSelectFields(formElement, allFields, rep);
-            
-            // Handle trait checkboxes
+            // Handle trait checkboxes separately
             const commonTraits = renderer.getCommonTraits(rep);
             const traitName = event.target.id.replace(`${type}-trait-`, '');
             if (commonTraits.includes(traitName)) {
@@ -835,11 +904,10 @@ class ModifierPanelManager {
                 if (traitsInput) {
                     traitsInput.setValue(currentTraits, false);
                 }
-                shouldTriggerCallback = true;
-            }
-            
-            if (shouldTriggerCallback && onChangeCallback) {
-                onChangeCallback(rep, undefined);
+                
+                if (onChangeCallback) {
+                    onChangeCallback(rep, undefined);
+                }
             }
         });
     }
@@ -851,11 +919,61 @@ class ModifierPanelManager {
      * @returns {Array} Array of field configurations
      */
     getAllFieldsFromRenderer(renderer, rep) {
-        // For now, we'll return an empty array since the renderers generate HTML directly
-        // This method is used for field visibility updates, but since renderers generate HTML
-        // directly, we don't have field configs to work with. The field visibility updates
-        // will be handled by the renderers themselves through conditional rendering.
-        return [];
+        // Return field configurations from the renderer
+        return renderer.getFieldConfigs(rep);
+    }
+    
+    /**
+     * Handle field change events consistently
+     * @param {Event} event - The input/change event
+     * @param {Array} fieldConfigs - Array of field configurations
+     * @param {Object} rep - The replacement object
+     * @param {Function} onChangeCallback - Callback function
+     * @param {HTMLElement} formElement - The form element
+     */
+    handleFieldChange(event, fieldConfigs, rep, onChangeCallback, formElement) {
+        const fieldId = event.target.id;
+        const fieldConfig = fieldConfigs.find(config => config.id === fieldId);
+        
+        if (!fieldConfig) return; // Skip unknown fields
+        
+        if (fieldConfig.setValue) {
+            const value = this.getFieldValue(event.target);
+            fieldConfig.setValue(rep, value);
+            
+            // Update visibility after change
+            this.updateFieldVisibility(formElement, fieldConfigs, rep);
+            
+            // Special handling for condition field changes
+            if (fieldId === 'condition-select' && rep.updateUUID) {
+                console.log('[ModifierPanelManager] Condition changed, updating UUID');
+                rep.updateUUID();
+            }
+            
+            if (onChangeCallback) {
+                onChangeCallback(rep, fieldId);
+            }
+        }
+    }
+    
+    /**
+     * Get the value from a form element based on its type
+     * @param {HTMLElement} element - The form element
+     * @returns {any} The element's value
+     */
+    getFieldValue(element) {
+        switch (element.type) {
+            case 'checkbox':
+                return element.checked;
+            case 'number':
+                return element.value;
+            case 'select-one':
+                return element.value;
+            case 'textarea':
+            case 'text':
+            default:
+                return element.value;
+        }
     }
 
     addDamageFormListeners(formElement, rep, renderer, onChangeCallback) {
@@ -879,7 +997,7 @@ class ModifierPanelManager {
                     // Map field IDs to component properties
                     if (fieldId === 'dice') component.dice = value;
                     else if (fieldId === 'damage-type') component.damageType = value;
-                    else if (fieldId === 'category') component.category = value;
+                    else if (fieldId === 'damage-category') component.category = value;
                 }
             } else {
                 // Handle main damage fields
@@ -908,7 +1026,7 @@ class ModifierPanelManager {
                 if (component) {
                     if (fieldId === 'dice') component.dice = value;
                     else if (fieldId === 'damage-type') component.damageType = value;
-                    else if (fieldId === 'category') component.category = value;
+                    else if (fieldId === 'damage-category') component.category = value;
                 }
             } else {
                 // Handle main damage fields
@@ -923,11 +1041,18 @@ class ModifierPanelManager {
     }
 
     // Generic function to update field visibility based on hideIf/showIf
-    updateFieldVisibility(formElement, fields, rep, prefix = '') {
-        // Since renderers generate HTML directly, field visibility is handled
-        // by the renderers themselves through conditional rendering
-        // This method is kept for backward compatibility but doesn't need to do anything
-        // when using the new renderer system
+    updateFieldVisibility(formElement, fieldConfigs, rep, prefix = '') {
+        fieldConfigs.forEach(config => {
+            const field = formElement.querySelector(`#${config.id}`);
+            const container = formElement.querySelector(`#${config.id}-container`);
+            
+            if (container) {
+                const shouldShow = !config.hideIf || !config.hideIf(rep);
+                const shouldShowConditional = !config.showIf || config.showIf(rep);
+                const isVisible = shouldShow && shouldShowConditional;
+                container.style.display = isVisible ? '' : 'none';
+            }
+        });
     }
 
     // Update the options of a select field based on the current value of the replacement
