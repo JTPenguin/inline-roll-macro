@@ -1848,15 +1848,14 @@ class ConditionPattern {
 
     // Static handler methods
     static handleLegacyCondition(match) {
-        return { 
-            match, 
-            args: ['flat-footed'], 
-            originalText: match[0] // Preserve original case
-        };
+        // Mark this as a legacy condition for the replacement constructor
+        match.isLegacyCondition = true;
+        match.originalConditionText = match[0]; // Preserve original case
+        return match;
     }
 
     static handleCondition(match) {
-        return { match, args: [match[1], match[2]] };
+        return match;
     }
 
     // Standard static methods (from template)
@@ -3153,10 +3152,7 @@ class HealingReplacement extends RollReplacement {
 // -------------------- Condition Replacement --------------------
 class ConditionReplacement extends Replacement {
     constructor(match, type, config) {
-        // Extract the actual regex match from the matchObj wrapper if needed
-        const actualMatch = match.match || match;
-        super(actualMatch, type);
-        
+        super(match, type);
         this.priority = 50;
         this.conditionName = '';
         this.degree = null;
@@ -3172,7 +3168,7 @@ class ConditionReplacement extends Replacement {
         // Store state reference for UUID lookups
         this._state = config?.linkedConditions?.state || null;
         
-        this.parseMatch(actualMatch, config);
+        this.parseMatch(match, config);
         
         let dedupKey = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
         if (dedupKey === 'flat-footed') dedupKey = 'off-guard';
