@@ -469,9 +469,8 @@ class DamageRenderer extends BaseRenderer {
         }).join('');
     }
 
-    // Should be overriden by subclasses that have common traits (usually 'secret')
-    getCommonTraits(replacement) {
-        return [];
+    supportsTraits(replacement) {
+        return false;
     }
 }
 
@@ -496,28 +495,7 @@ class CheckRenderer extends BaseRenderer {
             affects: ['skill', 'save', 'lore-name'],
             triggersUpdate: 'visibility'
         });
-        
-        configs.push({
-            id: 'dc-method',
-            type: 'select',
-            label: 'DC Method',
-            getValue: (r) => r.dcMethod || 'static',
-            setValue: (r, value) => { r.dcMethod = value; },
-            options: ConfigManager.DC_METHODS.options,
-            affects: ['dc', 'statistic'],
-            triggersUpdate: 'visibility'
-        });
-        
-        configs.push({
-            id: 'basic-save',
-            type: 'checkbox',
-            label: 'Basic Save',
-            getValue: (r) => r.basic || false,
-            setValue: (r, value) => { r.basic = value; },
-            showIf: (r) => r.checkType === 'save'
-        });
 
-        // Conditional fields based on check type
         configs.push({
             id: 'skill',
             type: 'select',
@@ -550,6 +528,17 @@ class CheckRenderer extends BaseRenderer {
             dependsOn: ['check-type'],
             showIf: (r) => r.checkType === 'lore'
         });
+        
+        configs.push({
+            id: 'dc-method',
+            type: 'select',
+            label: 'DC Method',
+            getValue: (r) => r.dcMethod || 'static',
+            setValue: (r, value) => { r.dcMethod = value; },
+            options: ConfigManager.DC_METHODS.options,
+            affects: ['dc', 'statistic'],
+            triggersUpdate: 'visibility'
+        });
 
         // DC method specific fields
         configs.push({
@@ -572,6 +561,15 @@ class CheckRenderer extends BaseRenderer {
             options: ConfigManager.STATISTICS.options,
             dependsOn: ['dc-method'],
             showIf: (r) => r.dcMethod === 'target' || r.dcMethod === 'origin'
+        });
+        
+        configs.push({
+            id: 'basic-save',
+            type: 'checkbox',
+            label: 'Basic',
+            getValue: (r) => r.basic || false,
+            setValue: (r, value) => { r.basic = value; },
+            showIf: (r) => r.checkType === 'save'
         });
 
         return configs;
@@ -643,7 +641,7 @@ class TemplateRenderer extends BaseRenderer {
         configs.push({
             id: 'template-type',
             type: 'select',
-            label: 'Template Type',
+            label: 'Type',
             getValue: (r) => r.shape || 'burst',
             setValue: (r, value) => { r.shape = value; },
             options: ConfigManager.TEMPLATE_TYPES.options,
@@ -737,8 +735,8 @@ class DurationRenderer extends BaseRenderer {
             id: 'gm-only',
             type: 'checkbox',
             label: 'GM Only',
-            getValue: (r) => r.gmOnly || false,
-            setValue: (r, value) => { r.gmOnly = value; }
+            getValue: (r) => r.isGM || false,
+            setValue: (r, value) => { r.isGM = value; }
         });
 
         return configs;
@@ -4452,7 +4450,7 @@ class CheckReplacement extends RollReplacement {
                 {
                     id: 'basic-save',
                     type: 'checkbox',
-                    label: 'Basic Save',
+                    label: 'Basic',
                     getValue: (rep) => !!rep.basic,
                     setValue: (rep, value) => { rep.basic = value; },
                     hideIf: (rep) => rep.checkType !== 'save'
