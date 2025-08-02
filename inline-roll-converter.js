@@ -338,7 +338,7 @@ class FieldRenderer {
  */
 class DamageRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Damage Roll';
+        return 'Damage';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -405,70 +405,6 @@ class DamageRenderer extends BaseRenderer {
         return configs;
     }
 
-    // Override the field rendering to include component data attributes
-    renderFields(fields, target, prefix = '') {
-        return fields.map((field, idx) => {
-            if (field.showIf && !field.showIf(target)) return '';
-            
-            const value = field.getValue(target);
-            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
-            
-            // Add component data attributes if this is a component field
-            let dataAttributes = '';
-            if (field.componentIndex !== undefined) {
-                dataAttributes = ` data-component-index="${field.componentIndex}" data-component-field="${field.componentField}"`;
-            }
-            
-            const commonAttrs = `id="${fieldId}" class="modifier-panel-input"${dataAttributes}`;
-            
-            let containerStyle = '';
-            if (field.hideIf && field.hideIf(target)) {
-                containerStyle = 'display: none;';
-            }
-            
-            let rowClass = 'modifier-field-row';
-            let labelClass = 'modifier-panel-label';
-            
-            switch (field.type) {
-                case 'select':
-                    const optionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
-                    const options = (optionsArray || []).map(option => {
-                        const optionValue = typeof option === 'object' ? option.value : option;
-                        const optionLabel = typeof option === 'object' ? option.label : option;
-                        const selected = optionValue === value ? 'selected' : '';
-                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                    }).join('');
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <select ${commonAttrs}>
-                                ${options}
-                            </select>
-                        </div>
-                    `;
-                case 'text':
-                    const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
-                        </div>
-                    `;
-                case 'checkbox':
-                    const checked = value ? 'checked' : '';
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <input type="checkbox" ${commonAttrs.replace('modifier-panel-input', 'modifier-panel-checkbox')} ${checked} />
-                        </div>
-                    `;
-                // Add other field types as needed...
-                default:
-                    return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
-            }
-        }).join('');
-    }
-
     supportsTraits(replacement) {
         return false;
     }
@@ -479,7 +415,7 @@ class DamageRenderer extends BaseRenderer {
  */
 class CheckRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Check Roll';
+        return 'Check';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -1108,125 +1044,99 @@ class ModifierPanelManager {
         `;
     }
 
-    // DRY: Render a group of fields
-    renderFields(fields, target, prefix = '') {
-        return fields.map((field, idx) => {
-            if (field.showIf && !field.showIf(target)) return '';
-            const value = field.getValue(target);
-            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
-            const commonAttrs = `id="${fieldId}" class="modifier-panel-input"`;
-            let containerStyle = '';
-            if (field.hideIf && field.hideIf(target)) {
-                containerStyle = 'display: none;';
-            }
-            // Use CSS class for all field containers
-            let rowClass = 'modifier-field-row';
-            let labelClass = 'modifier-panel-label';
-            switch (field.type) {
-                case 'select':
-                    const optionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
-                    const options = (optionsArray || []).map(option => {
-                        const optionValue = typeof option === 'object' ? option.value : option;
-                        const optionLabel = typeof option === 'object' ? option.label : option;
-                        const selected = optionValue === value ? 'selected' : '';
-                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                    }).join('');
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <select ${commonAttrs}>
-                                ${options}
-                            </select>
-                        </div>
-                    `;
-                case 'number':
-                    const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
-                        </div>
-                    `;
-                case 'checkbox':
-                    const checked = value ? 'checked' : '';
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
-                        </div>
-                    `;
-                case 'text':
-                    const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
-                        </div>
-                    `;
-                case 'textarea':
-                    const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-                    const rows = field.rows || 3;
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
-                        </div>
-                    `;
-                case 'multiselect':
-                    const selectedValues = Array.isArray(value) ? value : [value];
-                    const multiOptionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
-                    const multiOptions = (multiOptionsArray || []).map(option => {
-                        const optionValue = typeof option === 'object' ? option.value : option;
-                        const optionLabel = typeof option === 'object' ? option.label : option;
-                        const selected = selectedValues.includes(optionValue) ? 'selected' : '';
-                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-                    }).join('');
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <select ${commonAttrs} multiple>
-                                ${multiOptions}
-                            </select>
-                        </div>
-                    `;
-                case 'traits':
-                    const uniqueId = `${fieldId}-container`;
-                    return `
-                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-                            <label class="${labelClass}">${field.label}</label>
-                            <div id="${uniqueId}" style="flex: 1;"></div>
-                        </div>
-                    `;
-                default:
-                    return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
-            }
-        }).join('');
-    }
-
-    // // DRY: Render common traits checkboxes
-    // renderCommonTraits(commonTraits, rep, type) {
-    //     if (!commonTraits || !commonTraits.length) return '';
-    //     return commonTraits.map(trait => {
-    //             const isChecked = rep.traits && rep.traits.includes(trait);
-    //             return `
-    //                 <div class="modifier-field-row">
-    //                     <label class="modifier-panel-label">${trait.charAt(0).toUpperCase() + trait.slice(1)}</label>
-    //                     <input type="checkbox" id="${type}-trait-${trait}" class="modifier-panel-checkbox" ${isChecked ? 'checked' : ''} />
-    //                 </div>
-    //             `;
-    //         }).join('');
-    // }
-
-    // // DRY: Render traits field
-    // renderTraitsField(config, type) {
-    //     // Always render traits field if config is provided (indicating traits are supported)
-    //     const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
-    //     return `
-    //         <div class="modifier-field-row">
-    //             <label class="modifier-panel-label">Traits</label>
-    //             <div id="${traitsContainerId}" style="flex: 1;"></div>
-    //         </div>
-    //     `;
+    // // DRY: Render a group of fields
+    // renderFields(fields, target, prefix = '') {
+    //     return fields.map((field, idx) => {
+    //         if (field.showIf && !field.showIf(target)) return '';
+    //         const value = field.getValue(target);
+    //         const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
+    //         const commonAttrs = `id="${fieldId}" class="modifier-panel-input"`;
+    //         let containerStyle = '';
+    //         if (field.hideIf && field.hideIf(target)) {
+    //             containerStyle = 'display: none;';
+    //         }
+    //         // Use CSS class for all field containers
+    //         let rowClass = 'modifier-field-row';
+    //         let labelClass = 'modifier-panel-label';
+    //         switch (field.type) {
+    //             case 'select':
+    //                 const optionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
+    //                 const options = (optionsArray || []).map(option => {
+    //                     const optionValue = typeof option === 'object' ? option.value : option;
+    //                     const optionLabel = typeof option === 'object' ? option.label : option;
+    //                     const selected = optionValue === value ? 'selected' : '';
+    //                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+    //                 }).join('');
+    //                 return `
+    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+    //                         <label class="${labelClass}">${field.label}</label>
+    //                         <select ${commonAttrs}>
+    //                             ${options}
+    //                         </select>
+    //                     </div>
+    //                 `;
+    //             case 'number':
+    //                 const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
+    //                 return `
+    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+    //                         <label class="${labelClass}">${field.label}</label>
+    //                         <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
+    //                     </div>
+    //                 `;
+    //             case 'checkbox':
+    //                 const checked = value ? 'checked' : '';
+    //                 return `
+    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+    //                         <label class="${labelClass}">${field.label}</label>
+    //                         <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
+    //                     </div>
+    //                 `;
+    //             case 'text':
+    //                 const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+    //                 return `
+    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+    //                         <label class="${labelClass}">${field.label}</label>
+    //                         <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+    //                     </div>
+    //                 `;
+    //             case 'textarea':
+    //                 const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+    //                 const rows = field.rows || 3;
+    //                 return `
+    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+    //                         <label class="${labelClass}">${field.label}</label>
+    //                         <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+    //                     </div>
+    //                 `;
+    //             case 'multiselect':
+    //                 const selectedValues = Array.isArray(value) ? value : [value];
+    //                 const multiOptionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
+    //                 const multiOptions = (multiOptionsArray || []).map(option => {
+    //                     const optionValue = typeof option === 'object' ? option.value : option;
+    //                     const optionLabel = typeof option === 'object' ? option.label : option;
+    //                     const selected = selectedValues.includes(optionValue) ? 'selected' : '';
+    //                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+    //                 }).join('');
+    //                 return `
+    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+    //                         <label class="${labelClass}">${field.label}</label>
+    //                         <select ${commonAttrs} multiple>
+    //                             ${multiOptions}
+    //                         </select>
+    //                     </div>
+    //                 `;
+    //             case 'traits':
+    //                 const uniqueId = `${fieldId}-container`;
+    //                 return `
+    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+    //                         <label class="${labelClass}">${field.label}</label>
+    //                         <div id="${uniqueId}" style="flex: 1;"></div>
+    //                     </div>
+    //                 `;
+    //             default:
+    //                 return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
+    //         }
+    //     }).join('');
     // }
 
     generatePanelHTML(type, rep) {
@@ -1235,21 +1145,85 @@ class ModifierPanelManager {
         if (!renderer) {
             return this.generateJSONPanel(type, rep);
         }
-
+    
         // Get title from renderer
         const title = renderer.getTitle(rep);
         
-        // Get field configurations from renderer (this now includes all fields: base, type-specific, traits, display text)
+        // Get field configurations from renderer
         const fieldConfigs = renderer.getFieldConfigs(rep);
         
-        // Render all fields using the field configurations
-        const fields = fieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
-
+        let fields = '';
+        
+        // Special handling for damage type to render component containers
+        if (type === 'damage') {
+            fields = this.renderDamageFields(fieldConfigs, rep);
+        } else {
+            // Standard field rendering for other types
+            fields = fieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
+        }
+    
         return `
             <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
                 ${this.renderPanelHeader(title)}
                 ${fields}
             </form>
+        `;
+    }
+
+    /**
+     * Special field rendering for damage components with containers
+     */
+    renderDamageFields(fieldConfigs, rep) {
+        // Group fields by component and non-component fields
+        const componentGroups = new Map();
+        const nonComponentFields = [];
+        
+        fieldConfigs.forEach(config => {
+            if (config.componentIndex !== undefined) {
+                if (!componentGroups.has(config.componentIndex)) {
+                    componentGroups.set(config.componentIndex, []);
+                }
+                componentGroups.get(config.componentIndex).push(config);
+            } else {
+                nonComponentFields.push(config);
+            }
+        });
+
+        let html = '';
+
+        // Render component groups first
+        for (const [componentIndex, componentFields] of componentGroups) {
+            html += this.renderDamageComponentContainer(componentFields, rep, componentIndex);
+        }
+
+        // Render non-component fields
+        html += nonComponentFields.map(config => this.renderFieldFromConfig(config, rep)).join('');
+
+        return html;
+    }
+
+    /**
+     * Render a damage component container with its fields
+     */
+    renderDamageComponentContainer(componentFields, rep, componentIndex) {
+        const componentTitle = `Damage Component ${componentIndex + 1}`;
+        
+        // Sort fields in desired order: dice, type, category
+        const sortedFields = componentFields.sort((a, b) => {
+            const order = { 'dice': 0, 'damageType': 1, 'category': 2 };
+            const aOrder = order[a.componentField] || 999;
+            const bOrder = order[b.componentField] || 999;
+            return aOrder - bOrder;
+        });
+
+        const fieldsHtml = sortedFields.map(config => this.renderFieldFromConfig(config, rep)).join('');
+
+        return `
+            <div class="damage-component-container">
+                <div class="damage-component-fields">
+                    ${fieldsHtml}
+                </div>
+            </div>
         `;
     }
     
@@ -3080,7 +3054,7 @@ class DamagePattern {
 class CheckPattern {
     static type = 'check';
     static priority = 90;
-    static description = 'Check roll patterns';
+    static description = 'Check patterns';
 
     static PATTERNS = [
         // Comprehensive save pattern (highest priority)
@@ -5231,6 +5205,55 @@ function showConverterDialog() {
             }
             .pf2e-interactive.disabled:hover {
                 background: #dddddd;
+            }
+
+            /* Damage component container styling */
+            .damage-component-container {
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                padding: 12px;
+                background: #f9f9f9;
+                position: relative;
+                transition: border-color 0.2s ease;
+            }
+
+            .damage-component-header {
+                font-weight: bold;
+                color: #555;
+                margin-bottom: 8px;
+                font-size: 13px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+
+            .damage-component-fields {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            /* Component field labels should be smaller */
+            .damage-component-container .modifier-panel-label {
+                width: 68px;
+            }
+
+            /* Adjust field rows within components to be more compact */
+            .damage-component-container .modifier-field-row {
+                gap: 6px;
+                margin-bottom: 0;
+            }
+
+            /* Make component inputs slightly smaller */
+            .damage-component-container .modifier-panel-input {
+                font-size: 13px;
+            }
+
+            /* Add visual separation for non-component fields after components */
+            .damage-component-container + .modifier-field-row {
+                margin-top: 15px;
+                padding-top: 10px;
+                border-top: 1px solid #eee;
             }
         </style>
     `;
