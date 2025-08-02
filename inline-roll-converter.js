@@ -39,11 +39,104 @@ const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage a
 class BaseRenderer {
     /**
      * Get field configurations for this replacement type
-     * @param {Object} replacement - The replacement object
-     * @returns {Array} Array of field configuration objects
+     * This base implementation ensures enabled field is always first
      */
     getFieldConfigs(replacement) {
         throw new Error('Must implement getFieldConfigs()');
+    }
+
+    /**
+     * Get the base field configurations that all replacements should have
+     * This ensures consistent enabled field across all types
+     */
+    getBaseFieldConfigs(replacement) {
+        return [
+            {
+                id: 'enabled',
+                type: 'checkbox',
+                label: 'Enabled',
+                getValue: (r) => r.enabled !== false,
+                setValue: (r, value) => {
+                    console.log(`[BaseRenderer] Setting enabled for ${r.type || 'unknown'} (${r.id}): ${r.enabled} -> ${value}`);
+                    r.enabled = value;
+                }
+            }
+        ];
+    }
+
+    /**
+     * Get field configurations with base fields prepended
+     * Subclasses should override getTypeSpecificFieldConfigs instead of getFieldConfigs
+     */
+    getFieldConfigs(replacement) {
+        const baseFields = this.getBaseFieldConfigs(replacement);
+        const typeSpecificFields = this.getTypeSpecificFieldConfigs(replacement);
+        const traitFields = this.getTraitFieldConfigs(replacement);
+        const displayTextFields = this.getDisplayTextFieldConfigs(replacement);
+        
+        return [
+            ...baseFields,
+            ...typeSpecificFields,
+            ...traitFields,
+            ...displayTextFields
+        ];
+    }
+
+    /**
+     * Get type-specific field configurations
+     * Subclasses should override this method instead of getFieldConfigs
+     */
+    getTypeSpecificFieldConfigs(replacement) {
+        return [];
+    }
+
+    /**
+     * Get trait-related field configurations if supported
+     */
+    getTraitFieldConfigs(replacement) {
+        if (!this.supportsTraits(replacement)) {
+            return [];
+        }
+
+        const commonTraits = this.getCommonTraits(replacement);
+        const traitFields = [];
+
+        // Add common trait checkboxes first
+        commonTraits.forEach(trait => {
+            traitFields.push({
+                id: `trait-${trait}`,
+                type: 'checkbox',
+                label: trait.charAt(0).toUpperCase() + trait.slice(1),
+                getValue: (r) => r.traits && r.traits.includes(trait),
+                setValue: (r, value) => {
+                    if (!r.traits) r.traits = [];
+                    if (value && !r.traits.includes(trait)) {
+                        r.traits.push(trait);
+                    } else if (!value && r.traits.includes(trait)) {
+                        r.traits = r.traits.filter(t => t !== trait);
+                    }
+                }
+            });
+        });
+
+        // Add traits input field last (so it appears after common trait checkboxes)
+        traitFields.push({
+            id: 'traits',
+            type: 'traits',
+            label: 'Traits',
+            getValue: (r) => r.traits || [],
+            setValue: (r, value) => { r.traits = value; }
+        });
+
+        return traitFields;
+    }
+
+    /**
+     * Get display text field configuration if supported
+     */
+    getDisplayTextFieldConfigs(replacement) {
+        const displayTextField = this.getDisplayTextField(replacement);
+        return displayTextField ? [displayTextField] : [];
     }
 
     /**
@@ -81,10 +174,11 @@ class BaseRenderer {
      */
     getDisplayTextField(replacement) {
         return {
-            type: 'text',
             id: 'display-text',
+            type: 'text',
             label: 'Display Text',
             getValue: (r) => r.displayText || '',
+            setValue: (r, value) => { r.displayText = value; },
             placeholder: 'Custom display text...'
         };
     }
@@ -126,7 +220,7 @@ class FieldRenderer {
      * @returns {string} Field HTML
      */
     static render(type, id, label, value, options = {}) {
-        const fieldId = id; // Use simple field name as ID
+        const fieldId = id;
         const containerStyle = options.hidden ? 'display: none;' : '';
         const rowClass = 'modifier-field-row';
         const labelClass = 'modifier-panel-label';
@@ -187,11 +281,12 @@ class FieldRenderer {
                 `;
 
             case 'traits':
-                const uniqueId = `traits-container-${Math.random().toString(36).substr(2, 9)}`;
+                // Use the fieldId directly as the container ID for the traits input
+                const traitsContainerId = `${fieldId}-input-container`;
                 return `
                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
                         <label class="${labelClass}">${label}</label>
-                        <div id="${uniqueId}" style="flex: 1;"></div>
+                        <div id="${traitsContainerId}" style="flex: 1;"></div>
                     </div>
                 `;
 
@@ -246,19 +341,10 @@ class DamageRenderer extends BaseRenderer {
         return 'Damage Roll';
     }
 
-    getFieldConfigs(replacement) {
+    getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
-        
-        // Enabled field
-        configs.push({
-            id: 'enabled',
-            type: 'checkbox',
-            label: 'Enabled',
-            getValue: (r) => r.enabled !== false,
-            setValue: (r, value) => { r.enabled = value; }
-        });
 
-        // Damage components with unique IDs per component
+        // Damage components (special handling)
         if (!replacement.damageComponents || !Array.isArray(replacement.damageComponents)) {
             replacement.damageComponents = [];
         }
@@ -274,7 +360,8 @@ class DamageRenderer extends BaseRenderer {
                     r.damageComponents[index].dice = value;
                 },
                 componentIndex: index,
-                componentField: 'dice'
+                componentField: 'dice',
+                placeholder: 'e.g., 2d6+3'
             });
             
             configs.push({
@@ -395,10 +482,9 @@ class CheckRenderer extends BaseRenderer {
         return 'Check Roll';
     }
 
-    getFieldConfigs(replacement) {
+    getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
         
-        // Base fields
         configs.push({
             id: 'check-type',
             type: 'select',
@@ -406,8 +492,8 @@ class CheckRenderer extends BaseRenderer {
             getValue: (r) => r.checkType || 'skill',
             setValue: (r, value) => { r.checkType = value; },
             options: ConfigManager.CHECK_TYPES.options,
-            affects: ['skill', 'save', 'lore-name'], // Check type affects conditional fields
-            triggersUpdate: ModifierPanelManager.UpdateScope.VISIBILITY
+            affects: ['skill', 'save', 'lore-name'],
+            triggersUpdate: 'visibility'
         });
         
         configs.push({
@@ -417,17 +503,17 @@ class CheckRenderer extends BaseRenderer {
             getValue: (r) => r.dcMethod || 'static',
             setValue: (r, value) => { r.dcMethod = value; },
             options: ConfigManager.DC_METHODS.options,
-            affects: ['dc', 'statistic'], // DC method affects DC and statistic fields
-            triggersUpdate: ModifierPanelManager.UpdateScope.VISIBILITY
+            affects: ['dc', 'statistic'],
+            triggersUpdate: 'visibility'
         });
         
         configs.push({
             id: 'basic-save',
             type: 'checkbox',
             label: 'Basic Save',
-            getValue: (r) => r.basicSave || false,
-            setValue: (r, value) => { r.basicSave = value; },
-            showIf: (r) => r.checkType === 'save' // Only show for save checks
+            getValue: (r) => r.basic || false,
+            setValue: (r, value) => { r.basic = value; },
+            showIf: (r) => r.checkType === 'save'
         });
         
         configs.push({
@@ -511,7 +597,7 @@ class ConditionRenderer extends BaseRenderer {
         return 'Condition';
     }
 
-    getFieldConfigs(replacement) {
+    getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
         
         configs.push({
@@ -521,11 +607,10 @@ class ConditionRenderer extends BaseRenderer {
             getValue: (r) => r.conditionName || '',
             setValue: (r, value) => { r.conditionName = value; },
             options: ConfigManager.ALL_CONDITIONS.options,
-            affects: ['condition-value'], // Condition selection affects value field visibility
-            triggersUpdate: ModifierPanelManager.UpdateScope.VISIBILITY
+            affects: ['condition-value'],
+            triggersUpdate: 'visibility'
         });
 
-        // Add value field if condition can have a value
         configs.push({
             id: 'condition-value',
             type: 'number',
@@ -541,7 +626,9 @@ class ConditionRenderer extends BaseRenderer {
     }
 
     // Conditions don't support display text
-    getDisplayTextField(replacement) { return null;}
+    getDisplayTextField(replacement) { 
+        return null;
+    }
 
     // Conditions don't support traits
     supportsTraits(replacement) {
@@ -557,7 +644,7 @@ class TemplateRenderer extends BaseRenderer {
         return 'Template';
     }
 
-    getFieldConfigs(replacement) {
+    getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
         
         configs.push({
@@ -567,8 +654,8 @@ class TemplateRenderer extends BaseRenderer {
             getValue: (r) => r.shape || 'burst',
             setValue: (r, value) => { r.shape = value; },
             options: ConfigManager.TEMPLATE_TYPES.options,
-            affects: ['width'], // Template type affects width field visibility
-            triggersUpdate: ModifierPanelManager.UpdateScope.VISIBILITY
+            affects: ['width'],
+            triggersUpdate: 'visibility'
         });
         
         configs.push({
@@ -587,7 +674,7 @@ class TemplateRenderer extends BaseRenderer {
             getValue: (r) => r.width || '',
             setValue: (r, value) => { r.width = value; },
             min: 1,
-            dependsOn: ['template-type'], // Depends on template type
+            dependsOn: ['template-type'],
             showIf: (r) => r.shape === 'line'
         });
 
@@ -608,7 +695,7 @@ class HealingRenderer extends BaseRenderer {
         return 'Healing';
     }
 
-    getFieldConfigs(replacement) {
+    getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
         
         configs.push({
@@ -636,7 +723,7 @@ class DurationRenderer extends BaseRenderer {
         return 'Duration';
     }
 
-    getFieldConfigs(replacement) {
+    getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
         
         configs.push({
@@ -682,7 +769,7 @@ class ActionRenderer extends BaseRenderer {
         return 'Action';
     }
 
-    getFieldConfigs(replacement) {
+    getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
         
         configs.push({
@@ -694,54 +781,28 @@ class ActionRenderer extends BaseRenderer {
                 r.setAction(value);
             },
             options: ConfigManager.ACTIONS.options,
-            affects: ['action-variant'], // Action selection affects variant options
-            triggersUpdate: ModifierPanelManager.UpdateScope.PANEL_PARTIAL
+            affects: ['action-variant'],
+            triggersUpdate: 'panel-partial'
         });
 
-        // Add variant selection if action has variants
         configs.push({
             id: 'action-variant',
             type: 'select',
             label: 'Variant',
             options: (r) => {
-                console.log('[ActionRenderer] Getting variants for action:', r.action);
                 if (r.action && ConfigManager.actionHasVariants(r.action)) {
                     const variants = ConfigManager.ACTION_VARIANTS[r.action];
-                    console.log('[ActionRenderer] Found variants object:', variants);
                     if (variants && variants.options) {
-                        console.log('[ActionRenderer] Returning variant options:', variants.options);
                         return variants.options;
                     }
                 }
-                console.log('[ActionRenderer] No variants found, returning empty array');
                 return [];
             },
             getValue: (r) => r.variant || '',
             setValue: (r, value) => { r.variant = value; },
-            dependsOn: ['action-name'], // Depends on action selection
-            showIf: (r) => r.action && ConfigManager.actionHasVariants(r.action) // Show if the action has variants
+            dependsOn: ['action-name'],
+            showIf: (r) => r.action && ConfigManager.actionHasVariants(r.action)
         });
-
-        // // Add DC and statistic fields for actions that need them
-        // configs.push({
-        //     id: 'dc-method',
-        //     type: 'select',
-        //     label: 'DC Method',
-        //     getValue: (r) => r.dcMethod || 'static',
-        //     setValue: (r, value) => { r.dcMethod = value; },
-        //     options: ConfigManager.DC_METHODS.options,
-        //     showIf: (r) => r.action && ['Shove', 'Trip', 'Grapple'].includes(r.action)
-        // });
-
-        // configs.push({
-        //     id: 'statistic',
-        //     type: 'select',
-        //     label: 'Statistic',
-        //     getValue: (r) => r.statistic || '',
-        //     setValue: (r, value) => { r.statistic = value; },
-        //     options: ConfigManager.STATISTICS.options,
-        //     showIf: (r) => r.action && ['Shove', 'Trip', 'Grapple'].includes(r.action)
-        // });
 
         return configs;
     }
@@ -1155,31 +1216,31 @@ class ModifierPanelManager {
         }).join('');
     }
 
-    // DRY: Render common traits checkboxes
-    renderCommonTraits(commonTraits, rep, type) {
-        if (!commonTraits || !commonTraits.length) return '';
-        return commonTraits.map(trait => {
-                const isChecked = rep.traits && rep.traits.includes(trait);
-                return `
-                    <div class="modifier-field-row">
-                        <label class="modifier-panel-label">${trait.charAt(0).toUpperCase() + trait.slice(1)}</label>
-                        <input type="checkbox" id="${type}-trait-${trait}" class="modifier-panel-checkbox" ${isChecked ? 'checked' : ''} />
-                    </div>
-                `;
-            }).join('');
-    }
+    // // DRY: Render common traits checkboxes
+    // renderCommonTraits(commonTraits, rep, type) {
+    //     if (!commonTraits || !commonTraits.length) return '';
+    //     return commonTraits.map(trait => {
+    //             const isChecked = rep.traits && rep.traits.includes(trait);
+    //             return `
+    //                 <div class="modifier-field-row">
+    //                     <label class="modifier-panel-label">${trait.charAt(0).toUpperCase() + trait.slice(1)}</label>
+    //                     <input type="checkbox" id="${type}-trait-${trait}" class="modifier-panel-checkbox" ${isChecked ? 'checked' : ''} />
+    //                 </div>
+    //             `;
+    //         }).join('');
+    // }
 
-    // DRY: Render traits field
-    renderTraitsField(config, type) {
-        // Always render traits field if config is provided (indicating traits are supported)
-        const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
-        return `
-            <div class="modifier-field-row">
-                <label class="modifier-panel-label">Traits</label>
-                <div id="${traitsContainerId}" style="flex: 1;"></div>
-            </div>
-        `;
-    }
+    // // DRY: Render traits field
+    // renderTraitsField(config, type) {
+    //     // Always render traits field if config is provided (indicating traits are supported)
+    //     const traitsContainerId = `${type}-traits-container-${Math.random().toString(36).substr(2, 9)}`;
+    //     return `
+    //         <div class="modifier-field-row">
+    //             <label class="modifier-panel-label">Traits</label>
+    //             <div id="${traitsContainerId}" style="flex: 1;"></div>
+    //         </div>
+    //     `;
+    // }
 
     generatePanelHTML(type, rep) {
         // Get the appropriate renderer for this type
@@ -1191,32 +1252,16 @@ class ModifierPanelManager {
         // Get title from renderer
         const title = renderer.getTitle(rep);
         
-        // Get field configurations from renderer
+        // Get field configurations from renderer (this now includes all fields: base, type-specific, traits, display text)
         const fieldConfigs = renderer.getFieldConfigs(rep);
         
-        // Use renderer's renderFields if available, otherwise fall back to base method
-        const fields = renderer.renderFields ? 
-        renderer.renderFields(fieldConfigs, rep) : 
-        this.renderFields(fieldConfigs, rep);
-        
-        // Get common traits from renderer
-        const commonTraits = renderer.getCommonTraits(rep);
-        const commonTraitsHTML = this.renderCommonTraits(commonTraits, rep, type);
-        
-        // Get traits field if supported
-        const traitsFieldHTML = renderer.supportsTraits(rep) ? this.renderTraitsField({}, type) : '';
-        
-        // Get display text field if supported
-        const displayTextField = renderer.getDisplayTextField(rep);
-        const displayTextHTML = displayTextField ? FieldRenderer.renderRow([displayTextField], rep) : '';
+        // Render all fields using the field configurations
+        const fields = fieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
 
         return `
             <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
                 ${this.renderPanelHeader(title)}
                 ${fields}
-                ${commonTraitsHTML}
-                ${traitsFieldHTML}
-                ${displayTextHTML}
             </form>
         `;
     }
@@ -1304,14 +1349,64 @@ class ModifierPanelManager {
             this.addDamageFormListeners(formElement, replacement, renderer, onChangeCallback);
         }
         
-        // Setup traits inputs
-        const traitsContainers = formElement.querySelectorAll('[id*="traits-container"]');
+        // Setup traits inputs - look for traits containers that were created by FieldRenderer  
+        const traitsContainers = formElement.querySelectorAll('[id$="-input-container"]');
         traitsContainers.forEach(container => {
-            this.setupTraitsInput(container, replacement, onChangeCallback);
+            // Only process if this is actually a traits container
+            const parentContainer = container.closest('[data-field-id="traits"]');
+            if (parentContainer) {
+                this.setupTraitsInput(container, replacement, onChangeCallback);
+            }
         });
         
-        // Setup common trait checkboxes
-        this.setupCommonTraitCheckboxes(formElement, type, replacement, onChangeCallback);
+        // Setup common trait checkboxes - look for checkboxes with trait- prefix
+        const commonTraits = renderer.getCommonTraits(replacement);
+        commonTraits.forEach(trait => {
+            const traitCheckbox = formElement.querySelector(`#trait-${trait}`);
+            if (traitCheckbox) {
+                this.setupCommonTraitCheckbox(traitCheckbox, trait, replacement, onChangeCallback);
+            }
+        });
+    }
+
+    /**
+     * Setup a single common trait checkbox
+     * @param {HTMLElement} traitCheckbox - The trait checkbox element
+     * @param {string} trait - The trait name
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - The change callback
+     */
+    setupCommonTraitCheckbox(traitCheckbox, trait, replacement, onChangeCallback) {
+        const listenerKey = `${traitCheckbox.id}-change`;
+        
+        // Prevent duplicate listeners
+        if (this.attachedListeners.has(listenerKey)) {
+            return;
+        }
+        
+        const listener = (event) => {
+            const isChecked = event.target.checked;
+            if (!replacement.traits) replacement.traits = [];
+            
+            if (isChecked && !replacement.traits.includes(trait)) {
+                replacement.traits.push(trait);
+            } else if (!isChecked && replacement.traits.includes(trait)) {
+                replacement.traits = replacement.traits.filter(t => t !== trait);
+            }
+            
+            // Sync with traits input if it exists
+            const traitsContainer = this.currentForm?.querySelector('[id*="traits-container"]');
+            if (traitsContainer && traitsContainer.traitsInput) {
+                traitsContainer.traitsInput.setValue(replacement.traits, false);
+            }
+            
+            if (onChangeCallback) {
+                onChangeCallback(replacement, undefined);
+            }
+        };
+        
+        traitCheckbox.addEventListener('change', listener);
+        this.attachedListeners.set(listenerKey, { element: traitCheckbox, type: 'change', listener });
     }
 
     /**
@@ -1333,7 +1428,7 @@ class ModifierPanelManager {
                 // Sync with common trait checkboxes
                 const commonTraits = renderer.getCommonTraits(replacement);
                 commonTraits.forEach(trait => {
-                    const traitCheckbox = this.currentForm?.querySelector(`#${replacement.type}-trait-${trait}`);
+                    const traitCheckbox = this.currentForm?.querySelector(`#trait-${trait}`);
                     if (traitCheckbox) {
                         const hasTrait = enhancedTraits.includes(trait);
                         if (traitCheckbox.checked !== hasTrait) {
@@ -1348,54 +1443,13 @@ class ModifierPanelManager {
             }
         });
         
+        // Store reference for syncing
+        container.traitsInput = traitsInput;
+        
         if (replacement.traits && Array.isArray(replacement.traits)) {
             traitsInput.setValue(replacement.traits);
         }
     }
-
-    /**
-     * Setup common trait checkboxes
-     * @param {HTMLElement} formElement - The form element
-     * @param {string} type - The replacement type
-     * @param {Object} replacement - The replacement object
-     * @param {Function} onChangeCallback - The change callback
-     */
-    setupCommonTraitCheckboxes(formElement, type, replacement, onChangeCallback) {
-        const renderer = this.renderers[type];
-        const commonTraits = renderer.getCommonTraits(replacement);
-        
-        commonTraits.forEach(trait => {
-            const traitCheckbox = formElement.querySelector(`#${type}-trait-${trait}`);
-            if (traitCheckbox) {
-                const listenerKey = `${traitCheckbox.id}-change`;
-                
-                // Prevent duplicate listeners
-                if (this.attachedListeners.has(listenerKey)) {
-                    return;
-                }
-                
-                const listener = (event) => {
-                    const isChecked = event.target.checked;
-                    if (!replacement.traits) replacement.traits = [];
-                    
-                    if (isChecked && !replacement.traits.includes(trait)) {
-                        replacement.traits.push(trait);
-                    } else if (!isChecked && replacement.traits.includes(trait)) {
-                        replacement.traits = replacement.traits.filter(t => t !== trait);
-                    }
-                    
-                    if (onChangeCallback) {
-                        onChangeCallback(replacement, undefined);
-                    }
-                };
-                
-                traitCheckbox.addEventListener('change', listener);
-                this.attachedListeners.set(listenerKey, { element: traitCheckbox, type: 'change', listener });
-            }
-        });
-    }
-
-
 
     /**
      * Clean up event listeners to prevent memory leaks
@@ -5972,27 +6026,27 @@ const DAMAGE_ADDITIONAL_FIELDS = [
 ];
 
 // DRY: Shared Display Text field definition
-const DISPLAY_TEXT_FIELD = {
-    id: 'display-text',
-    type: 'text',
-    label: 'Display Text',
-    placeholder: 'Optional display text',
-    getValue: (rep) => rep.displayText || '',
-    setValue: (rep, value) => { rep.displayText = value; }
-};
+// const DISPLAY_TEXT_FIELD = {
+//     id: 'display-text',
+//     type: 'text',
+//     label: 'Display Text',
+//     placeholder: 'Optional display text',
+//     getValue: (rep) => rep.displayText || '',
+//     setValue: (rep, value) => { rep.displayText = value; }
+// };
 
 // DRY: Shared Enabled field definition
-const ENABLED_FIELD = {
-    id: 'enabled',
-    type: 'checkbox',
-    label: 'Enabled',
-    getValue: (rep) => rep.enabled !== false,
-    setValue: (rep, value) => {
-        const prev = rep.enabled;
-        rep.enabled = value;
-        // console.log(`[ENABLED_FIELD] id=${rep.id} enabled changed: ${prev} -> ${value}`); // LOGGING
-    }
-};
+// const ENABLED_FIELD = {
+//     id: 'enabled',
+//     type: 'checkbox',
+//     label: 'Enabled',
+//     getValue: (rep) => rep.enabled !== false,
+//     setValue: (rep, value) => {
+//         const prev = rep.enabled;
+//         rep.enabled = value;
+//         // console.log(`[ENABLED_FIELD] id=${rep.id} enabled changed: ${prev} -> ${value}`); // LOGGING
+//     }
+// };
 
 // Global attachResetButtonHandler function removed - functionality moved to ConverterDialog class
 
