@@ -353,7 +353,7 @@ class DamageRenderer extends BaseRenderer {
             configs.push({
                 id: `component-${index}-dice`,
                 type: 'text',
-                label: `Component ${index + 1} Dice`,
+                label: `Dice`,
                 getValue: (r) => r.damageComponents[index]?.dice || '',
                 setValue: (r, value) => {
                     if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
@@ -367,7 +367,7 @@ class DamageRenderer extends BaseRenderer {
             configs.push({
                 id: `component-${index}-damage-type`,
                 type: 'select',
-                label: `Component ${index + 1} Type`,
+                label: `Type`,
                 options: ConfigManager.DAMAGE_TYPES.options,
                 getValue: (r) => r.damageComponents[index]?.damageType || '',
                 setValue: (r, value) => {
@@ -381,7 +381,7 @@ class DamageRenderer extends BaseRenderer {
             configs.push({
                 id: `component-${index}-damage-category`,
                 type: 'select',
-                label: `Component ${index + 1} Category`,
+                label: `Category`,
                 options: ConfigManager.DAMAGE_CATEGORIES.options,
                 getValue: (r) => r.damageComponents[index]?.category || '',
                 setValue: (r, value) => {
@@ -3840,12 +3840,7 @@ class Replacement {
     validate() { return true; }
     getText() { return this.originalText; }
     getLength() { return this.endPos - this.startPos; }
-    static get panelConfig() {
-        return {
-            title: 'Replacement',
-            fields: [ENABLED_FIELD, DISPLAY_TEXT_FIELD]
-        };
-    }
+
     isModified() {
         return this.render() !== this.originalRender;
     }
@@ -3903,12 +3898,7 @@ class RollReplacement extends Replacement {
             rollType: this.rollType
         };
     }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            fields: [ENABLED_FIELD, ...super.panelConfig.fields.slice(1)]
-        };
-    }
+
     parseMatch(match, config) {
         super.parseMatch(match, config);
         this.traits = [];
@@ -4112,15 +4102,7 @@ class DamageReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Damage Roll',
-            isMultiComponent: true,
-            componentFields: DAMAGE_COMPONENT_FIELDS,
-            fields: [ENABLED_FIELD, ...DAMAGE_ADDITIONAL_FIELDS, ...super.panelConfig.fields.slice(1)]
-        };
-    }
+
     toJSON() {
         return {
             type: this.type,
@@ -4369,105 +4351,7 @@ class CheckReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Check/Save',
-            fields: [
-                ENABLED_FIELD,
-                {
-                    id: 'check-type',
-                    type: 'select',
-                    label: 'Type',
-                    options: ConfigManager.CHECK_TYPES.options,
-                    getValue: (rep) => rep.checkType || 'skill',
-                    setValue: (rep, value) => { rep.checkType = value; }
-                },
-                {
-                    id: 'check-type-skill',
-                    type: 'select',
-                    label: 'Skill',
-                    options: ConfigManager.SKILLS.options,
-                    getValue: (rep) => rep.skill || '',
-                    setValue: (rep, value) => { rep.skill = value; },
-                    hideIf: (rep) => rep.checkType !== 'skill'
-                },
-                // Save selector
-                {
-                    id: 'check-type-save',
-                    type: 'select',
-                    label: 'Save',
-                    options: ConfigManager.SAVES.options,
-                    getValue: (rep) => rep.save || '',
-                    setValue: (rep, value) => { rep.save = value; },
-                    hideIf: (rep) => rep.checkType !== 'save'
-                },
-                {
-                    id: 'lore-name',
-                    type: 'text',
-                    label: 'Lore Name',
-                    placeholder: 'e.g., Warfare, Local Politics',
-                    getValue: (rep) => rep.loreName || '',
-                    setValue: (rep, value) => { rep.loreName = value; },
-                    hideIf: (rep) => rep.checkType !== 'lore'
-                },
-                {
-                    id: 'dc-method',
-                    type: 'select',
-                    label: 'DC Method',
-                    options: ConfigManager.DC_METHODS.options,
-                    getValue: (rep) => rep.dcMethod || 'static',
-                    setValue: (rep, value) => { rep.dcMethod = value; },
-                    hideIf: (rep) => rep.checkType === 'flat'
-                },
-                {
-                    id: 'statistic',
-                    type: 'select',
-                    label: 'Statistic',
-                    options: ConfigManager.STATISTICS.options,
-                    getValue: (rep) => rep.statistic || '',
-                    setValue: (rep, value) => { rep.statistic = value; },
-                    hideIf: (rep) => rep.dcMethod === 'static' || rep.checkType === 'flat'
-                },
-                // DC field
-                {
-                    id: 'check-dc',
-                    type: 'number',
-                    label: 'DC',
-                    min: 0,
-                    getValue: (rep) => rep.dc || '',
-                    setValue: (rep, value) => { rep.dc = value; },
-                    hideIf: (rep) => rep.dcMethod !== 'static' && rep.checkType !== 'flat'
-                },
-                {
-                    id: 'show-dc',
-                    type: 'select',
-                    label: 'Show DC',
-                    options: ConfigManager.SHOW_DCS.options,
-                    getValue: (rep) => rep.showDC || 'owner',
-                    setValue: (rep, value) => { rep.showDC = value; }
-                },
-                {
-                    id: 'basic-save',
-                    type: 'checkbox',
-                    label: 'Basic',
-                    getValue: (rep) => !!rep.basic,
-                    setValue: (rep, value) => { rep.basic = value; },
-                    hideIf: (rep) => rep.checkType !== 'save'
-                },
-                {
-                    id: 'damaging-effect',
-                    type: 'checkbox',
-                    label: 'Damaging Effect',
-                    getValue: (rep) => !!rep.damagingEffect,
-                    setValue: (rep, value) => { rep.damagingEffect = value; },
-                    hideIf: (rep) => rep.checkType !== 'save'
-                },
-                DISPLAY_TEXT_FIELD
-            ],
-            commonTraits: ['secret']
-        };
-    }
+
     resetToOriginal() {
         super.resetToOriginal();
     }
@@ -4564,24 +4448,7 @@ class HealingReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Healing',
-            fields: [
-                ENABLED_FIELD,
-                {
-                    id: 'healing-dice',
-                    type: 'text',
-                    label: 'Dice',
-                    placeholder: 'e.g., 3d8+4',
-                    getValue: (rep) => rep.dice || '',
-                    setValue: (rep, value) => { rep.dice = value; }
-                },
-                ...super.panelConfig.fields.slice(1)
-            ]
-        };
-    }
+
     resetToOriginal() {
         super.resetToOriginal();
     }
@@ -4694,41 +4561,6 @@ class ConditionReplacement extends Replacement {
             originalText: this.originalText
         };
     }
-    
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Condition',
-            showTraits: false,
-            fields: [
-                ENABLED_FIELD,
-                {
-                    id: 'condition-select',
-                    type: 'select',
-                    label: 'Condition',
-                    options: ConfigManager.CONDITIONS.options,
-                    getValue: (rep) => rep.conditionName || '',
-                    setValue: (rep, value) => {
-                        console.log('[ConditionReplacement] Setting condition name to:', value);
-                        rep.conditionName = value;
-                        rep.updateUUID(); // Update UUID when condition changes
-                    }
-                },
-                {
-                    id: 'condition-value',
-                    type: 'number',
-                    label: 'Value',
-                    min: 1,
-                    getValue: (rep) => rep.degree || '',
-                    setValue: (rep, value) => { 
-                        rep.degree = value ? String(value) : null;
-                        console.log('[ConditionReplacement] Setting degree to:', rep.degree);
-                    },
-                    hideIf: (rep) => !ConfigManager.conditionCanHaveValue(rep.conditionName)
-                },
-            ]
-        };
-    }
 }
 
 // -------------------- Template Replacement --------------------
@@ -4786,42 +4618,7 @@ class TemplateReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Template',
-            showTraits: false, // Hide traits field for templates
-            fields: [
-                ENABLED_FIELD,
-                {
-                    id: 'template-type',
-                    type: 'select',
-                    label: 'Type',
-                    options: ConfigManager.TEMPLATE_TYPES.options,
-                    getValue: (rep) => rep.shape || '',
-                    setValue: (rep, value) => { rep.shape = value; }
-                },
-                {
-                    id: 'template-distance',
-                    type: 'number',
-                    label: 'Distance',
-                    min: 0,
-                    getValue: (rep) => rep.distance || '',
-                    setValue: (rep, value) => { rep.distance = parseInt(value, 10) || 0; }
-                },
-                {
-                    id: 'template-width',
-                    type: 'number',
-                    label: 'Width',
-                    min: 0,
-                    getValue: (rep) => rep.width || '',
-                    setValue: (rep, value) => { rep.width = parseInt(value, 10) || 0; },
-                    hideIf: (rep) => rep.shape !== 'line'
-                },
-                ...super.panelConfig.fields.slice(1)
-            ]
-        };
-    }
+
     resetToOriginal() {
         super.resetToOriginal();
     }
@@ -4877,40 +4674,7 @@ class DurationReplacement extends RollReplacement {
             originalText: this.originalText
         };
     }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Duration',
-            fields: [
-                ENABLED_FIELD,
-                {
-                    id: 'duration-dice',
-                    type: 'text',
-                    label: 'Dice',
-                    placeholder: 'e.g., 1d4',
-                    getValue: (rep) => rep.dice || '',
-                    setValue: (rep, value) => { rep.dice = value; }
-                },
-                {
-                    id: 'duration-label',
-                    type: 'text',
-                    label: 'Label',
-                    placeholder: 'e.g., Duration, Recharge, Cooldown',
-                    getValue: (rep) => rep.label || 'Duration',
-                    setValue: (rep, value) => { rep.label = value; }
-                },
-                {
-                    id: 'duration-isGM',
-                    type: 'checkbox',
-                    label: 'GM Only',
-                    getValue: (rep) => !!rep.isGM,
-                    setValue: (rep, value) => { rep.isGM = value; }
-                },
-                DISPLAY_TEXT_FIELD
-            ],
-            showTraits: false
-        };
-    }
+
     resetToOriginal() {
         super.resetToOriginal();
         // isGM and label reset is handled in parseMatch
@@ -5011,66 +4775,6 @@ class ActionReplacement extends Replacement {
             dc: this.dc,
             statistic: this.statistic,
             originalText: this.originalText
-        };
-    }
-    static get panelConfig() {
-        return {
-            ...super.panelConfig,
-            title: 'Action',
-            showTraits: false,
-            fields: [
-                ENABLED_FIELD,
-                {
-                    id: 'action-select',
-                    type: 'select',
-                    label: 'Action',
-                    options: ConfigManager.ACTIONS.options,
-                    getValue: (rep) => rep.action || '',
-                    setValue: (rep, value) => {
-                        rep.action = value;
-                        // Reset variant when action changes
-                        if (ConfigManager.actionHasVariants(value)) {
-                            const variants = ConfigManager.ACTION_VARIANTS[value];
-                            rep.variant = variants && variants.slugs.length > 0 ? variants.slugs[0] : '';
-                        } else {
-                            rep.variant = '';
-                        }
-                    }
-                },
-                {
-                    id: 'action-variant',
-                    type: 'select',
-                    label: 'Variant',
-                    options: (rep) =>{
-                        // Dynamically get options based on current selection
-                        if (ConfigManager.actionHasVariants(rep.action)) {
-                            console.log('Getting variants for action', rep.action);
-                            return ConfigManager.ACTION_VARIANTS[rep.action].options;
-                        }
-                        return [];
-                    },
-                    getValue: (rep) => rep.variant || '',
-                    setValue: (rep, value) => { rep.variant = value; },
-                    hideIf: (rep) => !ConfigManager.actionHasVariants(rep.action) // Hide if the action has no variants
-                },
-                {
-                    id: 'action-dc',
-                    type: 'text',
-                    label: 'DC',
-                    placeholder: 'e.g., 20 or thievery',
-                    getValue: (rep) => rep.dc || '',
-                    setValue: (rep, value) => { rep.dc = value; }
-                },
-                {
-                    id: 'action-statistic',
-                    type: 'text',
-                    label: 'Statistic',
-                    placeholder: 'e.g., performance',
-                    getValue: (rep) => rep.statistic || '',
-                    setValue: (rep, value) => { rep.statistic = value; }
-                },
-                DISPLAY_TEXT_FIELD
-            ]
         };
     }
 
@@ -6003,160 +5707,7 @@ class TraitsInput {
     }
 }
 
-/**
- * Modifier Panel Manager - Handles creation and management of modifier panels for different replacement types
- * 
- * This system provides a flexible, DRY approach to creating modifier panels for different replacement types.
- * Each replacement type can have its own configuration with different field types and validation.
- * 
- * Supported field types:
- * - select: Dropdown with options
- * - number: Numeric input with optional min/max
- * - checkbox: Boolean checkbox
- * - text: Single-line text input
- * - textarea: Multi-line text input
- * - multiselect: Multiple selection dropdown
- * - traits: Enhanced traits input with pf2e system integration
- * 
- * Example usage:
- * // See static panelConfig on each Replacement class for configuration.
- */
-
-const DAMAGE_COMPONENT_FIELDS = [
-    {
-        id: 'dice',
-        type: 'text',
-        label: 'Damage',
-        placeholder: 'e.g., 2d6+3',
-        getValue: (component) => component.dice || '',
-        setValue: (component, value) => { component.dice = value; }
-    },
-    {
-        id: 'damage-type',
-        type: 'select',
-        label: 'Type',
-        options: ConfigManager.DAMAGE_TYPES.options,
-        getValue: (component) => component.damageType || '',
-        setValue: (component, value) => { component.damageType = value; }
-    },
-    {
-        id: 'category',
-        type: 'select',
-        label: 'Category',
-        options: ConfigManager.DAMAGE_CATEGORIES.options,
-        getValue: (component) => component.category || '',
-        setValue: (component, value) => { component.category = value || ''; }
-    }
-];
-
-const DAMAGE_ADDITIONAL_FIELDS = [
-    {
-        id: 'area-damage',
-        type: 'checkbox',
-        label: 'Area Damage',
-        getValue: (rep) => !!rep.areaDamage,
-        setValue: (rep, value) => { rep.areaDamage = value; }
-    }
-];
-
-// DRY: Shared Display Text field definition
-// const DISPLAY_TEXT_FIELD = {
-//     id: 'display-text',
-//     type: 'text',
-//     label: 'Display Text',
-//     placeholder: 'Optional display text',
-//     getValue: (rep) => rep.displayText || '',
-//     setValue: (rep, value) => { rep.displayText = value; }
-// };
-
-// DRY: Shared Enabled field definition
-// const ENABLED_FIELD = {
-//     id: 'enabled',
-//     type: 'checkbox',
-//     label: 'Enabled',
-//     getValue: (rep) => rep.enabled !== false,
-//     setValue: (rep, value) => {
-//         const prev = rep.enabled;
-//         rep.enabled = value;
-//         // console.log(`[ENABLED_FIELD] id=${rep.id} enabled changed: ${prev} -> ${value}`); // LOGGING
-//     }
-// };
-
-// Global attachResetButtonHandler function removed - functionality moved to ConverterDialog class
-
 // Utility: Check if a dice expression is just a number (no 'd' present)
 function isNumberOnlyDice(dice) {
     return /^\s*\d+\s*$/.test(dice);
-}
-
-/**
- * Test function for Phase 3 event handling system
- * This function can be called from the browser console to test the new unified event system
- */
-function testPhase3EventSystem() {
-    console.log('[Phase 3 Test] Starting Phase 3 event system test...');
-    
-    // Test UpdateScope constants
-    console.log('[Phase 3 Test] UpdateScope constants:', ModifierPanelManager.UpdateScope);
-    
-    // Test field configuration enhancement
-    const testRenderer = new ActionRenderer();
-    const testReplacement = { action: 'Shove', variant: 'test' };
-    const enhancedConfigs = testRenderer.getEnhancedFieldConfigs(testReplacement);
-    
-    console.log('[Phase 3 Test] Enhanced field configurations:', enhancedConfigs);
-    
-    // Test dependency resolution
-    const actionField = enhancedConfigs.find(config => config.id === 'action-name');
-    const variantField = enhancedConfigs.find(config => config.id === 'action-variant');
-    
-    console.log('[Phase 3 Test] Action field affects:', actionField?.affects);
-    console.log('[Phase 3 Test] Variant field depends on:', variantField?.dependsOn);
-    
-    // Test update scope detection
-    const panelManager = new ModifierPanelManager();
-    const actionScope = panelManager.getUpdateScope(actionField, 'old', 'new');
-    const variantScope = panelManager.getUpdateScope(variantField, 'old', 'new');
-    
-    console.log('[Phase 3 Test] Action field update scope:', actionScope);
-    console.log('[Phase 3 Test] Variant field update scope:', variantScope);
-    
-    // Test dependency map building
-    const dependencyMap = panelManager.buildDependencyMap(enhancedConfigs);
-    console.log('[Phase 3 Test] Dependency map:', dependencyMap);
-    
-    // Test circular dependency detection
-    const circularDependencies = panelManager.detectCircularDependencies(dependencyMap);
-    console.log('[Phase 3 Test] Circular dependencies:', circularDependencies);
-    
-    // Test transitive dependencies
-    const transitiveDeps = panelManager.getTransitiveDependencies('action-name', dependencyMap);
-    console.log('[Phase 3 Test] Transitive dependencies for action-name:', transitiveDeps);
-    
-    // Test dependency ordering
-    const sortedFields = panelManager.sortByDependencyOrder(transitiveDeps, dependencyMap);
-    console.log('[Phase 3 Test] Sorted fields by dependency order:', sortedFields);
-    
-    // Test container resolution
-    const testContainerSelectors = [
-        '#action-name-container',
-        '[data-field-id="action-name"]',
-        '.modifier-field-row:has(#action-name)'
-    ];
-    console.log('[Phase 3 Test] Container selectors for testing:', testContainerSelectors);
-    
-    console.log('[Phase 3 Test] Phase 3 event system test completed successfully!');
-    return {
-        updateScopes: ModifierPanelManager.UpdateScope,
-        enhancedConfigs,
-        actionField,
-        variantField,
-        actionScope,
-        variantScope,
-        dependencyMap,
-        circularDependencies,
-        transitiveDeps,
-        sortedFields,
-        containerSelectors: testContainerSelectors
-    };
 }
