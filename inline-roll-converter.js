@@ -258,14 +258,14 @@ class DamageRenderer extends BaseRenderer {
             setValue: (r, value) => { r.enabled = value; }
         });
 
-        // Damage components (special handling)
+        // Damage components with unique IDs per component
         if (!replacement.damageComponents || !Array.isArray(replacement.damageComponents)) {
             replacement.damageComponents = [];
         }
         
         replacement.damageComponents.forEach((component, index) => {
             configs.push({
-                id: `dice`,
+                id: `component-${index}-dice`,
                 type: 'text',
                 label: `Component ${index + 1} Dice`,
                 getValue: (r) => r.damageComponents[index]?.dice || '',
@@ -273,11 +273,12 @@ class DamageRenderer extends BaseRenderer {
                     if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
                     r.damageComponents[index].dice = value;
                 },
-                group: `component-${index}` // For grouping related fields
+                componentIndex: index,
+                componentField: 'dice'
             });
             
             configs.push({
-                id: `damage-type`,
+                id: `component-${index}-damage-type`,
                 type: 'select',
                 label: `Component ${index + 1} Type`,
                 options: ConfigManager.DAMAGE_TYPES.options,
@@ -286,11 +287,12 @@ class DamageRenderer extends BaseRenderer {
                     if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
                     r.damageComponents[index].damageType = value;
                 },
-                group: `component-${index}`
+                componentIndex: index,
+                componentField: 'damageType'
             });
             
             configs.push({
-                id: `damage-category`,
+                id: `component-${index}-damage-category`,
                 type: 'select',
                 label: `Component ${index + 1} Category`,
                 options: ConfigManager.DAMAGE_CATEGORIES.options,
@@ -299,7 +301,8 @@ class DamageRenderer extends BaseRenderer {
                     if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
                     r.damageComponents[index].category = value;
                 },
-                group: `component-${index}`
+                componentIndex: index,
+                componentField: 'category'
             });
         });
 
@@ -313,6 +316,70 @@ class DamageRenderer extends BaseRenderer {
         });
 
         return configs;
+    }
+
+    // Override the field rendering to include component data attributes
+    renderFields(fields, target, prefix = '') {
+        return fields.map((field, idx) => {
+            if (field.showIf && !field.showIf(target)) return '';
+            
+            const value = field.getValue(target);
+            const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
+            
+            // Add component data attributes if this is a component field
+            let dataAttributes = '';
+            if (field.componentIndex !== undefined) {
+                dataAttributes = ` data-component-index="${field.componentIndex}" data-component-field="${field.componentField}"`;
+            }
+            
+            const commonAttrs = `id="${fieldId}" class="modifier-panel-input"${dataAttributes}`;
+            
+            let containerStyle = '';
+            if (field.hideIf && field.hideIf(target)) {
+                containerStyle = 'display: none;';
+            }
+            
+            let rowClass = 'modifier-field-row';
+            let labelClass = 'modifier-panel-label';
+            
+            switch (field.type) {
+                case 'select':
+                    const optionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
+                    const options = (optionsArray || []).map(option => {
+                        const optionValue = typeof option === 'object' ? option.value : option;
+                        const optionLabel = typeof option === 'object' ? option.label : option;
+                        const selected = optionValue === value ? 'selected' : '';
+                        return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+                    }).join('');
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <select ${commonAttrs}>
+                                ${options}
+                            </select>
+                        </div>
+                    `;
+                case 'text':
+                    const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+                        </div>
+                    `;
+                case 'checkbox':
+                    const checked = value ? 'checked' : '';
+                    return `
+                        <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
+                            <label class="${labelClass}">${field.label}</label>
+                            <input type="checkbox" ${commonAttrs.replace('modifier-panel-input', 'modifier-panel-checkbox')} ${checked} />
+                        </div>
+                    `;
+                // Add other field types as needed...
+                default:
+                    return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
+            }
+        }).join('');
     }
 
     getCommonTraits(replacement) {
@@ -1127,8 +1194,10 @@ class ModifierPanelManager {
         // Get field configurations from renderer
         const fieldConfigs = renderer.getFieldConfigs(rep);
         
-        // Render field configs as HTML
-        const fields = fieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
+        // Use renderer's renderFields if available, otherwise fall back to base method
+        const fields = renderer.renderFields ? 
+        renderer.renderFields(fieldConfigs, rep) : 
+        this.renderFields(fieldConfigs, rep);
         
         // Get common traits from renderer
         const commonTraits = renderer.getCommonTraits(rep);
@@ -1453,64 +1522,70 @@ class ModifierPanelManager {
         if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
             rep.damageComponents = [];
         }
-    
+
+        // Use event delegation for both input and change events
         formElement.addEventListener('input', (event) => {
-            const element = event.target;
-            const fieldId = element.id;
-            let value = element.type === 'checkbox' ? element.checked : element.value;
-            
-            console.log('[ModifierPanelManager] Damage field changed:', fieldId, 'new value:', value);
-            
-            // Handle component fields (inside .damage-component divs)
-            const componentDiv = element.closest('.damage-component');
-            if (componentDiv) {
-                const componentIndex = parseInt(componentDiv.dataset.componentIndex);
-                const component = rep.damageComponents[componentIndex];
-                if (component) {
-                    // Map field IDs to component properties
-                    if (fieldId === 'dice') component.dice = value;
-                    else if (fieldId === 'damage-type') component.damageType = value;
-                    else if (fieldId === 'damage-category') component.category = value;
-                }
-            } else {
-                // Handle main damage fields
-                if (fieldId === 'enabled') rep.enabled = value;
-                else if (fieldId === 'area-damage') rep.areaDamage = value;
-            }
-            
-            if (onChangeCallback) {
-                onChangeCallback(rep);
-            }
+            this.handleDamageFieldChange(event, rep, onChangeCallback);
         });
-    
+
         formElement.addEventListener('change', (event) => {
-            const element = event.target;
-            const fieldId = element.id;
-            let value = element.type === 'checkbox' ? element.checked : 
-                       element.type === 'select-one' ? element.value : element.value;
-            
-            console.log('[ModifierPanelManager] Damage field changed (change event):', fieldId, 'new value:', value);
-            
-            // Handle component fields
-            const componentDiv = element.closest('.damage-component');
-            if (componentDiv) {
-                const componentIndex = parseInt(componentDiv.dataset.componentIndex);
-                const component = rep.damageComponents[componentIndex];
-                if (component) {
-                    if (fieldId === 'dice') component.dice = value;
-                    else if (fieldId === 'damage-type') component.damageType = value;
-                    else if (fieldId === 'damage-category') component.category = value;
-                }
-            } else {
-                // Handle main damage fields
-                if (fieldId === 'enabled') rep.enabled = value;
-                else if (fieldId === 'area-damage') rep.areaDamage = value;
-            }
-            
-            if (onChangeCallback) {
-                onChangeCallback(rep);
-            }
+            this.handleDamageFieldChange(event, rep, onChangeCallback);
         });
+    }
+
+    handleDamageFieldChange(event, rep, onChangeCallback) {
+        const element = event.target;
+        const fieldId = element.id;
+        let value = element.type === 'checkbox' ? element.checked : element.value;
+        
+        console.log('[ModifierPanelManager] Damage field changed:', fieldId, 'new value:', value);
+        
+        // Check if this is a component field using data attributes
+        const componentIndex = element.dataset.componentIndex;
+        const componentField = element.dataset.componentField;
+        
+        if (componentIndex !== undefined && componentField !== undefined) {
+            // This is a component field
+            const index = parseInt(componentIndex);
+            
+            // Ensure the component exists
+            if (!rep.damageComponents[index]) {
+                rep.damageComponents[index] = new DamageComponent();
+            }
+            
+            const component = rep.damageComponents[index];
+            
+            // Update the appropriate component property
+            switch (componentField) {
+                case 'dice':
+                    component.dice = value;
+                    break;
+                case 'damageType':
+                    component.damageType = value;
+                    break;
+                case 'category':
+                    component.category = value;
+                    break;
+                default:
+                    console.warn('[ModifierPanelManager] Unknown component field:', componentField);
+            }
+            
+            console.log(`[ModifierPanelManager] Updated component ${index} ${componentField}:`, value);
+            console.log('[ModifierPanelManager] Component state:', component);
+        } else {
+            // Handle main damage fields
+            if (fieldId === 'enabled') {
+                rep.enabled = value;
+            } else if (fieldId === 'area-damage') {
+                rep.areaDamage = value;
+            }
+            
+            console.log('[ModifierPanelManager] Updated main field:', fieldId, value);
+        }
+        
+        if (onChangeCallback) {
+            onChangeCallback(rep);
+        }
     }
 
     /**
