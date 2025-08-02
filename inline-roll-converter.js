@@ -25,9 +25,6 @@ const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage a
 //     showIf: (rep) => true,      // Function to determine if field should be shown
 //     hideIf: (rep) => false,     // Function to determine if field should be hidden
     
-//     // Dynamic options (for selects that change based on other fields)
-//     dynamicOptions: (rep) => [...], // Function returning options array
-    
 //     // Phase 3: Enhanced dependency and update properties
 //     affects: ['other-field-id'],           // Fields this field affects
 //     dependsOn: ['source-field-id'],        // Fields this field depends on
@@ -456,7 +453,9 @@ class ConditionRenderer extends BaseRenderer {
             label: 'Condition',
             getValue: (r) => r.conditionName || '',
             setValue: (r, value) => { r.conditionName = value; },
-            options: ConfigManager.ALL_CONDITIONS.options
+            options: ConfigManager.ALL_CONDITIONS.options,
+            affects: ['condition-value'], // Condition selection affects value field visibility
+            triggersUpdate: ModifierPanelManager.UpdateScope.VISIBILITY
         });
 
         // Add value field if condition can have a value
@@ -464,10 +463,11 @@ class ConditionRenderer extends BaseRenderer {
             id: 'condition-value',
             type: 'number',
             label: 'Value',
-            getValue: (r) => r.conditionValue || '',
-            setValue: (r, value) => { r.conditionValue = value; },
+            getValue: (r) => r.degree || '',
+            setValue: (r, value) => { r.degree = value; },
             min: 1,
-            showIf: (r) => r.condition && ConfigManager.conditionCanHaveValue(r.condition)
+            showIf: (r) => r.conditionName && ConfigManager.conditionCanHaveValue(r.conditionName),
+            dependsOn: ['condition-select']
         });
 
         return configs;
@@ -475,6 +475,11 @@ class ConditionRenderer extends BaseRenderer {
 
     // Conditions don't support display text
     getDisplayTextField(replacement) { return null;}
+
+    // Conditions don't support traits
+    supportsTraits(replacement) {
+        return false;
+    }
 }
 
 /**
@@ -520,6 +525,11 @@ class TemplateRenderer extends BaseRenderer {
         });
 
         return configs;
+    }
+
+    // Templates don't support traits
+    supportsTraits(replacement) {
+        return false;
     }
 }
 
@@ -590,6 +600,11 @@ class DurationRenderer extends BaseRenderer {
 
         return configs;
     }
+
+    // Durations don't support traits
+    supportsTraits(replacement) {
+        return false;
+    }
 }
 
 /**
@@ -621,7 +636,7 @@ class ActionRenderer extends BaseRenderer {
             id: 'action-variant',
             type: 'select',
             label: 'Variant',
-            dynamicOptions: (r) => {
+            options: (r) => {
                 console.log('[ActionRenderer] Getting variants for action:', r.action);
                 if (r.action && ConfigManager.actionHasVariants(r.action)) {
                     const variants = ConfigManager.ACTION_VARIANTS[r.action];
@@ -662,6 +677,11 @@ class ActionRenderer extends BaseRenderer {
         // });
 
         return configs;
+    }
+
+    // Actions don't support traits
+    supportsTraits(replacement) {
+        return false;
     }
 }
 
@@ -831,16 +851,9 @@ class ModifierPanelManager {
                     fieldConfig.setValue(replacement, newValue);
                 }
                 
-                // Enhanced dynamic options handling
-                if (fieldConfig.dynamicOptions && fieldConfig.affects && fieldConfig.affects.length > 0) {
-                    // Force partial panel update for fields with dynamic options that affect other fields
-                    const updateScope = ModifierPanelManager.UpdateScope.PANEL_PARTIAL;
-                    this.handleFieldUpdate(replacement, fieldConfig, updateScope, onChangeCallback);
-                } else {
-                    // Use normal update scope detection
-                    const updateScope = this.getUpdateScope(fieldConfig, oldValue, newValue);
-                    this.handleFieldUpdate(replacement, fieldConfig, updateScope, onChangeCallback);
-                }
+                // Use normal update scope detection
+                const updateScope = this.getUpdateScope(fieldConfig, oldValue, newValue);
+                this.handleFieldUpdate(replacement, fieldConfig, updateScope, onChangeCallback);
             }
         };
         
@@ -1675,7 +1688,7 @@ class ModifierPanelManager {
         const cursorPosition = hasFocus ? fieldElement.selectionStart : null;
         
         // Update dynamic options for select fields
-        if (fieldConfig.type === 'select' && fieldConfig.dynamicOptions) {
+        if (fieldConfig.type === 'select' && typeof fieldConfig.options === 'function') {
             this.updateSelectOptions(fieldElement, fieldConfig, replacement);
         }
         
@@ -1704,7 +1717,7 @@ class ModifierPanelManager {
     updateSelectOptions(selectElement, fieldConfig, replacement) {
         try {
             const currentValue = fieldConfig.getValue(replacement);
-            const newOptions = fieldConfig.dynamicOptions(replacement);
+            const newOptions = fieldConfig.options(replacement);
             
             // Validate that newOptions is an array
             if (!Array.isArray(newOptions)) {
