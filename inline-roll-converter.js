@@ -469,8 +469,9 @@ class DamageRenderer extends BaseRenderer {
         }).join('');
     }
 
+    // Should be overriden by subclasses that have common traits (usually 'secret')
     getCommonTraits(replacement) {
-        return ['secret'];
+        return [];
     }
 }
 
@@ -514,14 +515,6 @@ class CheckRenderer extends BaseRenderer {
             getValue: (r) => r.basic || false,
             setValue: (r, value) => { r.basic = value; },
             showIf: (r) => r.checkType === 'save'
-        });
-        
-        configs.push({
-            id: 'secret',
-            type: 'checkbox',
-            label: 'Secret',
-            getValue: (r) => r.secret || false,
-            setValue: (r, value) => { r.secret = value; }
         });
 
         // Conditional fields based on check type
@@ -708,10 +701,6 @@ class HealingRenderer extends BaseRenderer {
         });
 
         return configs;
-    }
-
-    getCommonTraits(replacement) {
-        return ['secret'];
     }
 }
 
@@ -1335,12 +1324,12 @@ class ModifierPanelManager {
     }
 
     /**
-     * Setup special component listeners (damage, traits, etc.)
-     * @param {HTMLElement} formElement - The form element
-     * @param {string} type - The replacement type
-     * @param {Object} replacement - The replacement object
-     * @param {Function} onChangeCallback - The change callback
-     */
+ * Enhanced setup special component listeners with better error handling
+ * @param {HTMLElement} formElement - The form element
+ * @param {string} type - The replacement type
+ * @param {Object} replacement - The replacement object
+ * @param {Function} onChangeCallback - The change callback
+ */
     setupSpecialComponentListeners(formElement, type, replacement, onChangeCallback) {
         const renderer = this.renderers[type];
         
@@ -1364,13 +1353,14 @@ class ModifierPanelManager {
         commonTraits.forEach(trait => {
             const traitCheckbox = formElement.querySelector(`#trait-${trait}`);
             if (traitCheckbox) {
+                console.log(`[ModifierPanelManager] Setting up listener for common trait ${trait}`);
                 this.setupCommonTraitCheckbox(traitCheckbox, trait, replacement, onChangeCallback);
             }
         });
     }
 
     /**
-     * Setup a single common trait checkbox
+     * Setup a single common trait checkbox with improved synchronization
      * @param {HTMLElement} traitCheckbox - The trait checkbox element
      * @param {string} trait - The trait name
      * @param {Object} replacement - The replacement object
@@ -1379,38 +1369,40 @@ class ModifierPanelManager {
     setupCommonTraitCheckbox(traitCheckbox, trait, replacement, onChangeCallback) {
         const listenerKey = `${traitCheckbox.id}-change`;
         
-        // Prevent duplicate listeners
-        if (this.attachedListeners.has(listenerKey)) {
-            return;
-        }
+        // Prevent duplicate listeners (commented out because it prevented checkboxes and traits field from syncing properly)
+        // if (this.attachedListeners.has(listenerKey)) {
+        //     return;
+        // }
         
         const listener = (event) => {
             const isChecked = event.target.checked;
             if (!replacement.traits) replacement.traits = [];
             
+            // Update traits array
             if (isChecked && !replacement.traits.includes(trait)) {
                 replacement.traits.push(trait);
+                console.log(`[ModifierPanelManager] Added trait ${trait} via checkbox`);
             } else if (!isChecked && replacement.traits.includes(trait)) {
                 replacement.traits = replacement.traits.filter(t => t !== trait);
+                console.log(`[ModifierPanelManager] Removed trait ${trait} via checkbox`);
             }
             
             // Sync with traits input if it exists
-            const traitsContainer = this.currentForm?.querySelector('[id*="traits-container"]');
-            if (traitsContainer && traitsContainer.traitsInput) {
-                traitsContainer.traitsInput.setValue(replacement.traits, false);
-            }
+            console.log(`[ModifierPanelManager] Syncing traits input from array:`, replacement.traits);
+            this.syncTraitsInputFromArray(replacement.traits);
             
             if (onChangeCallback) {
-                onChangeCallback(replacement, undefined);
+                onChangeCallback(replacement, `trait-${trait}`);
             }
         };
         
+        console.log(`[ModifierPanelManager] Setting up listener for trait ${trait}`);
         traitCheckbox.addEventListener('change', listener);
         this.attachedListeners.set(listenerKey, { element: traitCheckbox, type: 'change', listener });
     }
 
     /**
-     * Setup traits input component
+     * Setup traits input component with improved synchronization
      * @param {HTMLElement} container - The traits container
      * @param {Object} replacement - The replacement object
      * @param {Function} onChangeCallback - The change callback
@@ -1422,6 +1414,7 @@ class ModifierPanelManager {
         const traitsInput = new TraitsInput(container.id, {
             placeholder: 'Type trait name and press Enter...',
             onChange: (selectedTraits) => {
+                // Convert trait objects to simple string array
                 let enhancedTraits = selectedTraits.map(t => t.value);
                 replacement.traits = enhancedTraits;
                 
@@ -1430,15 +1423,16 @@ class ModifierPanelManager {
                 commonTraits.forEach(trait => {
                     const traitCheckbox = this.currentForm?.querySelector(`#trait-${trait}`);
                     if (traitCheckbox) {
-                        const hasTrait = enhancedTraits.includes(trait);
-                        if (traitCheckbox.checked !== hasTrait) {
-                            traitCheckbox.checked = hasTrait;
+                        const shouldBeChecked = enhancedTraits.includes(trait);
+                        if (traitCheckbox.checked !== shouldBeChecked) {
+                            traitCheckbox.checked = shouldBeChecked;
+                            console.log(`[ModifierPanelManager] Synced checkbox ${trait}: ${shouldBeChecked}`);
                         }
                     }
                 });
                 
                 if (onChangeCallback) {
-                    onChangeCallback(replacement);
+                    onChangeCallback(replacement, 'traits');
                 }
             }
         });
@@ -1446,9 +1440,51 @@ class ModifierPanelManager {
         // Store reference for syncing
         container.traitsInput = traitsInput;
         
+        // Set initial value and sync checkboxes
         if (replacement.traits && Array.isArray(replacement.traits)) {
             traitsInput.setValue(replacement.traits);
+            this.syncCheckboxesFromTraits(replacement, renderer);
         }
+    }
+
+    /**
+     * Sync traits input component from traits array
+     * @param {Array} traitsArray - Array of trait strings
+     */
+    syncTraitsInputFromArray(traitsArray) {
+        // Look for traits input container with the correct ID pattern
+        const traitsContainer = this.currentForm?.querySelector('[id$="traits-input-container"]');
+        if (traitsContainer && traitsContainer.traitsInput) {
+            // Don't trigger onChange when syncing to avoid infinite loops
+            traitsContainer.traitsInput.setValue(traitsArray, false);
+            console.log(`[ModifierPanelManager] Synced traits input:`, traitsArray);
+        } else {
+            // Debug: log what containers we actually have
+            const allContainers = this.currentForm?.querySelectorAll('[id*="traits"]');
+            console.log(`[ModifierPanelManager] Available traits containers:`, 
+                Array.from(allContainers || []).map(c => c.id));
+        }
+    }
+
+    /**
+     * Sync common trait checkboxes from replacement traits array
+     * @param {Object} replacement - The replacement object
+     * @param {Object} renderer - The renderer object
+     */
+    syncCheckboxesFromTraits(replacement, renderer) {
+        const commonTraits = renderer.getCommonTraits(replacement);
+        const currentTraits = replacement.traits || [];
+        
+        commonTraits.forEach(trait => {
+            const traitCheckbox = this.currentForm?.querySelector(`#trait-${trait}`);
+            if (traitCheckbox) {
+                const shouldBeChecked = currentTraits.includes(trait);
+                if (traitCheckbox.checked !== shouldBeChecked) {
+                    traitCheckbox.checked = shouldBeChecked;
+                    console.log(`[ModifierPanelManager] Synced checkbox ${trait}: ${shouldBeChecked}`);
+                }
+            }
+        });
     }
 
     /**
