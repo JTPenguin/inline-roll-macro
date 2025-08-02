@@ -1044,101 +1044,6 @@ class ModifierPanelManager {
         `;
     }
 
-    // // DRY: Render a group of fields
-    // renderFields(fields, target, prefix = '') {
-    //     return fields.map((field, idx) => {
-    //         if (field.showIf && !field.showIf(target)) return '';
-    //         const value = field.getValue(target);
-    //         const fieldId = prefix ? `${prefix}-${field.id}` : field.id;
-    //         const commonAttrs = `id="${fieldId}" class="modifier-panel-input"`;
-    //         let containerStyle = '';
-    //         if (field.hideIf && field.hideIf(target)) {
-    //             containerStyle = 'display: none;';
-    //         }
-    //         // Use CSS class for all field containers
-    //         let rowClass = 'modifier-field-row';
-    //         let labelClass = 'modifier-panel-label';
-    //         switch (field.type) {
-    //             case 'select':
-    //                 const optionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
-    //                 const options = (optionsArray || []).map(option => {
-    //                     const optionValue = typeof option === 'object' ? option.value : option;
-    //                     const optionLabel = typeof option === 'object' ? option.label : option;
-    //                     const selected = optionValue === value ? 'selected' : '';
-    //                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-    //                 }).join('');
-    //                 return `
-    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-    //                         <label class="${labelClass}">${field.label}</label>
-    //                         <select ${commonAttrs}>
-    //                             ${options}
-    //                         </select>
-    //                     </div>
-    //                 `;
-    //             case 'number':
-    //                 const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
-    //                 return `
-    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-    //                         <label class="${labelClass}">${field.label}</label>
-    //                         <input type="number" ${commonAttrs} ${minAttr} value="${value}" />
-    //                     </div>
-    //                 `;
-    //             case 'checkbox':
-    //                 const checked = value ? 'checked' : '';
-    //                 return `
-    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-    //                         <label class="${labelClass}">${field.label}</label>
-    //                         <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
-    //                     </div>
-    //                 `;
-    //             case 'text':
-    //                 const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-    //                 return `
-    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-    //                         <label class="${labelClass}">${field.label}</label>
-    //                         <input type="text" ${commonAttrs} ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
-    //                     </div>
-    //                 `;
-    //             case 'textarea':
-    //                 const textareaPlaceholder = field.placeholder ? `placeholder="${field.placeholder}"` : '';
-    //                 const rows = field.rows || 3;
-    //                 return `
-    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-    //                         <label class="${labelClass}">${field.label}</label>
-    //                         <textarea ${commonAttrs} ${textareaPlaceholder} rows="${rows}">${value}</textarea>
-    //                     </div>
-    //                 `;
-    //             case 'multiselect':
-    //                 const selectedValues = Array.isArray(value) ? value : [value];
-    //                 const multiOptionsArray = typeof field.options === 'function' ? field.options(target) : field.options;
-    //                 const multiOptions = (multiOptionsArray || []).map(option => {
-    //                     const optionValue = typeof option === 'object' ? option.value : option;
-    //                     const optionLabel = typeof option === 'object' ? option.label : option;
-    //                     const selected = selectedValues.includes(optionValue) ? 'selected' : '';
-    //                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
-    //                 }).join('');
-    //                 return `
-    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-    //                         <label class="${labelClass}">${field.label}</label>
-    //                         <select ${commonAttrs} multiple>
-    //                             ${multiOptions}
-    //                         </select>
-    //                     </div>
-    //                 `;
-    //             case 'traits':
-    //                 const uniqueId = `${fieldId}-container`;
-    //                 return `
-    //                     <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">
-    //                         <label class="${labelClass}">${field.label}</label>
-    //                         <div id="${uniqueId}" style="flex: 1;"></div>
-    //                     </div>
-    //                 `;
-    //             default:
-    //                 return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}">Unknown field type: ${field.type}</div>`;
-    //         }
-    //     }).join('');
-    // }
-
     generatePanelHTML(type, rep) {
         // Get the appropriate renderer for this type
         const renderer = this.renderers[type];
@@ -1174,30 +1079,52 @@ class ModifierPanelManager {
      * Special field rendering for damage components with containers
      */
     renderDamageFields(fieldConfigs, rep) {
-        // Group fields by component and non-component fields
+        // Group fields by component index
         const componentGroups = new Map();
-        const nonComponentFields = [];
+        const fieldOrder = [];
         
-        fieldConfigs.forEach(config => {
+        // First pass: group component fields and track field order
+        fieldConfigs.forEach((config, index) => {
             if (config.componentIndex !== undefined) {
                 if (!componentGroups.has(config.componentIndex)) {
                     componentGroups.set(config.componentIndex, []);
+                    // Track where this component group should appear in the order
+                    fieldOrder.push({ type: 'component', index: config.componentIndex, originalIndex: index });
                 }
                 componentGroups.get(config.componentIndex).push(config);
             } else {
-                nonComponentFields.push(config);
+                // Track non-component fields in order
+                fieldOrder.push({ type: 'field', config: config, originalIndex: index });
             }
         });
 
+        // Remove duplicate component entries (keep only the first occurrence)
+        const uniqueFieldOrder = [];
+        const seenComponents = new Set();
+        fieldOrder.forEach(item => {
+            if (item.type === 'component') {
+                if (!seenComponents.has(item.index)) {
+                    seenComponents.add(item.index);
+                    uniqueFieldOrder.push(item);
+                }
+            } else {
+                uniqueFieldOrder.push(item);
+            }
+        });
+
+        // Sort by original index to maintain field config order
+        uniqueFieldOrder.sort((a, b) => a.originalIndex - b.originalIndex);
+
+        // Render fields in the correct order
         let html = '';
-
-        // Render component groups first
-        for (const [componentIndex, componentFields] of componentGroups) {
-            html += this.renderDamageComponentContainer(componentFields, rep, componentIndex);
-        }
-
-        // Render non-component fields
-        html += nonComponentFields.map(config => this.renderFieldFromConfig(config, rep)).join('');
+        uniqueFieldOrder.forEach(item => {
+            if (item.type === 'component') {
+                const componentFields = componentGroups.get(item.index);
+                html += this.renderDamageComponentContainer(componentFields, rep, item.index);
+            } else {
+                html += this.renderFieldFromConfig(item.config, rep);
+            }
+        });
 
         return html;
     }
@@ -1205,18 +1132,8 @@ class ModifierPanelManager {
     /**
      * Render a damage component container with its fields
      */
-    renderDamageComponentContainer(componentFields, rep, componentIndex) {
-        const componentTitle = `Damage Component ${componentIndex + 1}`;
-        
-        // Sort fields in desired order: dice, type, category
-        const sortedFields = componentFields.sort((a, b) => {
-            const order = { 'dice': 0, 'damageType': 1, 'category': 2 };
-            const aOrder = order[a.componentField] || 999;
-            const bOrder = order[b.componentField] || 999;
-            return aOrder - bOrder;
-        });
-
-        const fieldsHtml = sortedFields.map(config => this.renderFieldFromConfig(config, rep)).join('');
+    renderDamageComponentContainer(componentFields, rep, componentIndex) {        
+        const fieldsHtml = componentFields.map(config => this.renderFieldFromConfig(config, rep)).join('');
 
         return `
             <div class="damage-component-container">
@@ -1969,14 +1886,6 @@ class ModifierPanelManager {
                 console.warn(`[ModifierPanelManager] Could not find container for field: ${config.id}`);
             }
         });
-    }
-
-    // Update the options of a select field based on the current value of the replacement
-    updateDynamicSelectFields(formElement, fields, rep) {
-        // Since renderers generate HTML directly, dynamic field updates are handled
-        // by the renderers themselves through conditional rendering
-        // This method is kept for backward compatibility but doesn't need to do anything
-        // when using the new renderer system
     }
 }
 
@@ -4789,26 +4698,6 @@ class ReplacementFactory {
     }
 }
 
-// Pattern priority constants
-const PRIORITY = {
-    SAVE: 1,
-    DAMAGE: 2,
-    HEALING: 2,
-    SKILL: 2,
-    FLAT: 2,
-    UTILITY: 2,
-    BASIC_DAMAGE: 3,
-    BASIC_SKILL: 3,
-    LEGACY: 4,
-    DAMAGE_CONSOLIDATION: 5,
-    LEGACY_CONDITION: 5,
-    CONDITION: 6,
-    TEMPLATE: 7
-};
-
-// -------------------- Condition Detector --------------------
-// ConditionDetector class removed - not used in current implementation
-
 // -------------------- Text Processor --------------------
 class TextProcessor {
     constructor() {
@@ -5242,18 +5131,6 @@ function showConverterDialog() {
             .damage-component-container .modifier-field-row {
                 gap: 6px;
                 margin-bottom: 0;
-            }
-
-            /* Make component inputs slightly smaller */
-            .damage-component-container .modifier-panel-input {
-                font-size: 13px;
-            }
-
-            /* Add visual separation for non-component fields after components */
-            .damage-component-container + .modifier-field-row {
-                margin-top: 15px;
-                padding-top: 10px;
-                border-top: 1px solid #eee;
             }
         </style>
     `;
