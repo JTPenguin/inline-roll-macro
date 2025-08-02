@@ -25,7 +25,7 @@ const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage a
 //     showIf: (rep) => true,      // Function to determine if field should be shown
 //     hideIf: (rep) => false,     // Function to determine if field should be hidden
     
-//     // Phase 3: Enhanced dependency and update properties
+//     // Enhanced dependency and update properties
 //     affects: ['other-field-id'],           // Fields this field affects
 //     dependsOn: ['source-field-id'],        // Fields this field depends on
 //     triggersUpdate: 'panel-partial',       // Update scope when changed
@@ -2824,68 +2824,6 @@ function getConditionUUID(conditionName, state = null) {
     return fallbackUUID;
 }
 
-/**
- * Initialize condition mapping
- */
-// Global initializeConditionMap function removed - functionality moved to ConverterDialog class
-
-// ===================== PATTERN SYSTEM =========================
-// 
-// ====================================================================
-
-/*
-// Template for static pattern classes
-class PatternNamePattern {
-    static type = 'patternname';
-    static priority = 50;
-    static description = 'Pattern description';
-
-    static PATTERNS = [
-        {
-            regex: /pattern/gi,
-            priority: 50,
-            handler: PatternNamePattern.handlerMethod
-        }
-    ];
-
-    static handlerMethod(match) {
-        return match;
-    }
-
-    static validateMatch(match) {
-        return match && match[0] && typeof match.index === 'number';
-    }
-
-    static test(text) {
-        const matches = [];
-        
-        for (const pattern of this.PATTERNS) {
-            let match;
-            pattern.regex.lastIndex = 0;
-            while ((match = pattern.regex.exec(text)) !== null) {
-                if (this.validateMatch(match)) {
-                    const processedMatch = pattern.handler ? pattern.handler(match) : match;
-                    if (processedMatch) {
-                        matches.push({
-                            match: processedMatch,
-                            type: this.type,
-                            priority: pattern.priority || this.priority,
-                            config: { pattern: pattern }
-                        });
-                    }
-                }
-            }
-        }
-        
-        return matches;
-    }
-
-    static createReplacement(match, config) {
-        return new PatternNameReplacement(match, this.type, config);
-    }
-}
-*/
-
 class DamagePattern {
     static type = 'damage';
     static priority = 100;
@@ -3505,160 +3443,160 @@ class PatternDetector {
     }
 }
 
-class PatternTester {
-    // Test a specific pattern against text
-    static testPattern(patternType, text) {
-        const PatternClass = PatternDetector.PATTERN_CLASSES.find(cls => cls.type === patternType);
-        if (!PatternClass) {
-            return { error: `Pattern type '${patternType}' not found` };
-        }
+// class PatternTester {
+//     // Test a specific pattern against text
+//     static testPattern(patternType, text) {
+//         const PatternClass = PatternDetector.PATTERN_CLASSES.find(cls => cls.type === patternType);
+//         if (!PatternClass) {
+//             return { error: `Pattern type '${patternType}' not found` };
+//         }
 
-        const matches = PatternClass.test(text);
-        return {
-            pattern: patternType,
-            text: text,
-            matches: matches.length,
-            results: matches.map(match => ({
-                matched: PatternDetector.getMatchObject(match.match)?.[0],
-                position: PatternDetector.getMatchPosition(match.match),
-                priority: match.priority
-            }))
-        };
-    }
+//         const matches = PatternClass.test(text);
+//         return {
+//             pattern: patternType,
+//             text: text,
+//             matches: matches.length,
+//             results: matches.map(match => ({
+//                 matched: PatternDetector.getMatchObject(match.match)?.[0],
+//                 position: PatternDetector.getMatchPosition(match.match),
+//                 priority: match.priority
+//             }))
+//         };
+//     }
 
-    /**
-     * Test all patterns against text
-     */
-    static testAll(text) {
-        const results = {};
-        const allMatches = PatternDetector.detectAll(text);
+//     /**
+//      * Test all patterns against text
+//      */
+//     static testAll(text) {
+//         const results = {};
+//         const allMatches = PatternDetector.detectAll(text);
         
-        // Test each pattern individually
-        for (const PatternClass of PatternDetector.PATTERN_CLASSES) {
-            results[PatternClass.type] = this.testPattern(PatternClass.type, text);
-        }
+//         // Test each pattern individually
+//         for (const PatternClass of PatternDetector.PATTERN_CLASSES) {
+//             results[PatternClass.type] = this.testPattern(PatternClass.type, text);
+//         }
 
-        // Add summary
-        results._summary = {
-            totalPatterns: PatternDetector.PATTERN_CLASSES.length,
-            totalMatches: allMatches.length,
-            finalMatches: allMatches.map(match => ({
-                type: match.type,
-                matched: PatternDetector.getMatchObject(match.match)?.[0],
-                position: PatternDetector.getMatchPosition(match.match),
-                priority: match.priority
-            }))
-        };
+//         // Add summary
+//         results._summary = {
+//             totalPatterns: PatternDetector.PATTERN_CLASSES.length,
+//             totalMatches: allMatches.length,
+//             finalMatches: allMatches.map(match => ({
+//                 type: match.type,
+//                 matched: PatternDetector.getMatchObject(match.match)?.[0],
+//                 position: PatternDetector.getMatchPosition(match.match),
+//                 priority: match.priority
+//             }))
+//         };
 
-        return results;
-    }
+//         return results;
+//     }
 
-    /**
-     * Run a test suite with predefined test cases
-     */
-    static runTestSuite(testCases) {
-        const results = {
-            passed: 0,
-            failed: 0,
-            total: testCases.length,
-            details: []
-        };
+//     /**
+//      * Run a test suite with predefined test cases
+//      */
+//     static runTestSuite(testCases) {
+//         const results = {
+//             passed: 0,
+//             failed: 0,
+//             total: testCases.length,
+//             details: []
+//         };
 
-        for (const testCase of testCases) {
-            try {
-                const result = this.testAll(testCase.input);
-                const passed = this.validateTestCase(result, testCase.expected);
+//         for (const testCase of testCases) {
+//             try {
+//                 const result = this.testAll(testCase.input);
+//                 const passed = this.validateTestCase(result, testCase.expected);
                 
-                results.details.push({
-                    input: testCase.input,
-                    expected: testCase.expected,
-                    actual: result,
-                    passed: passed
-                });
+//                 results.details.push({
+//                     input: testCase.input,
+//                     expected: testCase.expected,
+//                     actual: result,
+//                     passed: passed
+//                 });
 
-                if (passed) {
-                    results.passed++;
-                } else {
-                    results.failed++;
-                }
-            } catch (error) {
-                results.failed++;
-                results.details.push({
-                    input: testCase.input,
-                    error: error.message,
-                    passed: false
-                });
-            }
-        }
+//                 if (passed) {
+//                     results.passed++;
+//                 } else {
+//                     results.failed++;
+//                 }
+//             } catch (error) {
+//                 results.failed++;
+//                 results.details.push({
+//                     input: testCase.input,
+//                     error: error.message,
+//                     passed: false
+//                 });
+//             }
+//         }
 
-        return results;
-    }
+//         return results;
+//     }
 
-    static validateTestCase(actual, expected) {
-        if (expected.matchCount !== undefined) {
-            return actual._summary.totalMatches === expected.matchCount;
-        }
+//     static validateTestCase(actual, expected) {
+//         if (expected.matchCount !== undefined) {
+//             return actual._summary.totalMatches === expected.matchCount;
+//         }
         
-        if (expected.patterns !== undefined) {
-            const actualPatterns = actual._summary.finalMatches.map(m => m.type);
-            const expectedPatterns = expected.patterns;
-            return JSON.stringify(actualPatterns.sort()) === JSON.stringify(expectedPatterns.sort());
-        }
+//         if (expected.patterns !== undefined) {
+//             const actualPatterns = actual._summary.finalMatches.map(m => m.type);
+//             const expectedPatterns = expected.patterns;
+//             return JSON.stringify(actualPatterns.sort()) === JSON.stringify(expectedPatterns.sort());
+//         }
 
-        return true;
-    }
-}
+//         return true;
+//     }
+// }
 
-// ===================== PATTERN TESTING SUITE =====================
+// // ===================== PATTERN TESTING SUITE =====================
 
-// Comprehensive test cases
-const COMPREHENSIVE_TEST_CASES = [
-    // Single pattern tests
-    { input: '2d6 fire damage', expected: { matchCount: 1, patterns: ['damage'] } },
-    { input: '1d4 persistent acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
-    { input: 'DC 15 Reflex save', expected: { matchCount: 1, patterns: ['check'] } },
-    { input: 'heal 3d8 hit points', expected: { matchCount: 1, patterns: ['healing'] } },
-    { input: 'becomes frightened 2', expected: { matchCount: 1, patterns: ['condition'] } },
-    { input: '30-foot cone', expected: { matchCount: 1, patterns: ['template'] } },
-    { input: '1d4 rounds', expected: { matchCount: 1, patterns: ['duration'] } },
-    { input: 'Use the Shove action', expected: { matchCount: 1, patterns: ['action'] } },
+// // Comprehensive test cases
+// const COMPREHENSIVE_TEST_CASES = [
+//     // Single pattern tests
+//     { input: '2d6 fire damage', expected: { matchCount: 1, patterns: ['damage'] } },
+//     { input: '1d4 persistent acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
+//     { input: 'DC 15 Reflex save', expected: { matchCount: 1, patterns: ['check'] } },
+//     { input: 'heal 3d8 hit points', expected: { matchCount: 1, patterns: ['healing'] } },
+//     { input: 'becomes frightened 2', expected: { matchCount: 1, patterns: ['condition'] } },
+//     { input: '30-foot cone', expected: { matchCount: 1, patterns: ['template'] } },
+//     { input: '1d4 rounds', expected: { matchCount: 1, patterns: ['duration'] } },
+//     { input: 'Use the Shove action', expected: { matchCount: 1, patterns: ['action'] } },
     
-    // Multi-damage tests
-    { input: '2d6 fire damage and 1d4 acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
+//     // Multi-damage tests
+//     { input: '2d6 fire damage and 1d4 acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
     
-    // Complex combinations
-    { 
-        input: 'Deal 2d6 fire damage. DC 15 Reflex save. Target becomes frightened 1.',
-        expected: { matchCount: 3, patterns: ['damage', 'check', 'condition'] }
-    },
+//     // Complex combinations
+//     { 
+//         input: 'Deal 2d6 fire damage. DC 15 Reflex save. Target becomes frightened 1.',
+//         expected: { matchCount: 3, patterns: ['damage', 'check', 'condition'] }
+//     },
     
-    // Edge cases
-    { input: '', expected: { matchCount: 0, patterns: [] } },
-    { input: 'No patterns here', expected: { matchCount: 0, patterns: [] } },
-];
+//     // Edge cases
+//     { input: '', expected: { matchCount: 0, patterns: [] } },
+//     { input: 'No patterns here', expected: { matchCount: 0, patterns: [] } },
+// ];
 
-function runComprehensiveTestSuite() {
-    console.log('=== Comprehensive Test Suite ===');
-    const results = PatternTester.runTestSuite(COMPREHENSIVE_TEST_CASES);
+// function runComprehensiveTestSuite() {
+//     console.log('=== Comprehensive Test Suite ===');
+//     const results = PatternTester.runTestSuite(COMPREHENSIVE_TEST_CASES);
     
-    console.log(`Total: ${results.total}`);
-    console.log(`Passed: ${results.passed}`);
-    console.log(`Failed: ${results.failed}`);
-    console.log(`Success Rate: ${((results.passed / results.total) * 100).toFixed(1)}%`);
+//     console.log(`Total: ${results.total}`);
+//     console.log(`Passed: ${results.passed}`);
+//     console.log(`Failed: ${results.failed}`);
+//     console.log(`Success Rate: ${((results.passed / results.total) * 100).toFixed(1)}%`);
     
-    if (results.failed > 0) {
-        console.log('\n=== Failed Tests ===');
-        results.details.filter(d => !d.passed).forEach(detail => {
-            console.log(`❌ "${detail.input}"`);
-            console.log(`   Expected: ${JSON.stringify(detail.expected)}`);
-            if (detail.error) {
-                console.log(`   Error: ${detail.error}`);
-            }
-        });
-    }
+//     if (results.failed > 0) {
+//         console.log('\n=== Failed Tests ===');
+//         results.details.filter(d => !d.passed).forEach(detail => {
+//             console.log(`❌ "${detail.input}"`);
+//             console.log(`   Expected: ${JSON.stringify(detail.expected)}`);
+//             if (detail.error) {
+//                 console.log(`   Error: ${detail.error}`);
+//             }
+//         });
+//     }
     
-    return results;
-}
+//     return results;
+// }
 
 // runComprehensiveTestSuite();
 
@@ -3670,8 +3608,6 @@ function runComprehensiveTestSuite() {
 function generateId() {
     return '_' + Math.random().toString(36).substr(2, 9);
 }
-
-// Global variables removed - now managed by ConverterDialog class
 
 class Replacement {
     constructor(match, type) {
@@ -4239,7 +4175,6 @@ class CheckReplacement extends RollReplacement {
         super.resetToOriginal();
     }
     parseSaveMatch(match, config) {
-        // SaveReplacement.parseMatch logic
         super.parseMatch(match, config);
         // Defensive: if match.replacement exists, skip parsing (already replaced)
         if (match && match.replacement) return;
@@ -4267,7 +4202,6 @@ class CheckReplacement extends RollReplacement {
     }
 
     parseFlatMatch(match, config) {
-        // FlatCheckReplacement.parseMatch logic
         super.parseMatch(match, config);
         // Defensive: if match.replacement exists, skip parsing (already replaced)
         if (match && match.replacement) return;
