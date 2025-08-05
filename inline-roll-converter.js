@@ -508,6 +508,15 @@ class CheckRenderer extends BaseRenderer {
             showIf: (r) => r.checkType === 'save'
         });
 
+        configs.push({
+            id: 'damaging-effect',
+            type: 'checkbox',
+            label: 'Damaging Effect',
+            getValue: (r) => r.damagingEffect || false,
+            setValue: (r, value) => { r.damagingEffect = value; },
+            showIf: (r) => r.checkType === 'save'
+        })
+
         return configs;
     }
 
