@@ -32,6 +32,239 @@ const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage a
 //     validate: (value, rep) => boolean      // Field validation function
 // };
 
+// ==================== INLINE ROLL SYSTEM ====================
+
+// Base class for all inline rolls
+// Handles the actual syntax generation and parameters
+class InlineAutomation {
+    constructor(type, params = {}) {
+        this.type = type;
+        this.params = {...params};
+        this.traits = params.traits || [];
+        this.displayText = params.displayText || '';
+    }
+
+    // Generate the inline roll syntax
+    // Must be implemented by subclasses
+    render() {
+        throw new Error('Must implement render() method');
+    }
+}
+
+// Inline damage roll syntax
+// @Damage[...]
+class InlineDamage extends InlineAutomation {
+    constructor(params = {}) {
+        super('damage', params);
+        this.components = params.components || [];
+        this.areaDamage = params.areaDamage || false;
+    }
+
+    render() {
+        // Render the syntax for each damage component
+        const componentSyntax = [];
+        this.components.forEach((component, index) => {
+            componentSyntax.push(component.render());
+        });
+
+        // Render the syntax for the area damage
+        const optionsSyntax = this.areaDamage ? `|options:area-damage` : '';
+
+        // Add display text syntax if it's not empty
+        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : '';
+
+        // Return the complete syntax
+        return `@Damage[${componentSyntax.join(', ')}${optionsSyntax}]${displayTextSyntax}`;
+    }
+}
+
+// Inline check syntax
+// @Check[...|dc:...|options:...|traits:...]
+class InlineCheck extends InlineAutomation {
+    constructor(params = {}) {
+        super('check', params);
+        this.checkType = params.checkType || 'acrobatics';
+        this.loreName = params.loreName || 'Warfare';
+        this.dcMethod = params.dcMethod || 'none';
+        this.dc = params.dc || 0;
+        this.statistic = params.statistic || 'acrobatics';
+        this.showDC = params.showDC || 'owner';
+        this.basic = params.basic || false;
+        this.damagingEffect = params.damagingEffect || false;
+    }
+
+    render() {
+        const parts = [];
+        // Add checkType, unless it's a lore, in which case add a slug created from the lore name
+        if (this.checkType === 'lore') {
+            parts.push(this.loreName.toLowerCase().replace(/ /g, '-') + '-lore');
+        } else {
+            parts.push(this.checkType);
+        }
+
+        // Add the syntax for the dc/statistic based on the dcMethod
+        if (this.dcMethod === 'static') {
+            parts.push(`dc:${this.dc}`);
+        } else if (this.dcMethod === 'target') {
+            parts.push(`against:${this.statistic}`);
+            if (this.isSave()) { parts.push(`rollerRole:origin`); }
+        } else if (this.dcMethod === 'origin') {
+            parts.push(`against:${this.statistic}`);
+            if (!this.isSave()) { parts.push(`rollerRole:target`); }
+        }
+        
+        // Add other parameters conditionally
+        if (this.basic && this.isSave()) { parts.push(`basic`); } // Add basic parameter syntax if it's a save and it's basic
+        if (this.showDC !== 'owner') { parts.push(`showDC:${this.showDC}`); } // Add showDC syntax if it's not 'owner'
+        if (this.damagingEffect && this.isSave()) { parts.push(`options:damaging-effect`); } // Add damaging effect syntax if it's a save and it's a damaging effect
+
+        if (this.traits.length > 0) { parts.push(`traits:${this.traits.join(',')}`); } // Add traits syntax if traits is not empty
+
+        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : ''; // Add display text syntax if it's not empty
+
+        return `@Check[${parts.join('|')}]${displayTextSyntax}`; // Return the complete syntax
+    }
+
+    isSave() { // Return true if the check type is 'reflex', 'fortitude', or 'will'
+        return this.checkType === 'reflex' || this.checkType === 'fortitude' || this.checkType === 'will';
+    }
+}
+
+class InlineLink extends InlineAutomation {
+    constructor(params = {}) {
+        super('link', params);
+        this.uuid = params.uuid || '';
+    }
+
+    render() {
+        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : ''; // Add display text syntax if it's not empty
+        return `@UUID[${this.uuid}]${displayTextSyntax}`;
+    }
+}
+
+class InlineCondition extends InlineLink {
+    constructor(params = {}) {
+        this.condition = params.condition || '';
+        this.value = params.value || null;
+
+        uuid = getConditionUUID(this.condition) || ''; // Get the UUID for the condition
+
+        // If the condition is 'flat-footed' or 'off-guard', set the display text to 'Off-Guard'
+        if (this.condition === 'flat-footed' || this.condition === 'off-guard') {
+            displayText = 'Off-Guard';
+        }
+        else { // Otherwise, set it to the condition name, capitalized
+            displayText = this.condition.charAt(0).toUpperCase() + this.condition.slice(1).toLowerCase();
+        }
+
+        super('link', {...params, uuid: uuid, displayText: displayText});
+    }
+}
+
+class InlineTemplate extends InlineAutomation {
+    constructor(params = {}) {
+        super('template', params);
+        this.templateType = params.templateType || 'burst';
+        this.distance = params.distance || 30;
+        this.width = params.width || 5;
+    }
+
+    render() {
+        const parts = [];
+
+        // Add template type and distnace syntax
+        parts.push(`type:${this.templateType}`);
+        parts.push(`distance:${this.distance}`);
+
+        // Add the width syntax if it's 10 or more and this is a line
+        if (this.width >= 10 && this.templateType === 'line') { parts.push(`width:${this.width}`); }
+
+        // Add traits syntax if traits is not empty (Disabled for now)
+        //if (this.traits.length > 0) { parts.push(`traits:${this.traits.join(',')}`); }
+
+        // Add display text syntax if it's not empty
+        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : '';
+        
+        // Return the complete syntax
+        return `@Template[${parts.join('|')}]${displayTextSyntax}`;
+    }
+}
+
+class InlineGenericRoll extends InlineAutomation {
+    constructor(params = {}) {
+        super('generic', params);
+        this.dice = params.dice || '1d20';
+        this.label = params.label || '';
+        this.gmOnly = params.gmOnly || false;
+    }
+
+    render() {
+        const parts = [];
+
+        // Add standard roll syntax
+        if (this.gmOnly) { parts.push(`/gmr`); } // Add the gmOnly syntax if it's a gm only roll
+        else { parts.push(`/r`); } // Otherwise add the normal roll syntax
+
+        // Add the dice syntax
+        parts.push(this.dice);
+
+        // Add the label syntax if it's not empty
+        if (this.label !== '') { parts.push(`#${this.label}`); }
+
+        // Add display text syntax if it's not empty
+        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : '';
+
+        // Return the complete syntax
+        return `[[${parts.join(' ')}]]${displayTextSyntax}`;
+    }
+}
+
+class InlineAction extends InlineAutomation {
+    constructor(params = {}) {
+        super('action', params);
+        this.action = params.action || 'administer-first-aid';
+        this.variant = params.variant || '';
+        this.dcMethod = params.dcMethod || 'none'; // None, static, target
+        this.dc = params.dc || null;
+        this.statistic = params.statistic || '';
+        this.alternateRollStatistic = params.alternateRollStatistic || '';
+        this.correctInvalidVariant();
+    }
+
+    // Function that corrects for invalid variant
+    // Set the variant to the first variant of the action
+    // Or set the variant to '' if the action has no variants
+    correctInvalidVariant() {
+        if (ConfigManager.actionHasVariants(this.action) && !ConfigManager.getActionVariants(this.action).includes(this.variant)) {
+            this.variant = ConfigManager.getActionVariants(this.action)[0];
+        }
+        else if (!ConfigManager.actionHasVariants(this.action)) {
+            this.variant = '';
+        }
+    }
+
+    render() {
+        const parts = [];
+
+        // Add action and variant syntax
+        parts.push(this.action);
+        if (this.variant !== '') { parts.push(`variant=${this.variant}`); } // Add variant syntax if it's not empty
+
+        // Add dc syntax based on dcMethod
+        if (this.dcMethod === 'static' && this.dc !== null) { parts.push(`dc=${this.dc}`); } // Add dc syntax if dcMethod is static and dc is not null
+        else if (this.dcMethod === 'target' && this.statistic !== '') { parts.push(`dc=${this.statistic}`); } // Add dc syntax if dcMethod is target and statistic is not empty
+
+        // Add alternate roll statistic syntax if it's not empty
+        if (this.alternateRollStatistic !== '') { parts.push(`statistic=${this.alternateRollStatistic}`); }
+
+        // Add display text syntax if it's not empty
+        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : '';
+
+        // Return the complete syntax
+        return `[[/act ${parts.join(' ')}]]${displayTextSyntax}`;
+    }
+}
+
 /**
  * BaseRenderer - Base class for type-specific renderers
  * Provides common interface and utility methods for all renderers
