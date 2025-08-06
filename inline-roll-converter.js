@@ -27,6 +27,61 @@ class InlineAutomation {
     }
 }
 
+// Damage partial with dice, damage type, and category
+class DamageComponent {
+    constructor(dice = '', damageType = '', category = '') {
+        this.dice = dice || '';
+        this.damageType = damageType || '';
+        this.category = category || ''; // 'persistent', 'precision', 'splash', or ''
+    }
+
+    /**
+     * Check if the component has dice
+     * @returns {boolean} - True if the component has dice
+     */
+    hasDice() {
+        return this.dice && this.dice.length > 0;
+    }
+
+    /**
+     * Render the component as a PF2e damage expression
+     * @returns {string} - The rendered damage expression
+     */
+    render(isHealing = false) {
+        let formula = this.dice;
+
+        const typeParts = [];
+        if (this.damageType !== '') {typeParts.push(this.damageType);}
+        if (this.category === "persistent") {typeParts.push("persistent");}
+        if (isHealing) {typeParts.push("healing");}
+        const typeSyntax = typeParts.length > 0 ? `[${typeParts.join(',')}]` : ''; // Create the damage type syntax, including persistent and/or healing
+        
+        if (["precision", "splash"].includes(this.category)) formula = `(${formula})[${this.category}]`; // Handle precision and splash (they wrap the formula)
+        
+        return `(${formula})${typeSyntax}`;
+    }
+
+    /**
+     * Validate the component
+     * @returns {boolean} - True if the component is valid
+     */
+    validate() {
+        return this.hasDice();
+    }
+
+    /**
+     * Convert the component to a plain object
+     * @returns {object} - The component as a plain object
+     */
+    toJSON() {
+        return {
+            dice: this.dice,
+            damageType: this.damageType,
+            category: this.category
+        };
+    }
+}
+
 // Inline damage roll syntax
 // @Damage[...]
 class InlineDamage extends InlineAutomation {
@@ -34,13 +89,14 @@ class InlineDamage extends InlineAutomation {
         super('damage', params);
         this.components = params.components || [];
         this.areaDamage = params.areaDamage || false;
+        this.healing = params.healing || false;
     }
 
     render() {
         // Render the syntax for each damage component
         const componentSyntax = [];
         this.components.forEach((component, index) => {
-            componentSyntax.push(component.render());
+            componentSyntax.push(component.render(this.healing));
         });
 
         // Render the syntax for the area damage
@@ -672,6 +728,15 @@ class DamageRenderer extends BaseRenderer {
             label: 'Area Damage',
             getValue: (r) => r.inlineAutomation.areaDamage || false,
             setValue: (r, value) => { r.inlineAutomation.areaDamage = value; }
+        });
+
+        configs.push({
+            id: 'healing',
+            type: 'checkbox',
+            label: 'Healing',
+            getValue: (r) => r.inlineAutomation.healing || false,
+            setValue: (r, value) => { r.inlineAutomation.healing = value; },
+            showIf: (r) => r.inlineAutomation.components.length === 1
         });
 
         return configs;
@@ -4297,60 +4362,6 @@ class Replacement {
             this.endPos -= spacesRemoved;
             this.originalText = trimmed;
         }
-    }
-}
-
-
-
-// -------------------- Damage Replacement --------------------
-class DamageComponent {
-    constructor(dice = '', damageType = '', category = '') {
-        this.dice = dice;
-        this.damageType = damageType;
-        this.category = category; // 'persistent', 'precision', 'splash', or ''
-    }
-
-    /**
-     * Check if the component has dice
-     * @returns {boolean} - True if the component has dice
-     */
-    hasDice() {
-        return this.dice && this.dice.length > 0;
-    }
-
-    /**
-     * Render the component as a PF2e damage expression
-     * @returns {string} - The rendered damage expression
-     */
-    render() {
-        let formula = this.dice;
-        
-        if (["precision", "splash"].includes(this.category)) formula = `(${formula})[${this.category}]`; // Handle precision and splash (they wrap the formula)
-        if (this.category === "persistent" && this.damageType) return `(${formula})[persistent,${this.damageType}]`; // Handle persistent damage (special case with damage type)
-        if (this.damageType) formula = `(${formula})[${this.damageType}]`; // Handle regular damage type
-        // NEW: If no type and no category, just (dice)
-        if (!this.damageType && !this.category) return `(${formula})`;
-        return formula;
-    }
-
-    /**
-     * Validate the component
-     * @returns {boolean} - True if the component is valid
-     */
-    validate() {
-        return this.hasDice();
-    }
-
-    /**
-     * Convert the component to a plain object
-     * @returns {object} - The component as a plain object
-     */
-    toJSON() {
-        return {
-            dice: this.dice,
-            damageType: this.damageType,
-            category: this.category
-        };
     }
 }
 
