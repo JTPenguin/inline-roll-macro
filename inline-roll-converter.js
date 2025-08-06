@@ -853,7 +853,7 @@ class ConditionRenderer extends BaseRenderer {
             label: 'Condition',
             getValue: (r) => r.inlineAutomation.condition || '',
             setValue: (r, value) => { r.inlineAutomation.condition = value; },
-            options: ConfigManager.ALL_CONDITIONS.options,
+            options: ConfigManager.CONDITIONS.options,
             affects: ['condition-value'],
             triggersUpdate: 'visibility'
         });
@@ -2928,17 +2928,17 @@ class ConfigManager {
         'invisible': 'Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML',
         'off-guard': 'Compendium.pf2e.conditionitems.Item.AJh5ex99aV6VTggg',
         'paralyzed': 'Compendium.pf2e.conditionitems.Item.6uEgoh53GbXuHpTF',
-        'petrified': 'Compendium.pf2e.conditionitems.Item.xYTAsEpcJE1Ccni3',
+        'petrified': 'Compendium.pf2e.conditionitems.Item.dTwPJuKgBQCMxixg',
         'prone': 'Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60',
         'quickened': 'Compendium.pf2e.conditionitems.Item.nlCjDvLMf2EkV2dl',
         'restrained': 'Compendium.pf2e.conditionitems.Item.VcDeM8A5oI6VqhbM',
         'sickened': 'Compendium.pf2e.conditionitems.Item.fesd1n5eVhpCSS18',
-        'slowed': 'Compendium.pf2e.conditionitems.Item.xYhLAT81iV1Pmabq',
+        'slowed': 'Compendium.pf2e.conditionitems.Item.xYTAsEpcJE1Ccni3',
         'stunned': 'Compendium.pf2e.conditionitems.Item.dfCMdR4wnpbYNTix',
         'stupefied': 'Compendium.pf2e.conditionitems.Item.e1XGnhKNSQIm5IXg',
-        'unconscious': 'Compendium.pf2e.conditionitems.Item.fBnFDH2MTzgFijMf',
+        'unconscious': 'Compendium.pf2e.conditionitems.Item.fBnFDH2MTzgFijKf',
         'undetected': 'Compendium.pf2e.conditionitems.Item.VRSef5y1LmL2Hkjf',
-        'wounded': 'Compendium.pf2e.conditionitems.Item.Yl5krDQh5NQaWUfJ'
+        'wounded': 'Compendium.pf2e.conditionitems.Item.Yl48xTdMh3aeQYL2'
     }
 
     static getConditionUUID(condition) {
@@ -3454,7 +3454,7 @@ class ConditionPattern extends BasePattern {
         }
         
         return {
-            condition: conditionText,
+            condition: conditionText.toLowerCase().trim(),
             value: value,
             uuid: ConfigManager.getConditionUUID(conditionText) || ''
         };
