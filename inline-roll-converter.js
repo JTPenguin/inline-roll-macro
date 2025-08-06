@@ -471,9 +471,18 @@ class InlineAction extends InlineAutomation {
     get variant() { return this._variant; }
     set variant(value) {
         const valueSlug = InlineAutomation.toSlug(value);
-        if (ConfigManager.ACTION_VARIANTS[this.action].slugs.includes(valueSlug)) {
+
+        // If the current action has no variants, set the variant to an empty string
+        if (!ConfigManager.actionHasVariants(this.action)) {
+            this._variant = '';
+            if (valueSlug !== '') { console.warn(`Action ${this.action} has no variants, setting variant to empty string`); }
+            return;
+        }
+
+        // If the valueSlug is a valid variant for the current action, set the variant
+        if (ConfigManager.isValidActionVariant(this.action, valueSlug)) {
             this._variant = valueSlug;
-        } else {
+        } else { 
             console.warn(`Invalid variant: ${valueSlug}`);
         }
     }
@@ -518,9 +527,12 @@ class InlineAction extends InlineAutomation {
     }
 
     correctInvalidVariant() {
-        if (ConfigManager.actionHasVariants(this.action) && !ConfigManager.ACTION_VARIANTS[this.action].slugs.includes(this.variant)) {
-            this.variant = ConfigManager.ACTION_VARIANTS[this.action].slugs[0];
-        } else if (!ConfigManager.actionHasVariants(this.action)) {
+        // If the current action has variants and the current variant is not valid, set the variant to the first valid variant
+        if (ConfigManager.actionHasVariants(this.action) && !ConfigManager.isValidActionVariant(this.action, this.variant)) {
+            this.variant = ConfigManager.getDefaultActionVariant(this.action);
+        }
+        // If the current action has no variants, set the variant to an empty string
+        else if (!ConfigManager.actionHasVariants(this.action)) {
             this.variant = '';
         }
     }
@@ -1219,9 +1231,7 @@ class ActionRenderer extends BaseRenderer {
             type: 'select',
             label: 'Action',
             getValue: (r) => r.inlineAutomation.action || '',
-            setValue: (r, value) => {
-                r.inlineAutomation.action = value;
-            },
+            setValue: (r, value) => { r.inlineAutomation.action = value; },
             options: ConfigManager.ACTIONS.options,
             affects: ['action-variant'],
             triggersUpdate: 'panel-partial'
@@ -1231,15 +1241,7 @@ class ActionRenderer extends BaseRenderer {
             id: 'action-variant',
             type: 'select',
             label: 'Variant',
-            options: (r) => {
-                if (r.inlineAutomation.action && ConfigManager.actionHasVariants(r.inlineAutomation.action)) {
-                    const variants = ConfigManager.ACTION_VARIANTS[r.inlineAutomation.action];
-                    if (variants && variants.options) {
-                        return variants.options;
-                    }
-                }
-                return [];
-            },
+            options: (r) => ConfigManager.getActionVariantOptions(r.inlineAutomation.action) || [],
             getValue: (r) => r.inlineAutomation.variant || '',
             setValue: (r, value) => { r.inlineAutomation.variant = value; },
             dependsOn: ['action-name'],
@@ -1512,12 +1514,6 @@ class ModifierPanelManager {
                 case ModifierPanelManager.UpdateScope.PANEL_FULL:
                     this.regeneratePanel(this.currentForm, replacement, onChangeCallback);
                     break;
-            }
-            
-            // Special handling for condition field changes
-            if (fieldConfig.id === 'condition-select' && replacement.updateUUID) {
-                console.log('[ModifierPanelManager] Condition changed, updating UUID');
-                replacement.updateUUID();
             }
             
             // Always call the change callback
@@ -2834,21 +2830,53 @@ class ConverterDialog {
 // It is used to store the items in the category, the options for the items,
 // the pattern for the items, and the set of items.
 class ConfigCategory {
-    constructor(items, customLabels = {}) {
-        // Compute all derived properties
+    constructor(items, customLabels = {}, metadata = {}) {
         this.slugs = items;
-        this.options = this._toOptions(items, customLabels);
-        this.pattern = this._toPattern(items);
-
-        this.set = new Set(items); // For fast lookup
+        this.metadata = metadata;
+        
+        // Lazy initialization - only compute when first accessed
+        this._options = null;
+        this._pattern = null;
+        this._set = null;
+        this._customLabels = customLabels;
     }
 
-    // Check if an item is in the list
+    // Memoized getter for options
+    get options() {
+        if (this._options === null) {
+            this._options = this.slugs.map(item => ({
+                value: item,
+                label: this._customLabels[item] || this._toTitleCase(this._unslug(item))
+            }));
+        }
+        return this._options;
+    }
+
+    // Memoized getter for regex pattern
+    get pattern() {
+        if (this._pattern === null) {
+            this._pattern = this.slugs
+                .map(item => this._unslug(item))
+                .filter(item => item !== '')
+                .sort((a, b) => b.length - a.length) // Longest first for better matching
+                .join('|');
+        }
+        return this._pattern;
+    }
+
+    // Memoized getter for Set (fast lookups)
+    get set() {
+        if (this._set === null) {
+            this._set = new Set(this.slugs);
+        }
+        return this._set;
+    }
+
     includes(item) {
         return this.set.has(item);
     }
 
-    // Helper method for converting arrays to value/label pairs
+    // Existing helper methods unchanged
     _toOptions(items, customLabels = {}) {
         return items.map(item => ({
             value: item,
@@ -2856,41 +2884,28 @@ class ConfigCategory {
         }));
     }
 
-    // Helper method for converting arrays to a regex pattern
     _toPattern(items) {
         return items
             .map(item => this._unslug(item))
-            .filter(item => item !== '') // Remove empty strings
-            .sort((a, b) => b.length - a.length) // Longest first
+            .filter(item => item !== '')
+            .sort((a, b) => b.length - a.length)
             .join('|');
     }
 
-    // Helper method for converting slugs to normal text (replace hyphens with spaces)
-    // Exception: Keep hyphens for condition names that need them
     _unslug(str) {
-        // Special cases for conditions that should keep their hyphens
         const keepHyphens = ['flat-footed', 'off-guard'];
-        if (keepHyphens.includes(str)) {
-            return str;
-        }
-        
-        // Default behavior: replace hyphens with spaces
+        if (keepHyphens.includes(str)) return str;
         return str.replace(/-/g, ' ');
     }
 
-    // Helper method for converting strings to title case (one and two letter words are not capitalized)
     _toTitleCase(str) {
-        // Special cases for specific condition names that need custom capitalization
         const specialCases = {
             'off-guard': 'Off-Guard',
             'flat-footed': 'Flat-Footed'
         };
         
-        if (specialCases[str]) {
-            return specialCases[str];
-        }
+        if (specialCases[str]) return specialCases[str];
         
-        // Default behavior: capitalize words with 3+ characters
         return str.replace(/\b\w{3,}/g, word => 
             word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
         );
@@ -3060,251 +3075,421 @@ class LegacyConversionManager {
 // the conditions, the skills, the saves, the statistics, the template types, the actions,
 // the action variants, the healing terms, and the legacy conditions.
 class ConfigManager {
-
-    static DAMAGE_TYPES = new ConfigCategory([
-        'acid', 'cold', 'electricity', 'fire', 'force', 'sonic', 'vitality', 'void', // Energy types
-        'bleed', 'bludgeoning', 'piercing', 'slashing', // Physical types
-        'mental', 'spirit', 'poison', 'untyped' // Other types
-    ]);
-
-    static LEGACY_DAMAGE_TYPES = new ConfigCategory(LegacyConversionManager.getLegacyDamageTypes());
-
-    static ALL_DAMAGE_TYPES = new ConfigCategory([
-        ...this.DAMAGE_TYPES.slugs,
-        ...this.LEGACY_DAMAGE_TYPES.slugs
-    ]);
-
-    // Legacy to Remaster damage type mapping
-    static LEGACY_DAMAGE_TYPE_MAPPING = {
-        chaotic: 'spirit',
-        evil: 'spirit',
-        good: 'spirit',
-        lawful: 'spirit',
-        positive: 'vitality',
-        negative: 'void'
-    };
-
-    static DAMAGE_CATEGORIES = new ConfigCategory([ '', 'persistent', 'precision', 'splash' ]);
-
-    static SAVES = new ConfigCategory([ 'reflex', 'fortitude', 'will' ]);
-
-    static SKILLS = new ConfigCategory([
-        'acrobatics', 'arcana', 'athletics', 'crafting',
-        'deception', 'diplomacy', 'intimidation', 'medicine',
-        'nature', 'occultism', 'performance', 'religion',
-        'society', 'stealth', 'survival', 'thievery'
-    ]);
-
-    static CHECK_TYPES = new ConfigCategory([
-        'flat',
-        'lore',
-        'perception',
-        ...this.SAVES.slugs,
-        ...this.SKILLS.slugs
-    ]);
-
-    static DC_METHODS = new ConfigCategory(
-        [ 'none', 'static', 'target', 'origin' ],
-        {
-            none: 'No DC',
-            static: 'Static DC',
-            target: 'Target\'s Statistic',
-            origin: 'Origin\'s Statistic'
+    // Private cache for memoization
+    static _cache = new Map();
+    
+    // ===== DAMAGE SYSTEM =====
+    static get DAMAGE_TYPES() {
+        if (!this._cache.has('DAMAGE_TYPES')) {
+            this._cache.set('DAMAGE_TYPES', new ConfigCategory([
+                'acid', 'cold', 'electricity', 'fire', 'force', 'sonic', 'vitality', 'void',
+                'bleed', 'bludgeoning', 'piercing', 'slashing',
+                'mental', 'spirit', 'poison', 'untyped'
+            ]));
         }
-    );
-
-    static SHOW_DCS = new ConfigCategory(
-        [ 'owner', 'gm', 'all', 'none' ],
-        {
-            owner: 'Owner Only',
-            gm: 'GM Only',
-            all: 'Everyone',
-            none: 'No One'
-        }
-    );
-
-    static STATISTICS = new ConfigCategory(
-        [
-            'ac',
-            'perception',
-            ...this.SAVES.slugs, // Saves are also statistics
-            'class',
-            'spell',
-            'class-spell',
-            ...this.SKILLS.slugs, // Skills are also statistics
-        ],
-        {
-            ac: 'Armor Class',
-            class: 'Class DC',
-            spell: 'Spell DC',
-            'class-spell': 'Class or Spell DC',
-        }
-    );
-
-    static CONDITIONS = new ConfigCategory(
-        [
-            'blinded', 'broken', 'clumsy', 'concealed', 'confused', 'controlled', 'dazzled',
-            'deafened', 'doomed', 'drained', 'dying', 'enfeebled', 'fascinated', 'fatigued',
-            'fleeing', 'frightened', 'grabbed', 'immobilized', 'invisible', 'off-guard',
-            'paralyzed', 'petrified', 'prone', 'quickened', 'restrained', 'sickened',
-            'slowed', 'stunned', 'stupefied', 'unconscious', 'undetected', 'wounded'
-        ],
-        {
-            'off-guard': 'Off-Guard' // Ensure we keep the hyphen in the label
-        }
-    );
-
-    // Define which conditions can have a value and legacy condition conversions
-    static CONDITION_METADATA = {
-        withValues: new Set([
-            'clumsy', 'doomed', 'drained', 'dying', 'enfeebled', 'frightened',
-            'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
-        ])
+        return this._cache.get('DAMAGE_TYPES');
     }
 
-    static LEGACY_CONDITIONS = new ConfigCategory(LegacyConversionManager.getLegacyConditions());
+    static get LEGACY_DAMAGE_TYPES() {
+        if (!this._cache.has('LEGACY_DAMAGE_TYPES')) {
+            this._cache.set('LEGACY_DAMAGE_TYPES', new ConfigCategory(
+                LegacyConversionManager.getLegacyDamageTypes()
+            ));
+        }
+        return this._cache.get('LEGACY_DAMAGE_TYPES');
+    }
 
-    static ALL_CONDITIONS = new ConfigCategory([
-        ...this.CONDITIONS.slugs,
-        ...this.LEGACY_CONDITIONS.slugs
-    ]);
+    static get ALL_DAMAGE_TYPES() {
+        if (!this._cache.has('ALL_DAMAGE_TYPES')) {
+            this._cache.set('ALL_DAMAGE_TYPES', new ConfigCategory([
+                ...this.DAMAGE_TYPES.slugs,
+                ...this.LEGACY_DAMAGE_TYPES.slugs
+            ]));
+        }
+        return this._cache.get('ALL_DAMAGE_TYPES');
+    }
 
-    // Helper method for checking if a condition can have a value
+    static get DAMAGE_CATEGORIES() {
+        if (!this._cache.has('DAMAGE_CATEGORIES')) {
+            this._cache.set('DAMAGE_CATEGORIES', new ConfigCategory([
+                '', 'persistent', 'precision', 'splash'
+            ]));
+        }
+        return this._cache.get('DAMAGE_CATEGORIES');
+    }
+
+    static get HEALING_TERMS() {
+        if (!this._cache.has('HEALING_TERMS')) {
+            this._cache.set('HEALING_TERMS', new ConfigCategory([
+                'hit point', 'hit points', 'hp', 'healing'
+            ]));
+        }
+        return this._cache.get('HEALING_TERMS');
+    }
+
+    // ===== CONSOLIDATED CONDITIONS CONFIG =====
+    static get CONDITIONS() {
+        if (!this._cache.has('CONDITIONS')) {
+            const conditionData = {
+                items: [
+                    'blinded', 'broken', 'clumsy', 'concealed', 'confused', 'controlled', 'dazzled',
+                    'deafened', 'doomed', 'drained', 'dying', 'enfeebled', 'fascinated', 'fatigued',
+                    'fleeing', 'frightened', 'grabbed', 'immobilized', 'invisible', 'off-guard',
+                    'paralyzed', 'petrified', 'prone', 'quickened', 'restrained', 'sickened',
+                    'slowed', 'stunned', 'stupefied', 'unconscious', 'undetected', 'wounded'
+                ],
+                customLabels: {
+                    'off-guard': 'Off-Guard'
+                },
+                metadata: {
+                    withValues: new Set([
+                        'clumsy', 'doomed', 'drained', 'dying', 'enfeebled', 'frightened',
+                        'sickened', 'slowed', 'stunned', 'stupefied', 'wounded'
+                    ]),
+                    uuids: {
+                        'blinded': 'Compendium.pf2e.conditionitems.Item.XgEqL1kFApUbl5Z2',
+                        'broken': 'Compendium.pf2e.conditionitems.Item.6dNUvdb1dhToNDj3',
+                        'clumsy': 'Compendium.pf2e.conditionitems.Item.i3OJZU2nk64Df3xm',
+                        'concealed': 'Compendium.pf2e.conditionitems.Item.DmAIPqOBomZ7H95W',
+                        'confused': 'Compendium.pf2e.conditionitems.Item.yblD8fOR1J8rDwEQ',
+                        'controlled': 'Compendium.pf2e.conditionitems.Item.9qGBRpbX9NEwtAAr',
+                        'dazzled': 'Compendium.pf2e.conditionitems.Item.TkIyaNPgTZFBCCuh',
+                        'deafened': 'Compendium.pf2e.conditionitems.Item.9PR9y0bi4JPKnHPR',
+                        'doomed': 'Compendium.pf2e.conditionitems.Item.3uh1r86TzbQvosxv',
+                        'drained': 'Compendium.pf2e.conditionitems.Item.4D2KBtexWXa6oUMR',
+                        'dying': 'Compendium.pf2e.conditionitems.Item.yZRUzMqrMmfLu0V1',
+                        'enfeebled': 'Compendium.pf2e.conditionitems.Item.MIRkyAjyBeXivMa7',
+                        'fascinated': 'Compendium.pf2e.conditionitems.Item.AdPVz7rbaVSRxHFg',
+                        'fatigued': 'Compendium.pf2e.conditionitems.Item.HL2l2VRSaQHu9lUw',
+                        'fleeing': 'Compendium.pf2e.conditionitems.Item.sDPxOjQ9kx2RZE8D',
+                        'frightened': 'Compendium.pf2e.conditionitems.Item.TBSHQspnbcqxsmjL',
+                        'grabbed': 'Compendium.pf2e.conditionitems.Item.kWc1fhmv9LBiTuei',
+                        'immobilized': 'Compendium.pf2e.conditionitems.Item.eIcWbB5o3pP6OIMe',
+                        'invisible': 'Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML',
+                        'off-guard': 'Compendium.pf2e.conditionitems.Item.AJh5ex99aV6VTggg',
+                        'paralyzed': 'Compendium.pf2e.conditionitems.Item.6uEgoh53GbXuHpTF',
+                        'petrified': 'Compendium.pf2e.conditionitems.Item.dTwPJuKgBQCMxixg',
+                        'prone': 'Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60',
+                        'quickened': 'Compendium.pf2e.conditionitems.Item.nlCjDvLMf2EkV2dl',
+                        'restrained': 'Compendium.pf2e.conditionitems.Item.VcDeM8A5oI6VqhbM',
+                        'sickened': 'Compendium.pf2e.conditionitems.Item.fesd1n5eVhpCSS18',
+                        'slowed': 'Compendium.pf2e.conditionitems.Item.xYTAsEpcJE1Ccni3',
+                        'stunned': 'Compendium.pf2e.conditionitems.Item.dfCMdR4wnpbYNTix',
+                        'stupefied': 'Compendium.pf2e.conditionitems.Item.e1XGnhKNSQIm5IXg',
+                        'unconscious': 'Compendium.pf2e.conditionitems.Item.fBnFDH2MTzgFijKf',
+                        'undetected': 'Compendium.pf2e.conditionitems.Item.VRSef5y1LmL2Hkjf',
+                        'wounded': 'Compendium.pf2e.conditionitems.Item.Yl48xTdMh3aeQYL2'
+                    }
+                }
+            };
+
+            this._cache.set('CONDITIONS', new ConfigCategory(
+                conditionData.items,
+                conditionData.customLabels,
+                conditionData.metadata
+            ));
+        }
+        return this._cache.get('CONDITIONS');
+    }
+
+    // Consolidated condition helper methods
     static conditionCanHaveValue(condition) {
-        return this.CONDITION_METADATA.withValues.has(condition);
-    }
-
-    static CONDITION_UUIDS = {
-        'blinded': 'Compendium.pf2e.conditionitems.Item.XgEqL1kFApUbl5Z2',
-        'broken': 'Compendium.pf2e.conditionitems.Item.6dNUvdb1dhToNDj3',
-        'clumsy': 'Compendium.pf2e.conditionitems.Item.i3OJZU2nk64Df3xm',
-        'concealed': 'Compendium.pf2e.conditionitems.Item.DmAIPqOBomZ7H95W',
-        'confused': 'Compendium.pf2e.conditionitems.Item.yblD8fOR1J8rDwEQ',
-        'controlled': 'Compendium.pf2e.conditionitems.Item.9qGBRpbX9NEwtAAr',
-        'dazzled': 'Compendium.pf2e.conditionitems.Item.TkIyaNPgTZFBCCuh',
-        'deafened': 'Compendium.pf2e.conditionitems.Item.9PR9y0bi4JPKnHPR',
-        'doomed': 'Compendium.pf2e.conditionitems.Item.3uh1r86TzbQvosxv',
-        'drained': 'Compendium.pf2e.conditionitems.Item.4D2KBtexWXa6oUMR',
-        'dying': 'Compendium.pf2e.conditionitems.Item.yZRUzMqrMmfLu0V1',
-        'enfeebled': 'Compendium.pf2e.conditionitems.Item.MIRkyAjyBeXivMa7',
-        'fascinated': 'Compendium.pf2e.conditionitems.Item.AdPVz7rbaVSRxHFg',
-        'fatigued': 'Compendium.pf2e.conditionitems.Item.HL2l2VRSaQHu9lUw',
-        'fleeing': 'Compendium.pf2e.conditionitems.Item.sDPxOjQ9kx2RZE8D',
-        'frightened': 'Compendium.pf2e.conditionitems.Item.TBSHQspnbcqxsmjL',
-        'grabbed': 'Compendium.pf2e.conditionitems.Item.kWc1fhmv9LBiTuei',
-        'immobilized': 'Compendium.pf2e.conditionitems.Item.eIcWbB5o3pP6OIMe',
-        'invisible': 'Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML',
-        'off-guard': 'Compendium.pf2e.conditionitems.Item.AJh5ex99aV6VTggg',
-        'paralyzed': 'Compendium.pf2e.conditionitems.Item.6uEgoh53GbXuHpTF',
-        'petrified': 'Compendium.pf2e.conditionitems.Item.dTwPJuKgBQCMxixg',
-        'prone': 'Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60',
-        'quickened': 'Compendium.pf2e.conditionitems.Item.nlCjDvLMf2EkV2dl',
-        'restrained': 'Compendium.pf2e.conditionitems.Item.VcDeM8A5oI6VqhbM',
-        'sickened': 'Compendium.pf2e.conditionitems.Item.fesd1n5eVhpCSS18',
-        'slowed': 'Compendium.pf2e.conditionitems.Item.xYTAsEpcJE1Ccni3',
-        'stunned': 'Compendium.pf2e.conditionitems.Item.dfCMdR4wnpbYNTix',
-        'stupefied': 'Compendium.pf2e.conditionitems.Item.e1XGnhKNSQIm5IXg',
-        'unconscious': 'Compendium.pf2e.conditionitems.Item.fBnFDH2MTzgFijKf',
-        'undetected': 'Compendium.pf2e.conditionitems.Item.VRSef5y1LmL2Hkjf',
-        'wounded': 'Compendium.pf2e.conditionitems.Item.Yl48xTdMh3aeQYL2'
+        return this.CONDITIONS.metadata.withValues.has(condition);
     }
 
     static getConditionUUID(condition) {
-        const normalizedName = condition.toLowerCase().trim();
-        return this.CONDITION_UUIDS[normalizedName] || null;
+        const normalizedName = condition?.toLowerCase()?.trim();
+        return this.CONDITIONS.metadata.uuids[normalizedName] || null;
     }
 
-    static TEMPLATE_TYPES = new ConfigCategory([ 'burst', 'cone', 'line', 'emanation' ]);
-
-    static ALTERNATE_TEMPLATE_MAPPING = {
-        'radius': 'burst',
-        'circle': 'burst',
-        'sphere': 'burst',
-        'cylinder': 'burst',
-        'wall': 'line',
-        'square': 'line',
-        'cube': 'line'
-    }
-
-    static getStandardTemplateType(alternateName) {
-        return this.ALTERNATE_TEMPLATE_MAPPING[alternateName] || alternateName;
-    }
-
-    static ALTERNATE_TEMPLATE_NAMES = new ConfigCategory(
-        Object.keys(this.ALTERNATE_TEMPLATE_MAPPING)
-    )
-
-    static ALL_TEMPLATE_NAMES = new ConfigCategory([
-        ...this.TEMPLATE_TYPES.slugs,
-        ...this.ALTERNATE_TEMPLATE_NAMES.slugs
-    ])
-
-    static DURATION_UNITS = new ConfigCategory([
-        'rounds', 'round',
-        'seconds', 'second',
-        'minutes', 'minute',
-        'hours', 'hour',
-        'days', 'day'
-    ]);
-
-    static ACTIONS = new ConfigCategory([
-            'administer-first-aid', 'affix-a-talisman', 'aid', 'arrest-a-fall',
-            'avert-gaze', 'avoid-notice', 'balance', 'burrow', 'climb', 'coerce',
-            'command-an-animal', 'conceal-an-object', 'crawl', 'create-a-diversion',
-            'create-forgery', 'decipher-writing', 'delay', 'demoralize',
-            'disable-device', 'disarm', 'dismiss', 'drop-prone', 'escape',
-            'feint', 'fly', 'force-open', 'gather-information', 'gran-an-edge',
-            'grapple', 'hide', 'high-jump', 'identify-alchemy', 'identify-magic',
-            'impersonate', 'interact', 'leap', 'learn-a-spell', 'lie', 'long-jump',
-            'make-an-impression', 'maneuver-in-flight', 'mount', 'palm-an-object',
-            'perform', 'pick-a-lock', 'point-out', 'ready', 'recall-knowledge',
-            'release', 'reposition', 'request', 'seek', 'sense-direction',
-            'sense-motive', 'shove', 'sneak', 'squeeze', 'stand', 'steal',
-            'step', 'stride', 'subsist', 'sustain', 'swim', 'take-cover',
-            'track', 'treat-disease', 'treat-poison', 'trip', 'tumble-through',
-            'exploit-vulnerability', 'daring-swing', 'haughty-correction', 'entrap-confession'
-        ]
-    );
-
-    static ACTION_VARIANTS = {
-        'administer-first-aid': new ConfigCategory([ 'stabilize', 'stop-bleeding' ]),
-        'create-a-diversion': new ConfigCategory([ 'distracting-words', 'gesture', 'trick' ]),
-        'perform': new ConfigCategory([ 'acting', 'comedy', 'dance', 'keyboards', 'oratory', 'percussion', 'singing', 'strings', 'winds' ])
-    };
-
-    static ACTION_DC_METHODS = new ConfigCategory(
-        [ 'none', 'static', 'target' ],
-        {
-            none: 'Use Default',
-            static: 'Static DC',
-            target: 'Target\'s Statistic'
+    // ===== CHECKS AND SKILLS =====
+    static get SAVES() {
+        if (!this._cache.has('SAVES')) {
+            this._cache.set('SAVES', new ConfigCategory(['reflex', 'fortitude', 'will']));
         }
-    );
+        return this._cache.get('SAVES');
+    }
 
-    static ALTERNATE_ROLL_STATISTICS = new ConfigCategory(
-        [
-            'none',
-            'perception',
-            ...this.SAVES.slugs, // Saves are also statistics
-            'class',
-            'spell',
-            'class-spell',
-            ...this.SKILLS.slugs, // Skills are also statistics
-        ],
-        {
-            none: 'Use Default',
-            class: 'Class DC Roll',
-            spell: 'Spell Attack Roll',
-            'class-spell': 'Class or Spell'
+    static get SKILLS() {
+        if (!this._cache.has('SKILLS')) {
+            this._cache.set('SKILLS', new ConfigCategory([
+                'acrobatics', 'arcana', 'athletics', 'crafting',
+                'deception', 'diplomacy', 'intimidation', 'medicine',
+                'nature', 'occultism', 'performance', 'religion',
+                'society', 'stealth', 'survival', 'thievery'
+            ]));
         }
-    );
+        return this._cache.get('SKILLS');
+    }
 
-    // Helper method for checking if an action has variants
+    static get CHECK_TYPES() {
+        if (!this._cache.has('CHECK_TYPES')) {
+            this._cache.set('CHECK_TYPES', new ConfigCategory([
+                'flat', 'lore', 'perception',
+                ...this.SAVES.slugs,
+                ...this.SKILLS.slugs
+            ]));
+        }
+        return this._cache.get('CHECK_TYPES');
+    }
+
+    // ===== STATISTICS AND DC METHODS =====
+    static get STATISTICS() {
+        if (!this._cache.has('STATISTICS')) {
+            this._cache.set('STATISTICS', new ConfigCategory([
+                'ac', 'perception',
+                ...this.SAVES.slugs,
+                'class', 'spell', 'class-spell',
+                ...this.SKILLS.slugs
+            ], {
+                ac: 'Armor Class',
+                class: 'Class DC',
+                spell: 'Spell DC',
+                'class-spell': 'Class or Spell DC'
+            }));
+        }
+        return this._cache.get('STATISTICS');
+    }
+
+    static get ALTERNATE_ROLL_STATISTICS() {
+        if (!this._cache.has('ALTERNATE_ROLL_STATISTICS')) {
+            this._cache.set('ALTERNATE_ROLL_STATISTICS', new ConfigCategory([
+                'none','perception',
+                ...this.SAVES.slugs,
+                'class', 'spell', 'class-spell',
+                ...this.SKILLS.slugs
+            ], {
+                none: 'Use Default',
+                class: 'Class DC Roll',
+                spell: 'Spell Attack Roll',
+                'class-spell': 'Class or Spell Roll'
+            }));
+        }
+        return this._cache.get('ALTERNATE_ROLL_STATISTICS');
+    }
+
+    static get DC_METHODS() {
+        if (!this._cache.has('DC_METHODS')) {
+            this._cache.set('DC_METHODS', new ConfigCategory(
+                ['none', 'static', 'target', 'origin'],
+                {
+                    none: 'No DC',
+                    static: 'Static DC',
+                    target: 'Target\'s Statistic',
+                    origin: 'Origin\'s Statistic'
+                }
+            ));
+        }
+        return this._cache.get('DC_METHODS');
+    }
+
+    static get ACTION_DC_METHODS() {
+        if (!this._cache.has('DC_METHODS')) {
+            this._cache.set('DC_METHODS', new ConfigCategory(
+                ['none', 'static', 'target', 'origin'],
+                {
+                    none: 'No DC',
+                    static: 'Static DC',
+                    target: 'Target\'s Statistic'
+                }
+            ));
+        }
+        return this._cache.get('DC_METHODS');
+    }
+
+    static get SHOW_DCS() {
+        if (!this._cache.has('SHOW_DCS')) {
+            this._cache.set('SHOW_DCS', new ConfigCategory(
+                ['owner', 'gm', 'all', 'none'],
+                {
+                    owner: 'Owner Only',
+                    gm: 'GM Only',
+                    all: 'Everyone',
+                    none: 'No One'
+                }
+            ));
+        }
+        return this._cache.get('SHOW_DCS');
+    }
+
+    // ===== TEMPLATES =====
+    static get TEMPLATE_TYPES() {
+        if (!this._cache.has('TEMPLATE_TYPES')) {
+            this._cache.set('TEMPLATE_TYPES', new ConfigCategory([
+                'burst', 'cone', 'line', 'emanation'
+            ]));
+        }
+        return this._cache.get('TEMPLATE_TYPES');
+    }
+
+    // Template mapping consolidated
+    static get TEMPLATE_CONFIG() {
+        if (!this._cache.has('TEMPLATE_CONFIG')) {
+            const templateData = {
+                alternateMapping: {
+                    'radius': 'burst',
+                    'circle': 'burst',
+                    'sphere': 'burst',
+                    'cylinder': 'burst',
+                    'wall': 'line',
+                    'square': 'line',
+                    'cube': 'line'
+                }
+            };
+
+            // Create combined categories
+            const alternateNames = new ConfigCategory(Object.keys(templateData.alternateMapping));
+            const allTemplateNames = new ConfigCategory([
+                ...this.TEMPLATE_TYPES.slugs,
+                ...alternateNames.slugs
+            ]);
+
+            this._cache.set('TEMPLATE_CONFIG', {
+                standard: this.TEMPLATE_TYPES,
+                alternates: alternateNames,
+                all: allTemplateNames,
+                getStandardType: (alternateName) => templateData.alternateMapping[alternateName] || alternateName
+            });
+        }
+        return this._cache.get('TEMPLATE_CONFIG');
+    }
+
+    // ===== DURATIONS =====
+    static get DURATION_UNITS() {
+        if (!this._cache.has('DURATION_UNITS')) {
+            this._cache.set('DURATION_UNITS', new ConfigCategory([
+                'rounds', 'round', 'minutes', 'minute', 'hours', 'hour', 'days', 'day', 'weeks', 'week', 'months', 'month', 'years', 'year'
+            ]));
+        }
+        return this._cache.get('DURATION_UNITS');
+    }
+
+    // ===== ACTIONS =====
+    static get ACTIONS() {
+        if (!this._cache.has('ACTIONS')) {
+            this._cache.set('ACTIONS', new ConfigCategory([
+                'administer-first-aid', 'affix-a-talisman', 'aid', 'arrest-a-fall',
+                'avert-gaze', 'avoid-notice', 'balance', 'burrow', 'climb', 'coerce',
+                'command-an-animal', 'conceal-an-object', 'crawl', 'create-a-diversion',
+                'create-forgery', 'decipher-writing', 'delay', 'demoralize',
+                'disable-device', 'disarm', 'dismiss', 'drop-prone', 'escape',
+                'feint', 'fly', 'force-open', 'gather-information', 'gran-an-edge',
+                'grapple', 'hide', 'high-jump', 'identify-alchemy', 'identify-magic',
+                'impersonate', 'interact', 'leap', 'learn-a-spell', 'lie', 'long-jump',
+                'make-an-impression', 'maneuver-in-flight', 'mount', 'palm-an-object',
+                'perform', 'pick-a-lock', 'point-out', 'ready', 'recall-knowledge',
+                'release', 'reposition', 'request', 'seek', 'sense-direction',
+                'sense-motive', 'shove', 'sneak', 'squeeze', 'stand', 'steal',
+                'step', 'stride', 'subsist', 'sustain', 'swim', 'take-cover',
+                'track', 'treat-disease', 'treat-poison', 'trip', 'tumble-through',
+                'exploit-vulnerability', 'daring-swing', 'haughty-correction', 'entrap-confession'
+            ]));
+        }
+        return this._cache.get('ACTIONS');
+    }
+
+    static get ACTION_VARIANTS() {
+        if (!this._cache.has('ACTION_VARIANTS')) {
+            this._cache.set('ACTION_VARIANTS', {
+                'administer-first-aid': new ConfigCategory(['stabilize', 'stop-bleeding']),
+                'create-a-diversion': new ConfigCategory(['distracting-words', 'gesture', 'trick']),
+                'perform': new ConfigCategory([
+                    'acting', 'comedy', 'dance', 'keyboards', 'oratory', 
+                    'percussion', 'singing', 'strings', 'winds'
+                ])
+            });
+        }
+        return this._cache.get('ACTION_VARIANTS');
+    }
+
+    // ===== Action helper methods =====
+
+    /**
+     * Check if an action has variants
+     * @param {string} action - Action slug to check
+     * @returns {boolean} - True if action has variants
+     */
     static actionHasVariants(action) {
-        return this.ACTION_VARIANTS.hasOwnProperty(action);
+        return action && this.ACTION_VARIANTS.hasOwnProperty(action);
     }
 
-    static HEALING_TERMS = new ConfigCategory([ 'hit\\s+points?', 'HP', 'healing' ]);
+    /**
+     * Get variants for an action (safe - returns empty array if no variants)
+     * @param {string} action - Action slug
+     * @returns {ConfigCategory|null} - ConfigCategory with variants or null
+     */
+    static getActionVariants(action) {
+        return this.actionHasVariants(action) ? this.ACTION_VARIANTS[action] : null;
+    }
+
+    /**
+     * Get variant slugs for an action (safe - returns empty array if no variants)
+     * @param {string} action - Action slug  
+     * @returns {Array} - Array of variant slugs
+     */
+    static getActionVariantSlugs(action) {
+        const variants = this.getActionVariants(action);
+        return variants ? variants.slugs : [];
+    }
+
+    /**
+     * Check if a specific variant exists for an action
+     * @param {string} action - Action slug
+     * @param {string} variant - Variant slug to check
+     * @returns {boolean} - True if variant exists for this action
+     */
+    static isValidActionVariant(action, variant) {
+        const variants = this.getActionVariants(action);
+        return variants ? variants.includes(variant) : false;
+    }
+
+    /**
+     * Get variant options for UI (safe - returns empty array if no variants)
+     * @param {string} action - Action slug
+     * @returns {Array} - Array of {value, label} objects for UI
+     */
+    static getActionVariantOptions(action) {
+        const variants = this.getActionVariants(action);
+        return variants ? variants.options : [];
+    }
+
+    /**
+     * Get the first/default variant for an action
+     * @param {string} action - Action slug
+     * @returns {string|null} - First variant slug or null if no variants
+     */
+    static getDefaultActionVariant(action) {
+        const slugs = this.getActionVariantSlugs(action);
+        return slugs.length > 0 ? slugs[0] : '';
+    }
+
+    // ===== UTILITY METHODS =====
+    
+    // Clear cache (useful for testing or memory management)
+    static clearCache() {
+        this._cache.clear();
+    }
+
+    // Get cache statistics
+    static getCacheStats() {
+        return {
+            size: this._cache.size,
+            keys: Array.from(this._cache.keys())
+        };
+    }
+
+    // Pre-warm cache (optional - load all configs at startup)
+    static warmCache() {
+        // Access all getters to initialize cache
+        const configs = [
+            this.DAMAGE_TYPES, this.LEGACY_DAMAGE_TYPES, this.ALL_DAMAGE_TYPES,
+            this.CONDITIONS, this.SAVES, this.SKILLS, this.CHECK_TYPES,
+            this.STATISTICS, this.DC_METHODS, this.SHOW_DCS,
+            this.TEMPLATE_TYPES, this.TEMPLATE_CONFIG, this.ACTIONS, this.ACTION_VARIANTS,
+            this.DURATION_UNITS, this.ACTION_DC_METHODS, this.ALTERNATE_ROLL_STATISTICS,  this.HEALING_TERMS
+        ];
+        console.log(`[ConfigManager] Pre-warmed cache with ${configs.length} configurations`);
+    }
 }
 
 /**
@@ -3718,7 +3903,7 @@ class ConditionPattern extends BasePattern {
         },
         // Condition linking
         {
-            regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${ConfigManager.ALL_CONDITIONS.pattern})(?:\\s+(\\d+))?\\b(?!\\})`, 'gi'),
+            regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${ConfigManager.CONDITIONS.pattern})(?:\\s+(\\d+))?\\b(?!\\})`, 'gi'),
             priority: 70,
             subtype: 'condition'
         }
@@ -3765,9 +3950,9 @@ class TemplatePattern extends BasePattern {
     static description = 'Template patterns';
 
     static PATTERNS = [
-        // Area effects
+        // Standard template patterns
         {
-            regex: new RegExp(`(\\d+)(?:[\\s-]+)(?:foot|feet)\\s+(${ConfigManager.ALL_TEMPLATE_NAMES.pattern})`, 'gi'),
+            regex: new RegExp(`(\\d+)(?:[\\s-]+)(?:foot|feet)\\s+(${ConfigManager.TEMPLATE_CONFIG.all.pattern})`, 'gi'),
             priority: 60,
             subtype: 'area'
         },
@@ -3792,7 +3977,7 @@ class TemplatePattern extends BasePattern {
         let templateType = match[2] ? match[2].toLowerCase() : 'burst';
         
         // Handle alternate shape mappings
-        const standardType = ConfigManager.getStandardTemplateType(templateType);
+        const standardType = ConfigManager.TEMPLATE_CONFIG.getStandardType(templateType);
         if (standardType) {
             templateType = standardType;
         }
