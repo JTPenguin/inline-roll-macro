@@ -8,30 +8,6 @@
 // Define a test input for demonstration and testing
 const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
 
-// Enhanced field configuration object template
-// const fieldConfig = {
-//     id: 'field-name',           // Unique field identifier
-//     type: 'select',             // Field type (select, text, checkbox, etc.)
-//     label: 'Field Label',       // Display label
-//     getValue: (rep) => rep.value, // Function to get current value
-//     setValue: (rep, val) => {},  // Function to set new value (optional)
-    
-//     // Type-specific options
-//     options: [...],             // For select/multiselect fields
-//     placeholder: 'text...',     // For text fields
-//     min: 0,                     // For number fields
-    
-//     // Conditional display
-//     showIf: (rep) => true,      // Function to determine if field should be shown
-//     hideIf: (rep) => false,     // Function to determine if field should be hidden
-    
-//     // Enhanced dependency and update properties
-//     affects: ['other-field-id'],           // Fields this field affects
-//     dependsOn: ['source-field-id'],        // Fields this field depends on
-//     triggersUpdate: 'panel-partial',       // Update scope when changed
-//     validate: (value, rep) => boolean      // Field validation function
-// };
-
 // ==================== INLINE ROLL SYSTEM ====================
 
 // Base class for all inline rolls
@@ -74,7 +50,7 @@ class InlineDamage extends InlineAutomation {
         const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : '';
 
         // Return the complete syntax
-        return `@Damage[${componentSyntax.join(', ')}${optionsSyntax}]${displayTextSyntax}`;
+        return `@Damage[${componentSyntax.join(',')}${optionsSyntax}]${displayTextSyntax}`;
     }
 }
 
@@ -83,7 +59,7 @@ class InlineDamage extends InlineAutomation {
 class InlineCheck extends InlineAutomation {
     constructor(params = {}) {
         super('check', params);
-        this.checkType = params.checkType || 'acrobatics';
+        this.checkType = params.checkType || 'flat';
         this.loreName = params.loreName || 'Warfare';
         this.dcMethod = params.dcMethod || 'none';
         this.dc = params.dc || 0;
@@ -144,20 +120,59 @@ class InlineLink extends InlineAutomation {
 
 class InlineCondition extends InlineLink {
     constructor(params = {}) {
-        this.condition = params.condition || '';
-        this.value = params.value || null;
+        // Prepare all data using local variables
+        const condition = params.condition || '';
+        const value = params.value || null;
+        const uuid = params.uuid || ConfigManager.getConditionUUID(condition) || '';
+        
+        // Determine display text
+        // let displayText;
+        // if (condition === 'flat-footed' || condition === 'off-guard') {
+        //     displayText = 'Off-Guard';
+        // } else {
+        //     displayText = condition.charAt(0).toUpperCase() + condition.slice(1).toLowerCase();
+        //     // If condition supports a value, add it to the display text
+        //     if (ConfigManager.conditionCanHaveValue(condition) && value !== null) {
+        //         displayText += ` ${value}`;
+        //     }
+        // }
+        
+        // Call super() FIRST with all prepared data
+        super({...params, uuid: uuid});
+        
+        // Set additional properties specific to this class
+        this._condition = condition;
+        this.value = value;
+    }
 
-        uuid = getConditionUUID(this.condition) || ''; // Get the UUID for the condition
+    get condition() { return this._condition; }
 
-        // If the condition is 'flat-footed' or 'off-guard', set the display text to 'Off-Guard'
-        if (this.condition === 'flat-footed' || this.condition === 'off-guard') {
-            displayText = 'Off-Guard';
+    // TODO: Check the condition against the list of conditions in the ConfigManager
+    set condition(newCondition) {
+        this._condition = newCondition;
+        this.uuid = ConfigManager.getConditionUUID(newCondition) || '';
+
+        console.log(`Updated InlineCondition: ${this._condition} - ${this.uuid}`);
+    }
+    
+    render() {
+        // Dynamically determine the display text
+        let displayTextSyntax = '';
+        if (this.displayText !== '') { // Use the display text if it's not empty
+            displayTextSyntax = `{${this.displayText}}`;
         }
-        else { // Otherwise, set it to the condition name, capitalized
-            displayText = this.condition.charAt(0).toUpperCase() + this.condition.slice(1).toLowerCase();
+        else if (this._condition === 'flat-footed' || this._condition === 'off-guard') { // Use the display text for flat-footed and off-guard
+            displayTextSyntax = '{Off-Guard}';
+        }
+        else { // Use the condition name and value
+            displayTextSyntax = this._condition.charAt(0).toUpperCase() + this._condition.slice(1).toLowerCase();
+            if (ConfigManager.conditionCanHaveValue(this._condition) && this.value !== null) {
+                displayTextSyntax += ` ${this.value}`;
+            }
+            displayTextSyntax = `{${displayTextSyntax}}`;
         }
 
-        super('link', {...params, uuid: uuid, displayText: displayText});
+        return `@UUID[${this.uuid}]${displayTextSyntax}`;
     }
 }
 
@@ -235,8 +250,8 @@ class InlineAction extends InlineAutomation {
     // Set the variant to the first variant of the action
     // Or set the variant to '' if the action has no variants
     correctInvalidVariant() {
-        if (ConfigManager.actionHasVariants(this.action) && !ConfigManager.getActionVariants(this.action).includes(this.variant)) {
-            this.variant = ConfigManager.getActionVariants(this.action)[0];
+        if (ConfigManager.actionHasVariants(this.action) && !ConfigManager.ACTION_VARIANTS[this.action].includes(this.variant)) {
+            this.variant = ConfigManager.ACTION_VARIANTS[this.action][0];
         }
         else if (!ConfigManager.actionHasVariants(this.action)) {
             this.variant = '';
@@ -264,6 +279,30 @@ class InlineAction extends InlineAutomation {
         return `[[/act ${parts.join(' ')}]]${displayTextSyntax}`;
     }
 }
+
+// Enhanced field configuration object template
+// const fieldConfig = {
+//     id: 'field-name',           // Unique field identifier
+//     type: 'select',             // Field type (select, text, checkbox, etc.)
+//     label: 'Field Label',       // Display label
+//     getValue: (rep) => rep.value, // Function to get current value
+//     setValue: (rep, val) => {},  // Function to set new value (optional)
+    
+//     // Type-specific options
+//     options: [...],             // For select/multiselect fields
+//     placeholder: 'text...',     // For text fields
+//     min: 0,                     // For number fields
+    
+//     // Conditional display
+//     showIf: (rep) => true,      // Function to determine if field should be shown
+//     hideIf: (rep) => false,     // Function to determine if field should be hidden
+    
+//     // Enhanced dependency and update properties
+//     affects: ['other-field-id'],           // Fields this field affects
+//     dependsOn: ['source-field-id'],        // Fields this field depends on
+//     triggersUpdate: 'panel-partial',       // Update scope when changed
+//     validate: (value, rep) => boolean      // Field validation function
+// };
 
 /**
  * BaseRenderer - Base class for type-specific renderers
@@ -340,13 +379,13 @@ class BaseRenderer {
                 id: `trait-${trait}`,
                 type: 'checkbox',
                 label: trait.charAt(0).toUpperCase() + trait.slice(1),
-                getValue: (r) => r.traits && r.traits.includes(trait),
+                getValue: (r) => r.inlineAutomation.traits && r.inlineAutomation.traits.includes(trait),
                 setValue: (r, value) => {
-                    if (!r.traits) r.traits = [];
-                    if (value && !r.traits.includes(trait)) {
-                        r.traits.push(trait);
-                    } else if (!value && r.traits.includes(trait)) {
-                        r.traits = r.traits.filter(t => t !== trait);
+                    if (!r.inlineAutomation.traits) r.inlineAutomation.traits = [];
+                    if (value && !r.inlineAutomation.traits.includes(trait)) {
+                        r.inlineAutomation.traits.push(trait);
+                    } else if (!value && r.inlineAutomation.traits.includes(trait)) {
+                        r.inlineAutomation.traits = r.inlineAutomation.traits.filter(t => t !== trait);
                     }
                 }
             });
@@ -357,8 +396,8 @@ class BaseRenderer {
             id: 'traits',
             type: 'traits',
             label: 'Traits',
-            getValue: (r) => r.traits || [],
-            setValue: (r, value) => { r.traits = value; }
+            getValue: (r) => r.inlineAutomation.traits || [],
+            setValue: (r, value) => { r.inlineAutomation.traits = value; }
         });
 
         return traitFields;
@@ -410,8 +449,8 @@ class BaseRenderer {
             id: 'display-text',
             type: 'text',
             label: 'Display Text',
-            getValue: (r) => r.displayText || '',
-            setValue: (r, value) => { r.displayText = value; },
+            getValue: (r) => r.inlineAutomation.displayText || '',
+            setValue: (r, value) => { r.inlineAutomation.displayText = value; },
             placeholder: 'Custom display text...'
         };
     }
@@ -578,19 +617,19 @@ class DamageRenderer extends BaseRenderer {
         const configs = [];
 
         // Damage components (special handling)
-        if (!replacement.damageComponents || !Array.isArray(replacement.damageComponents)) {
-            replacement.damageComponents = [];
+        if (!replacement.inlineAutomation.components || !Array.isArray(replacement.inlineAutomation.components)) {
+            replacement.inlineAutomation.components = [];
         }
         
-        replacement.damageComponents.forEach((component, index) => {
+        replacement.inlineAutomation.components.forEach((component, index) => {
             configs.push({
                 id: `component-${index}-dice`,
                 type: 'text',
                 label: `Dice`,
-                getValue: (r) => r.damageComponents[index]?.dice || '',
+                getValue: (r) => r.inlineAutomation.components[index]?.dice || '',
                 setValue: (r, value) => {
-                    if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
-                    r.damageComponents[index].dice = value;
+                    if (!r.inlineAutomation.components[index]) r.inlineAutomation.components[index] = new DamageComponent();
+                    r.inlineAutomation.components[index].dice = value;
                 },
                 componentIndex: index,
                 componentField: 'dice',
@@ -602,10 +641,10 @@ class DamageRenderer extends BaseRenderer {
                 type: 'select',
                 label: `Type`,
                 options: ConfigManager.DAMAGE_TYPES.options,
-                getValue: (r) => r.damageComponents[index]?.damageType || '',
+                getValue: (r) => r.inlineAutomation.components[index]?.damageType || '',
                 setValue: (r, value) => {
-                    if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
-                    r.damageComponents[index].damageType = value;
+                    if (!r.inlineAutomation.components[index]) r.inlineAutomation.components[index] = new DamageComponent();
+                    r.inlineAutomation.components[index].damageType = value;
                 },
                 componentIndex: index,
                 componentField: 'damageType'
@@ -616,10 +655,10 @@ class DamageRenderer extends BaseRenderer {
                 type: 'select',
                 label: `Category`,
                 options: ConfigManager.DAMAGE_CATEGORIES.options,
-                getValue: (r) => r.damageComponents[index]?.category || '',
+                getValue: (r) => r.inlineAutomation.components[index]?.category || '',
                 setValue: (r, value) => {
-                    if (!r.damageComponents[index]) r.damageComponents[index] = new DamageComponent();
-                    r.damageComponents[index].category = value;
+                    if (!r.inlineAutomation.components[index]) r.inlineAutomation.components[index] = new DamageComponent();
+                    r.inlineAutomation.components[index].category = value;
                 },
                 componentIndex: index,
                 componentField: 'category'
@@ -631,8 +670,8 @@ class DamageRenderer extends BaseRenderer {
             id: 'area-damage',
             type: 'checkbox',
             label: 'Area Damage',
-            getValue: (r) => r.areaDamage || false,
-            setValue: (r, value) => { r.areaDamage = value; }
+            getValue: (r) => r.inlineAutomation.areaDamage || false,
+            setValue: (r, value) => { r.inlineAutomation.areaDamage = value; }
         });
 
         return configs;
@@ -658,96 +697,73 @@ class CheckRenderer extends BaseRenderer {
             id: 'check-type',
             type: 'select',
             label: 'Check Type',
-            getValue: (r) => r.checkType || 'skill',
-            setValue: (r, value) => { r.checkType = value; },
+            getValue: (r) => r.inlineAutomation.checkType || 'flat',
+            setValue: (r, value) => { r.inlineAutomation.checkType = value; },
             options: ConfigManager.CHECK_TYPES.options,
-            affects: ['skill', 'save', 'lore-name'],
+            affects: ['lore-name'],
             triggersUpdate: 'visibility'
-        });
-
-        configs.push({
-            id: 'skill',
-            type: 'select',
-            label: 'Skill',
-            getValue: (r) => r.skill || '',
-            setValue: (r, value) => { r.skill = value; },
-            options: ConfigManager.SKILLS.options,
-            dependsOn: ['check-type'],
-            showIf: (r) => r.checkType === 'skill'
-        });
-
-        configs.push({
-            id: 'save',
-            type: 'select',
-            label: 'Save',
-            getValue: (r) => r.save || '',
-            setValue: (r, value) => { r.save = value; },
-            options: ConfigManager.SAVES.options,
-            dependsOn: ['check-type'],
-            showIf: (r) => r.checkType === 'save'
         });
 
         configs.push({
             id: 'lore-name',
             type: 'text',
             label: 'Lore Name',
-            getValue: (r) => r.loreName || '',
-            setValue: (r, value) => { r.loreName = value; },
+            getValue: (r) => r.inlineAutomation.loreName || '',
+            setValue: (r, value) => { r.inlineAutomation.loreName = value; },
             placeholder: 'e.g., Sailing Lore',
             dependsOn: ['check-type'],
-            showIf: (r) => r.checkType === 'lore'
+            showIf: (r) => r.inlineAutomation.checkType === 'lore'
         });
         
         configs.push({
             id: 'dc-method',
             type: 'select',
             label: 'DC Method',
-            getValue: (r) => r.dcMethod || 'static',
-            setValue: (r, value) => { r.dcMethod = value; },
+            getValue: (r) => r.inlineAutomation.dcMethod || 'static',
+            setValue: (r, value) => { r.inlineAutomation.dcMethod = value; },
             options: ConfigManager.DC_METHODS.options,
             affects: ['dc', 'statistic'],
             triggersUpdate: 'visibility'
         });
 
-        // DC method specific fields
         configs.push({
             id: 'dc',
             type: 'number',
             label: 'DC',
-            getValue: (r) => r.dc || '',
-            setValue: (r, value) => { r.dc = value; },
+            getValue: (r) => r.inlineAutomation.dc || '',
+            setValue: (r, value) => { r.inlineAutomation.dc = value; },
             min: 1,
             dependsOn: ['dc-method'],
-            showIf: (r) => r.dcMethod === 'static'
+            showIf: (r) => r.inlineAutomation.dcMethod === 'static'
         });
 
         configs.push({
             id: 'statistic',
             type: 'select',
             label: 'Statistic',
-            getValue: (r) => r.statistic || '',
-            setValue: (r, value) => { r.statistic = value; },
+            getValue: (r) => r.inlineAutomation.statistic || '',
+            setValue: (r, value) => { r.inlineAutomation.statistic = value; },
             options: ConfigManager.STATISTICS.options,
             dependsOn: ['dc-method'],
-            showIf: (r) => r.dcMethod === 'target' || r.dcMethod === 'origin'
+            showIf: (r) => r.inlineAutomation.dcMethod === 'target' || r.inlineAutomation.dcMethod === 'origin'
         });
         
         configs.push({
             id: 'basic-save',
             type: 'checkbox',
             label: 'Basic',
-            getValue: (r) => r.basic || false,
-            setValue: (r, value) => { r.basic = value; },
-            showIf: (r) => r.checkType === 'save'
+            getValue: (r) => r.inlineAutomation.basic || false,
+            setValue: (r, value) => { r.inlineAutomation.basic = value; },
+            showIf: (r) => r.inlineAutomation.isSave()
         });
 
         configs.push({
             id: 'damaging-effect',
             type: 'checkbox',
             label: 'Damaging Effect',
-            getValue: (r) => r.damagingEffect || false,
-            setValue: (r, value) => { r.damagingEffect = value; },
-            showIf: (r) => r.checkType === 'save'
+            getValue: (r) => r.inlineAutomation.damagingEffect || false,
+            setValue: (r, value) => { r.inlineAutomation.damagingEffect = value; },
+            showIf: (r) => r.inlineAutomation.isSave()
         })
 
         return configs;
@@ -773,8 +789,8 @@ class ConditionRenderer extends BaseRenderer {
             id: 'condition-select',
             type: 'select',
             label: 'Condition',
-            getValue: (r) => r.conditionName || '',
-            setValue: (r, value) => { r.conditionName = value; },
+            getValue: (r) => r.inlineAutomation.condition || '',
+            setValue: (r, value) => { r.inlineAutomation.condition = value; },
             options: ConfigManager.ALL_CONDITIONS.options,
             affects: ['condition-value'],
             triggersUpdate: 'visibility'
@@ -784,10 +800,10 @@ class ConditionRenderer extends BaseRenderer {
             id: 'condition-value',
             type: 'number',
             label: 'Value',
-            getValue: (r) => r.degree || '',
-            setValue: (r, value) => { r.degree = value; },
+            getValue: (r) => r.inlineAutomation.value || '',
+            setValue: (r, value) => { r.inlineAutomation.value = value; },
             min: 1,
-            showIf: (r) => r.conditionName && ConfigManager.conditionCanHaveValue(r.conditionName),
+            showIf: (r) => r.inlineAutomation.condition && ConfigManager.conditionCanHaveValue(r.inlineAutomation.condition),
             dependsOn: ['condition-select']
         });
 
@@ -820,8 +836,8 @@ class TemplateRenderer extends BaseRenderer {
             id: 'template-type',
             type: 'select',
             label: 'Type',
-            getValue: (r) => r.shape || 'burst',
-            setValue: (r, value) => { r.shape = value; },
+            getValue: (r) => r.inlineAutomation.templateType || 'burst',
+            setValue: (r, value) => { r.inlineAutomation.templateType = value; },
             options: ConfigManager.TEMPLATE_TYPES.options,
             affects: ['width'],
             triggersUpdate: 'visibility'
@@ -831,8 +847,8 @@ class TemplateRenderer extends BaseRenderer {
             id: 'distance',
             type: 'number',
             label: 'Distance',
-            getValue: (r) => r.distance || '',
-            setValue: (r, value) => { r.distance = value; },
+            getValue: (r) => r.inlineAutomation.distance || '',
+            setValue: (r, value) => { r.inlineAutomation.distance = value; },
             min: 1
         });
         
@@ -840,11 +856,11 @@ class TemplateRenderer extends BaseRenderer {
             id: 'width',
             type: 'number',
             label: 'Width',
-            getValue: (r) => r.width || '',
-            setValue: (r, value) => { r.width = value; },
+            getValue: (r) => r.inlineAutomation.width || '',
+            setValue: (r, value) => { r.inlineAutomation.width = value; },
             min: 1,
             dependsOn: ['template-type'],
-            showIf: (r) => r.shape === 'line'
+            showIf: (r) => r.inlineAutomation.templateType === 'line'
         });
 
         return configs;
@@ -853,30 +869,6 @@ class TemplateRenderer extends BaseRenderer {
     // Templates don't support traits
     supportsTraits(replacement) {
         return false;
-    }
-}
-
-/**
- * HealingRenderer - Handles healing modifier UI
- */
-class HealingRenderer extends BaseRenderer {
-    getTitle(replacement) {
-        return 'Healing';
-    }
-
-    getTypeSpecificFieldConfigs(replacement) {
-        const configs = [];
-        
-        configs.push({
-            id: 'dice',
-            type: 'text',
-            label: 'Dice',
-            getValue: (r) => r.dice || '',
-            setValue: (r, value) => { r.dice = value; },
-            placeholder: 'e.g., 3d8'
-        });
-
-        return configs;
     }
 }
 
@@ -895,8 +887,8 @@ class DurationRenderer extends BaseRenderer {
             id: 'dice',
             type: 'text',
             label: 'Dice',
-            getValue: (r) => r.dice || '',
-            setValue: (r, value) => { r.dice = value; },
+            getValue: (r) => r.inlineAutomation.dice || '',
+            setValue: (r, value) => { r.inlineAutomation.dice = value; },
             placeholder: 'e.g., 1d4'
         });
         
@@ -904,8 +896,8 @@ class DurationRenderer extends BaseRenderer {
             id: 'unit',
             type: 'select',
             label: 'Unit',
-            getValue: (r) => r.unit || 'rounds',
-            setValue: (r, value) => { r.unit = value; },
+            getValue: (r) => r.inlineAutomation.label || 'rounds',
+            setValue: (r, value) => { r.inlineAutomation.label = value; },
             options: ConfigManager.DURATION_UNITS.options
         });
         
@@ -913,8 +905,8 @@ class DurationRenderer extends BaseRenderer {
             id: 'gm-only',
             type: 'checkbox',
             label: 'GM Only',
-            getValue: (r) => r.isGM || false,
-            setValue: (r, value) => { r.isGM = value; }
+            getValue: (r) => r.inlineAutomation.gmOnly || false,
+            setValue: (r, value) => { r.inlineAutomation.gmOnly = value; }
         });
 
         return configs;
@@ -941,9 +933,9 @@ class ActionRenderer extends BaseRenderer {
             id: 'action-name',
             type: 'select',
             label: 'Action',
-            getValue: (r) => r.action || '',
+            getValue: (r) => r.inlineAutomation.action || '',
             setValue: (r, value) => {
-                r.setAction(value);
+                r.inlineAutomation.action = value;
             },
             options: ConfigManager.ACTIONS.options,
             affects: ['action-variant'],
@@ -955,18 +947,18 @@ class ActionRenderer extends BaseRenderer {
             type: 'select',
             label: 'Variant',
             options: (r) => {
-                if (r.action && ConfigManager.actionHasVariants(r.action)) {
-                    const variants = ConfigManager.ACTION_VARIANTS[r.action];
+                if (r.inlineAutomation.action && ConfigManager.actionHasVariants(r.inlineAutomation.action)) {
+                    const variants = ConfigManager.ACTION_VARIANTS[r.inlineAutomation.action];
                     if (variants && variants.options) {
                         return variants.options;
                     }
                 }
                 return [];
             },
-            getValue: (r) => r.variant || '',
-            setValue: (r, value) => { r.variant = value; },
+            getValue: (r) => r.inlineAutomation.variant || '',
+            setValue: (r, value) => { r.inlineAutomation.variant = value; },
             dependsOn: ['action-name'],
-            showIf: (r) => r.action && ConfigManager.actionHasVariants(r.action)
+            showIf: (r) => r.inlineAutomation.action && ConfigManager.actionHasVariants(r.inlineAutomation.action)
         });
 
         return configs;
@@ -1004,7 +996,7 @@ class ModifierPanelManager {
             check: new CheckRenderer(),
             condition: new ConditionRenderer(),
             template: new TemplateRenderer(),
-            healing: new HealingRenderer(),
+            //healing: new HealingRenderer(),
             duration: new DurationRenderer(),
             action: new ActionRenderer()
         };
@@ -2159,20 +2151,7 @@ class ConverterDialog {
         // DOM element references
         this.ui = {};
         
-        // Initialize condition mapping
-        console.log('[PF2e Converter] Initializing condition map');
-        this.initializeConditionMap();
-        
         console.log('[PF2e Converter] ConverterDialog constructor completed');
-    }
-    
-    /**
-     * Initialize condition mapping for the dialog instance
-     */
-    initializeConditionMap() {
-        console.log('[PF2e Converter] Building condition map');
-        this.data.conditionMap = buildConditionMap();
-        console.log('[PF2e Converter] Condition map built with', this.data.conditionMap.size, 'entries');
     }
     
     /**
@@ -2644,6 +2623,11 @@ class LegacyConversionManager {
         return this.preserveCase(conditionText, mapping);
     }
 
+    static isLegacyCondition(conditionText) {
+        const normalized = conditionText.toLowerCase();
+        return this.LEGACY_CONDITION_MAPPINGS.hasOwnProperty(normalized);
+    }
+
     /**
      * Apply case pattern from source to target string
      * Handles different string lengths by mapping words and characters intelligently
@@ -2734,6 +2718,10 @@ class LegacyConversionManager {
         return Object.keys(this.LEGACY_DAMAGE_MAPPINGS);
     }
 
+    static getLegacyConditions() {
+        return Object.keys(this.LEGACY_CONDITION_MAPPINGS);
+    }
+
     /**
      * Get all legacy conditions for pattern generation
      */
@@ -2773,17 +2761,6 @@ class ConfigManager {
 
     static DAMAGE_CATEGORIES = new ConfigCategory([ '', 'persistent', 'precision', 'splash' ]);
 
-    static CHECK_TYPES = new ConfigCategory(
-        [ 'skill', 'save', 'perception', 'lore', 'flat' ],
-        {
-            skill: 'Skill Check',
-            save: 'Saving Throw',
-            perception: 'Perception Check',
-            lore: 'Lore Check',
-            flat: 'Flat Check'
-        }
-    );
-
     static SAVES = new ConfigCategory([ 'reflex', 'fortitude', 'will' ]);
 
     static SKILLS = new ConfigCategory([
@@ -2791,6 +2768,14 @@ class ConfigManager {
         'deception', 'diplomacy', 'intimidation', 'medicine',
         'nature', 'occultism', 'performance', 'religion',
         'society', 'stealth', 'survival', 'thievery'
+    ]);
+
+    static CHECK_TYPES = new ConfigCategory([
+        'flat',
+        'lore',
+        'perception',
+        ...this.SAVES.slugs,
+        ...this.SKILLS.slugs
     ]);
 
     static DC_METHODS = new ConfigCategory(
@@ -2863,6 +2848,46 @@ class ConfigManager {
         return this.CONDITION_METADATA.withValues.has(condition);
     }
 
+    static CONDITION_UUIDS = {
+        'blinded': 'Compendium.pf2e.conditionitems.Item.XgEqL1kFApUbl5Z2',
+        'broken': 'Compendium.pf2e.conditionitems.Item.6dNUvdb1dhToNDj3',
+        'clumsy': 'Compendium.pf2e.conditionitems.Item.i3OJZU2nk64Df3xm',
+        'concealed': 'Compendium.pf2e.conditionitems.Item.DmAIPqOBomZ7H95W',
+        'confused': 'Compendium.pf2e.conditionitems.Item.yblD8fOR1J8rDwEQ',
+        'controlled': 'Compendium.pf2e.conditionitems.Item.9qGBRpbX9NEwtAAr',
+        'dazzled': 'Compendium.pf2e.conditionitems.Item.TkIyaNPgTZFBCCuh',
+        'deafened': 'Compendium.pf2e.conditionitems.Item.9PR9y0bi4JPKnHPR',
+        'doomed': 'Compendium.pf2e.conditionitems.Item.3uh1r86TzbQvosxv',
+        'drained': 'Compendium.pf2e.conditionitems.Item.4D2KBtexWXa6oUMR',
+        'dying': 'Compendium.pf2e.conditionitems.Item.yZRUzMqrMmfLu0V1',
+        'enfeebled': 'Compendium.pf2e.conditionitems.Item.MIRkyAjyBeXivMa7',
+        'fascinated': 'Compendium.pf2e.conditionitems.Item.AdPVz7rbaVSRxHFg',
+        'fatigued': 'Compendium.pf2e.conditionitems.Item.HL2l2VRSaQHu9lUw',
+        'fleeing': 'Compendium.pf2e.conditionitems.Item.sDPxOjQ9kx2RZE8D',
+        'frightened': 'Compendium.pf2e.conditionitems.Item.TBSHQspnbcqxsmjL',
+        'grabbed': 'Compendium.pf2e.conditionitems.Item.kWc1fhmv9LBiTuei',
+        'immobilized': 'Compendium.pf2e.conditionitems.Item.eIcWbB5o3pP6OIMe',
+        'invisible': 'Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML',
+        'off-guard': 'Compendium.pf2e.conditionitems.Item.AJh5ex99aV6VTggg',
+        'paralyzed': 'Compendium.pf2e.conditionitems.Item.6uEgoh53GbXuHpTF',
+        'petrified': 'Compendium.pf2e.conditionitems.Item.xYTAsEpcJE1Ccni3',
+        'prone': 'Compendium.pf2e.conditionitems.Item.j91X7x0XSomq8d60',
+        'quickened': 'Compendium.pf2e.conditionitems.Item.nlCjDvLMf2EkV2dl',
+        'restrained': 'Compendium.pf2e.conditionitems.Item.VcDeM8A5oI6VqhbM',
+        'sickened': 'Compendium.pf2e.conditionitems.Item.fesd1n5eVhpCSS18',
+        'slowed': 'Compendium.pf2e.conditionitems.Item.xYhLAT81iV1Pmabq',
+        'stunned': 'Compendium.pf2e.conditionitems.Item.dfCMdR4wnpbYNTix',
+        'stupefied': 'Compendium.pf2e.conditionitems.Item.e1XGnhKNSQIm5IXg',
+        'unconscious': 'Compendium.pf2e.conditionitems.Item.fBnFDH2MTzgFijMf',
+        'undetected': 'Compendium.pf2e.conditionitems.Item.VRSef5y1LmL2Hkjf',
+        'wounded': 'Compendium.pf2e.conditionitems.Item.Yl5krDQh5NQaWUfJ'
+    }
+
+    static getConditionUUID(condition) {
+        const normalizedName = condition.toLowerCase().trim();
+        return this.CONDITION_UUIDS[normalizedName] || null;
+    }
+
     static TEMPLATE_TYPES = new ConfigCategory([ 'burst', 'cone', 'line', 'emanation' ]);
 
     static ALTERNATE_TEMPLATE_MAPPING = {
@@ -2927,143 +2952,6 @@ class ConfigManager {
     }
 
     static HEALING_TERMS = new ConfigCategory([ 'hit\\s+points?', 'HP', 'healing' ]);
-}
-
-// Condition mapping for dynamic UUID retrieval
-let conditionMap = new Map();
-
-/**
- * Try to get condition UUID from compendium
- * @param {string} conditionName - The condition name to look up
- * @returns {string|null} - The condition UUID or null if not found
- */
-function getConditionUUIDFromCompendium(conditionName) {
-    try {
-        console.log('[PF2e Converter] Looking up condition UUID for:', conditionName);
-        
-        const conditionCompendium = game.packs.get('pf2e.conditionitems');
-        if (!conditionCompendium) {
-            console.warn('[PF2e Converter] Condition compendium not found');
-            return null;
-        }
-        
-        const normalizedName = conditionName.toLowerCase().trim();
-        console.log('[PF2e Converter] Normalized condition name:', normalizedName);
-        
-        // Search through the compendium index
-        const entries = conditionCompendium.index.contents;
-        console.log('[PF2e Converter] Searching through', entries.length, 'compendium entries');
-        
-        for (const entry of entries) {
-            if (entry.name.toLowerCase() === normalizedName) {
-                console.log('[PF2e Converter] Found condition UUID:', entry.uuid);
-                return entry.uuid;
-            }
-        }
-        
-        console.log('[PF2e Converter] Condition not found in compendium:', conditionName);
-        return null;
-    } catch (error) {
-        console.error('[PF2e Converter] Error looking up condition UUID:', error);
-        console.error('[PF2e Converter] Error stack:', error.stack);
-        // Silently fail - fallback UUIDs will be used
-        return null;
-    }
-}
-
-/**
- * Build condition mapping for dynamic UUID retrieval
- * @returns {Map} - Map of condition names to UUIDs
- */
-function buildConditionMap() {
-    console.log('[PF2e Converter] buildConditionMap called');
-    
-    try {
-        const conditionMap = new Map();
-        
-        // List of all conditions we want to support
-        console.log('[PF2e Converter] Getting condition names from ConfigManager');
-        const conditionNames = ConfigManager.CONDITIONS.slugs;
-        console.log('[PF2e Converter] Found', conditionNames.length, 'condition names');
-        
-        // Try to get all conditions from the compendium
-        console.log('[PF2e Converter] Looking up condition UUIDs from compendium');
-        for (const conditionName of conditionNames) {
-            const uuid = getConditionUUIDFromCompendium(conditionName);
-            if (uuid) {
-                conditionMap.set(conditionName, {
-                    uuid: uuid,
-                    name: conditionName,
-                    slug: conditionName
-                });
-            } else {
-                console.warn(`[PF2e Converter] Could not find UUID for condition "${conditionName}"`);
-            }
-        }
-    
-    // Fallback condition UUIDs (common PF2e conditions) - Updated for Remaster
-    const fallbackConditions = {};
-    ConfigManager.CONDITIONS.slugs.forEach(name => {
-        fallbackConditions[name] = `Compendium.pf2e.conditionitems.Item.${name}`;
-    });
-    
-        // If we didn't get any conditions from the compendium, use fallbacks
-        if (conditionMap.size === 0) {
-            console.warn('[PF2e Converter] No conditions found from compendium, using fallback mapping');
-            for (const [name, uuid] of Object.entries(fallbackConditions)) {
-                conditionMap.set(name, {
-                    uuid: uuid,
-                    name: name,
-                    slug: name
-                });
-            }
-        } else {
-            // Fill in any missing conditions with fallbacks
-            for (const [name, uuid] of Object.entries(fallbackConditions)) {
-                if (!conditionMap.has(name)) {
-                    conditionMap.set(name, {
-                        uuid: uuid,
-                        name: name,
-                        slug: name
-                    });
-                }
-            }
-        }
-        
-        console.log('[PF2e Converter] Condition map built successfully with', conditionMap.size, 'entries');
-        return conditionMap;
-    } catch (error) {
-        console.error('[PF2e Converter] Error building condition map:', error);
-        console.error('[PF2e Converter] Error stack:', error.stack);
-        // Return empty map as fallback
-        return new Map();
-    }
-}
-
-/**
- * Get condition UUID by name
- * @param {string} conditionName - The condition name to look up
- * @param {Object} state - Optional state object containing conditionMap
- * @returns {string|null} - The condition UUID or null if not found
- */
-function getConditionUUID(conditionName, state = null) {
-    const normalizedName = conditionName.toLowerCase().trim();
-    console.log('[getConditionUUID] Looking up UUID for:', normalizedName);
-    
-    // Get from state if provided
-    if (state && state.conditionMap) {
-        const condition = state.conditionMap.get(normalizedName);
-        if (condition?.uuid) {
-            console.log('[getConditionUUID] Found UUID in state:', condition.uuid);
-            return condition.uuid;
-        }
-    }
-    
-    // Fallback: try to construct a reasonable UUID
-    // This is a fallback for when the condition map isn't available
-    const fallbackUUID = `Compendium.pf2e.conditionitems.Item.${normalizedName}`;
-    console.log('[getConditionUUID] Using fallback UUID:', fallbackUUID);
-    return fallbackUUID;
 }
 
 class DamagePattern {
@@ -3135,7 +3023,61 @@ class DamagePattern {
     }
 
     static createReplacement(match, config) {
-        return new DamageReplacement(match, this.type, config);
+        return new Replacement(match, this.type, config);
+    }
+
+    static parseIntoInlineAutomation(match, inlineAutomation, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        // Reset area damage flag
+        inlineAutomation.areaDamage = false;
+        
+        // Parse damage components
+        inlineAutomation.components = [];
+        if (Array.isArray(match.multiMatches)) {
+            for (const m of match.multiMatches) {
+                this._parseSingleDamageIntoComponent(m, inlineAutomation);
+            }
+        } else {
+            this._parseSingleDamageIntoComponent(match, inlineAutomation);
+        }
+    }
+
+    static _parseSingleDamageIntoComponent(match, inlineAutomation) {
+        // Accepts a regex match array for a single dice/type pair
+        const dice = match[1] || '';
+        const originalText = match[0].toLowerCase();
+        
+        // Extract damage type from the various capture groups
+        // The new regex has multiple capture groups for different damage patterns:
+        // match[2] = persistent damage type (first pattern)
+        // match[3] = persistent damage type (second pattern) 
+        // match[4] = splash damage type (first pattern)
+        // match[5] = splash damage type (second pattern)
+        // match[6] = precision damage type (first pattern)
+        // match[7] = precision damage type (second pattern)
+        // match[8] = basic damage type
+        const type = match[2] || match[3] || match[4] || match[5] || match[6] || match[7] || match[8] || '';
+        
+        const isPersistent = originalText.includes('persistent');
+        const isPrecision = originalText.includes('precision');
+        const isSplash = originalText.includes('splash');
+        
+        // Convert legacy types to remaster types automatically
+        let remasterType = type;
+        if (type && LegacyConversionManager.isLegacyDamageType(type)) {
+            remasterType = LegacyConversionManager.convertLegacyDamageType(type);
+            console.log(`Legacy damage type converted: ${type} -> ${remasterType}`);
+        }
+        
+        // Determine category from boolean flags
+        let category = '';
+        if (isPersistent) category = 'persistent';
+        else if (isPrecision) category = 'precision';
+        else if (isSplash) category = 'splash';
+        
+        inlineAutomation.components.push(new DamageComponent(dice, remasterType, category));
     }
 }
 
@@ -3268,7 +3210,123 @@ class CheckPattern {
     }
 
     static createReplacement(match, config) {
-        return new CheckReplacement(match, this.type, config);
+        return new Replacement(match, this.type, config);
+    }
+
+    static parseIntoInlineAutomation(match, inlineAutomation, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        // Determine the category and parse accordingly
+        const category = this.determineCategory(match, config);
+        
+        switch (category) {
+            case 'save':
+                this.parseSaveMatch(match, inlineAutomation, config);
+                break;
+            case 'skill':
+                this.parseSkillMatch(match, inlineAutomation, config);
+                break;
+            case 'perception':
+                this.parsePerceptionMatch(match, inlineAutomation, config);
+                break;
+            case 'lore':
+                this.parseLoreMatch(match, inlineAutomation, config);
+                break;
+            case 'flat':
+                this.parseFlatMatch(match, inlineAutomation, config);
+                break;
+            default:
+                this.parseSkillMatch(match, inlineAutomation, config);
+        }
+    }
+
+    static determineCategory(match, config) {
+        if (match.checkType) return match.checkType;
+        
+        const text = match[0].toLowerCase();
+        if (text.includes('reflex') || text.includes('fortitude') || text.includes('will')) {
+            return 'save';
+        }
+        if (text.includes('perception')) {
+            return 'perception';
+        }
+        if (text.includes('lore')) {
+            return 'lore';
+        }
+        if (text.includes('flat')) {
+            return 'flat';
+        }
+        return 'skill';
+    }
+
+    static parseSaveMatch(match, inlineAutomation, config) {
+        const text = match[0].toLowerCase();
+        let saveType = '';
+        
+        if (text.includes('reflex')) saveType = 'reflex';
+        else if (text.includes('fortitude')) saveType = 'fortitude';
+        else if (text.includes('will')) saveType = 'will';
+        
+        inlineAutomation.checkType = saveType;
+        inlineAutomation.statistic = '';
+        inlineAutomation.dcMethod = 'static';
+        inlineAutomation.dc = match[1] ? parseInt(match[1]) : null;
+        inlineAutomation.showDC = 'owner';
+        inlineAutomation.basic = false;
+        inlineAutomation.damagingEffect = false;
+    }
+
+    static parseSkillMatch(match, inlineAutomation, config) {
+        const text = match[0].toLowerCase();
+        let skill = '';
+        
+        // Extract skill name from text
+        for (const skillName of ConfigManager.SKILLS.slugs) {
+            if (text.includes(skillName.toLowerCase())) {
+                skill = skillName;
+                break;
+            }
+        }
+        
+        inlineAutomation.checkType = skill || 'acrobatics';
+        inlineAutomation.statistic = '';
+        inlineAutomation.dcMethod = 'static';
+        inlineAutomation.dc = match[1] ? parseInt(match[1]) : null;
+        inlineAutomation.showDC = 'owner';
+        inlineAutomation.basic = false;
+        inlineAutomation.damagingEffect = false;
+    }
+
+    static parsePerceptionMatch(match, inlineAutomation, config) {
+        inlineAutomation.checkType = 'perception';
+        inlineAutomation.statistic = '';
+        inlineAutomation.dcMethod = 'static';
+        inlineAutomation.dc = match[1] ? parseInt(match[1]) : null;
+        inlineAutomation.showDC = 'owner';
+        inlineAutomation.basic = false;
+        inlineAutomation.damagingEffect = false;
+    }
+
+    static parseLoreMatch(match, inlineAutomation, config) {
+        inlineAutomation.checkType = 'lore';
+        inlineAutomation.loreName = match.loreName || match[2] || 'Warfare';
+        inlineAutomation.statistic = '';
+        inlineAutomation.dcMethod = 'static';
+        inlineAutomation.dc = match[1] ? parseInt(match[1]) : null;
+        inlineAutomation.showDC = 'owner';
+        inlineAutomation.basic = false;
+        inlineAutomation.damagingEffect = false;
+    }
+
+    static parseFlatMatch(match, inlineAutomation, config) {
+        inlineAutomation.checkType = 'flat';
+        inlineAutomation.statistic = '';
+        inlineAutomation.dcMethod = 'static';
+        inlineAutomation.dc = match[1] ? parseInt(match[1]) : null;
+        inlineAutomation.showDC = 'owner';
+        inlineAutomation.basic = false;
+        inlineAutomation.damagingEffect = false;
     }
 }
 
@@ -3322,7 +3380,19 @@ class HealingPattern {
     }
 
     static createReplacement(match, config) {
-        return new HealingReplacement(match, this.type, config);
+        return new Replacement(match, this.type, config);
+    }
+
+    static parseIntoInlineAutomation(match, inlineAutomation, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        // Parse healing into damage component with [healing] type
+        const dice = match[1] || '';
+        const healingComponent = new DamageComponent(dice, 'healing', '');
+        
+        inlineAutomation.components = [healingComponent];
+        inlineAutomation.areaDamage = false;
     }
 }
 
@@ -3389,7 +3459,36 @@ class ConditionPattern {
     }
 
     static createReplacement(match, config) {
-        return new ConditionReplacement(match, this.type, config);
+        return new Replacement(match, this.type, config);
+    }
+
+    static parseIntoInlineAutomation(match, inlineAutomation, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        let conditionText = match[1] || '';
+        let value = null;
+        
+        // Handle legacy condition conversions
+        if (LegacyConversionManager.isLegacyCondition(conditionText)) {
+            conditionText = LegacyConversionManager.convertLegacyCondition(conditionText);
+        }
+        
+        // Extract value if present (e.g., "frightened 2")
+        const valueMatch = conditionText.match(/^(.+?)\s+(\d+)$/);
+        if (valueMatch) {
+            conditionText = valueMatch[1];
+            value = parseInt(valueMatch[2]);
+        }
+        
+        inlineAutomation.condition = conditionText;
+        inlineAutomation.value = value;
+        
+        // // Handle UUID lookup and assignment
+        // const uuid = getConditionUUID(conditionText, config?.state);
+        // if (uuid) {
+        //     inlineAutomation.uuid = uuid;
+        // }
     }
 }
 
@@ -3461,7 +3560,48 @@ class TemplatePattern {
     }
 
     static createReplacement(match, config) {
-        return new TemplateReplacement(match, this.type, config);
+        return new Replacement(match, this.type, config);
+    }
+
+    static parseIntoInlineAutomation(match, inlineAutomation, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        const text = match[0].toLowerCase();
+        let templateType = '';
+        let distance = null;
+        let width = null;
+        
+        // Determine template type
+        if (text.includes('cone')) templateType = 'cone';
+        else if (text.includes('burst')) templateType = 'burst';
+        else if (text.includes('line')) templateType = 'line';
+        else if (text.includes('emanation')) templateType = 'emanation';
+        else if (text.includes('within')) templateType = 'emanation';
+        
+        // Extract distance
+        const distanceMatch = text.match(/(\d+)(?:-|\s+)?(?:foot|feet|ft)/);
+        if (distanceMatch) {
+            distance = parseInt(distanceMatch[1]);
+        }
+        
+        // Extract width (for line templates)
+        if (templateType === 'line') {
+            const widthMatch = text.match(/(\d+)(?:-|\s+)?(?:foot|feet|ft)\s+wide/);
+            if (widthMatch) {
+                width = parseInt(widthMatch[1]);
+            }
+        }
+        
+        // Handle alternate shape mappings
+        const alternateType = ConfigManager.getStandardTemplateType(templateType);
+        if (alternateType) {
+            templateType = alternateType;
+        }
+        
+        inlineAutomation.templateType = templateType;
+        inlineAutomation.distance = distance;
+        inlineAutomation.width = width;
     }
 }
 // DurationPattern
@@ -3514,7 +3654,28 @@ class DurationPattern {
     }
 
     static createReplacement(match, config) {
-        return new DurationReplacement(match, this.type, config);
+        return new Replacement(match, this.type, config);
+    }
+
+    static parseIntoInlineAutomation(match, inlineAutomation, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        const dice = match[1] || '';
+        const text = match[0].toLowerCase();
+        
+        // Determine label from unit
+        let label = 'rounds';
+        for (const unit of ConfigManager.DURATION_UNITS.slugs) {
+            if (text.includes(unit.toLowerCase())) {
+                label = unit;
+                break;
+            }
+        }
+        
+        inlineAutomation.dice = dice;
+        inlineAutomation.label = label;
+        inlineAutomation.gmOnly = true;
     }
 }
 
@@ -3569,7 +3730,93 @@ class ActionPattern {
     }
 
     static createReplacement(match, config) {
-        return new ActionReplacement(match, this.type, config);
+        return new Replacement(match, this.type, config);
+    }
+
+    static parseIntoInlineAutomation(match, inlineAutomation, config) {
+        // Defensive: if match.replacement exists, skip parsing (already replaced)
+        if (match && match.replacement) return;
+        
+        const actionText = match[1] || '';
+        const actionSlug = this.actionToSlug(actionText);
+        
+        inlineAutomation.action = actionSlug;
+        inlineAutomation.variant = null;
+        inlineAutomation.dcMethod = 'none';
+        inlineAutomation.dc = null;
+        inlineAutomation.statistic = '';
+        inlineAutomation.alternateRollStatistic = '';
+    }
+
+    static actionToSlug(actionText) {
+        const text = actionText.toLowerCase().trim();
+        
+        // Handle common action mappings
+        const actionMappings = {
+            'strike': 'strike',
+            'attack': 'strike',
+            'cast a spell': 'cast-a-spell',
+            'cast spell': 'cast-a-spell',
+            'use an action': 'use-an-action',
+            'use action': 'use-an-action',
+            'interact': 'interact',
+            'step': 'step',
+            'stride': 'stride',
+            'move': 'stride',
+            'raise a shield': 'raise-a-shield',
+            'raise shield': 'raise-a-shield',
+            'take cover': 'take-cover',
+            'hide': 'hide',
+            'sneak': 'sneak',
+            'search': 'search',
+            'seek': 'search',
+            'sense motive': 'sense-motive',
+            'demoralize': 'demoralize',
+            'feint': 'feint',
+            'grapple': 'grapple',
+            'shove': 'shove',
+            'trip': 'trip',
+            'disarm': 'disarm',
+            'escape': 'escape',
+            'administer first aid': 'administer-first-aid',
+            'treat wounds': 'treat-wounds',
+            'treat disease': 'treat-disease',
+            'treat poison': 'treat-poison',
+            'recall knowledge': 'recall-knowledge',
+            'identify magic': 'identify-magic',
+            'identify alchemy': 'identify-alchemy',
+            'craft': 'craft',
+            'earn income': 'earn-income',
+            'perform': 'perform',
+            'create a diversion': 'create-a-diversion',
+            'create diversion': 'create-a-diversion',
+            'lie': 'lie',
+            'make an impression': 'make-an-impression',
+            'make impression': 'make-an-impression',
+            'request': 'request',
+            'coerce': 'coerce',
+            'gather information': 'gather-information',
+            'gather info': 'gather-information',
+            'subsist': 'subsist',
+            'treat wounds': 'treat-wounds',
+            'treat disease': 'treat-disease',
+            'treat poison': 'treat-poison'
+        };
+        
+        // Try exact match first
+        if (actionMappings[text]) {
+            return actionMappings[text];
+        }
+        
+        // Try partial matches
+        for (const [key, value] of Object.entries(actionMappings)) {
+            if (text.includes(key) || key.includes(text)) {
+                return value;
+            }
+        }
+        
+        // Default to slugified version
+        return text.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     }
 }
 
@@ -3626,7 +3873,14 @@ class PatternDetector {
         if (!PatternClass) {
             throw new Error(`No pattern class found for type: ${matchResult.type}`);
         }
-        return PatternClass.createReplacement(matchResult.match, matchResult.config);
+        
+        // Create replacement using the universal Replacement class
+        const replacement = PatternClass.createReplacement(matchResult.match, matchResult.config);
+        
+        // Parse the match into the replacement's inlineAutomation
+        PatternClass.parseIntoInlineAutomation(matchResult.match, replacement.inlineAutomation, matchResult.config);
+        
+        return replacement;
     }
 
     /**
@@ -3852,7 +4106,7 @@ function generateId() {
 }
 
 class Replacement {
-    constructor(match, type) {
+    constructor(match, type, config) {
         if (!match || typeof match !== 'object' || typeof match[0] !== 'string' || typeof match.index !== 'number') {
             throw new Error('Replacement: Invalid match object passed to constructor.');
         }
@@ -3865,24 +4119,128 @@ class Replacement {
         this.priority = 0;
         this.displayText = '';
         this.type = type; // Store the type string for UI/lookup
+        
+        // Create InlineAutomation instance
+        this.inlineAutomation = this.createInlineAutomationFromType(type);
+        
+        // Create renderer instance
+        this.renderer = this.getRendererForType(type);
+        
+        // Parse match into InlineAutomation
+        this.parseMatch(match, config);
+        
+        // Store original render
+        this.originalRender = this.render();
+        
         // For reset: store the last match/config used
         this._lastMatch = match;
-        this._lastConfig = undefined;
-        // originalRender will be set after parsing in subclasses
+        this._lastConfig = config;
     }
+
+    createInlineAutomationFromType(type) {
+        // Handle type consolidation
+        const consolidatedType = this.getConsolidatedType(type);
+        
+        switch (consolidatedType) {
+            case 'damage':
+                return new InlineDamage();
+            case 'check':
+                return new InlineCheck();
+            case 'condition':
+                return new InlineCondition();
+            case 'template':
+                return new InlineTemplate();
+            case 'generic':
+                return new InlineGenericRoll();
+            case 'action':
+                return new InlineAction();
+            default:
+                throw new Error(`Unknown type: ${type}`);
+        }
+    }
+
+    getConsolidatedType(type) {
+        // Handle type consolidation
+        switch (type) {
+            case 'healing':
+                return 'damage';
+            case 'duration':
+                return 'generic';
+            default:
+                return type;
+        }
+    }
+
+    getRendererForType(type) {
+        // Handle type consolidation
+        const consolidatedType = this.getConsolidatedType(type);
+        
+        switch (consolidatedType) {
+            case 'damage':
+                return new DamageRenderer();
+            case 'check':
+                return new CheckRenderer();
+            case 'condition':
+                return new ConditionRenderer();
+            case 'template':
+                return new TemplateRenderer();
+            case 'generic':
+                return new DurationRenderer(); // Keep existing name for compatibility
+            case 'action':
+                return new ActionRenderer();
+            default:
+                throw new Error(`Unknown type: ${type}`);
+        }
+    }
+
+    parseMatch(match, config) {
+        // Store for reset
+        this._lastMatch = match;
+        this._lastConfig = config;
+        
+        // Delegate to Pattern class
+        const patternClass = this.getPatternClassForType(this.type);
+        if (patternClass && patternClass.parseIntoInlineAutomation) {
+            patternClass.parseIntoInlineAutomation(match, this.inlineAutomation, config);
+        }
+        
+        // Set display text from InlineAutomation
+        this.displayText = this.inlineAutomation.displayText || '';
+    }
+
+    getPatternClassForType(type) {
+        const patternMap = {
+            'damage': DamagePattern,
+            'check': CheckPattern,
+            'healing': HealingPattern,
+            'condition': ConditionPattern,
+            'template': TemplatePattern,
+            'duration': DurationPattern,
+            'action': ActionPattern
+        };
+        return patternMap[type];
+    }
+
     // Return the original or converted text depending on the enabled state
     render() {
-        // Logging for debugging render output
-        // console.log(`[render] id=${this.id} enabled=${this.enabled} returning=${this.enabled ? 'converted' : 'originalText'}`);
         if (!this.enabled) return this.originalText;
         return this.conversionRender();
     }
-    // Subclasses must implement this
-    conversionRender() { throw new Error('Must implement conversionRender()'); }
+
+    conversionRender() {
+        return this.inlineAutomation.render();
+    }
+
     getInteractiveParams() {
-        const params = { type: this.type, id: this.id, displayText: this.displayText };
+        const params = { 
+            type: this.type, 
+            id: this.id, 
+            displayText: this.displayText,
+            inlineAutomation: this.inlineAutomation
+        };
         return params;
     }
+
     // Render the interactive element
     renderInteractive(state = null) {
         const params = this.getInteractiveParams();
@@ -3898,19 +4256,18 @@ class Replacement {
         const disabledClass = !this.enabled ? ' disabled' : '';
         return `<span class="pf2e-interactive${modifiedClass}${disabledClass}" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${this.enabled ? this.render() : this.originalText}</span>`;
     }
-    validate() { return true; }
+
+    validate() { 
+        return this.inlineAutomation && this.inlineAutomation.validate ? this.inlineAutomation.validate() : true;
+    }
+
     getText() { return this.originalText; }
     getLength() { return this.endPos - this.startPos; }
 
     isModified() {
         return this.render() !== this.originalRender;
     }
-    parseMatch(match, config) {
-        // Store for reset
-        this._lastMatch = match;
-        this._lastConfig = config;
-        this.displayText = '';
-    }
+
     // Reset to the original text
     resetToOriginal() {
         // Use the last match/config, or re-detect if missing
@@ -3930,6 +4287,7 @@ class Replacement {
             this.parseMatch(match, config);
         }
     }
+
     // Trim trailing spaces from the original text
     trimTrailingSpaces() {
         const originalLength = this.originalText.length;
@@ -3942,34 +4300,7 @@ class Replacement {
     }
 }
 
-class RollReplacement extends Replacement {
-    constructor(match, type) {
-        super(match, type);
-        this.rollType = '';
-        this.traits = [];
-        this.options = [];
-        // originalRender will be set after parsing in subclasses
-    }
-    getInteractiveParams() {
-        // Add traits and options to base params
-        return {
-            ...super.getInteractiveParams(),
-            traits: this.traits,
-            options: this.options,
-            rollType: this.rollType
-        };
-    }
 
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        this.traits = [];
-        this.options = [];
-    }
-    resetToOriginal() {
-        super.resetToOriginal();
-        // Removed traits/options reset (now in parseMatch)
-    }
-}
 
 // -------------------- Damage Replacement --------------------
 class DamageComponent {
@@ -4023,850 +4354,24 @@ class DamageComponent {
     }
 }
 
-class DamageReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'damage';
-        this.priority = 100;
-        this.damageComponents = [];
-        this.areaDamage = false;
-        this.match = match;
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        this.areaDamage = false;
-        // Defensive: if match.replacement exists, skip parsing (already replaced)
-        if (match && match.replacement) return;
-        // If this is a multi-damage match, match[0] is the whole string, match[1] is the repeated group
-        this.damageComponents = [];
-        if (Array.isArray(match.multiMatches)) {
-            for (const m of match.multiMatches) {
-                this._parseSingleDamage(m);
-            }
-        } else {
-            this._parseSingleDamage(match);
-        }
-    }
-
-    _parseSingleDamage(match) {
-        // Accepts a regex match array for a single dice/type pair
-        const dice = match[1] || '';
-        const originalText = match[0].toLowerCase();
-        
-        // Extract damage type from the various capture groups
-        // The new regex has multiple capture groups for different damage patterns:
-        // match[2] = persistent damage type (first pattern)
-        // match[3] = persistent damage type (second pattern) 
-        // match[4] = splash damage type (first pattern)
-        // match[5] = splash damage type (second pattern)
-        // match[6] = precision damage type (first pattern)
-        // match[7] = precision damage type (second pattern)
-        // match[8] = basic damage type
-        const type = match[2] || match[3] || match[4] || match[5] || match[6] || match[7] || match[8] || '';
-        
-        const isPersistent = originalText.includes('persistent');
-        const isPrecision = originalText.includes('precision');
-        const isSplash = originalText.includes('splash');
-        
-        this.addDamageComponent(dice, type, isPersistent, isPrecision, isSplash);
-    }
-
-    addDamageComponent(dice, damageType = '', persistent = false, precision = false, splash = false) {
-        // Convert legacy types to remaster types automatically
-        let remasterType = damageType;
-        if (damageType && LegacyConversionManager.isLegacyDamageType(damageType)) {
-            remasterType = LegacyConversionManager.convertLegacyDamageType(damageType);
-            console.log(`Legacy damage type converted: ${damageType} -> ${remasterType}`);
-        }
-        
-        // Determine category from boolean flags
-        let category = '';
-        if (persistent) category = 'persistent';
-        else if (precision) category = 'precision';
-        else if (splash) category = 'splash';
-        
-        this.damageComponents.push(new DamageComponent(dice, remasterType, category));
-    }
-
-    render() { return super.render(); }
-    conversionRender() {
-        // If match.replacement exists, use it directly
-        if (this.match && this.match.replacement) {
-            return this.match.replacement;
-        }
-        // Handle damage consolidation
-        if (this.originalText.includes('@Damage[') && this.originalText.includes('@Damage[')) {
-            return this.renderDamageConsolidation();
-        }
-        let roll;
-        if (this.damageComponents.length === 1) {
-            roll = `@Damage[${this.damageComponents[0].render()}]`;
-        } else {
-            const componentStrings = this.damageComponents.map(comp => comp.render());
-            roll = `@Damage[${componentStrings.join(',')}]`;
-        }
-        // Add area-damage option if enabled
-        if (this.areaDamage) {
-            // Find the last closing bracket of the @Damage expression
-            const lastBracketIndex = roll.lastIndexOf(']');
-            if (lastBracketIndex !== -1) {
-                roll = roll.slice(0, lastBracketIndex) + '|options:area-damage' + roll.slice(lastBracketIndex);
-            }
-        }
-        // Display text logic
-        if (this.displayText && this.displayText.trim()) {
-            return `${roll}{${this.displayText}} damage`;
-        }
-        return roll + ' damage';
-    }
-    
-    renderDamageConsolidation() {
-        const damageRolls = [];
-        const regex = /@Damage\[/g;
-        let startMatch;
-        const originalText = this.originalText;
-        
-        while ((startMatch = regex.exec(originalText)) !== null) {
-            const startPos = startMatch.index + startMatch[0].length;
-            let bracketCount = 1;
-            let endPos = startPos;
-            while (endPos < originalText.length && bracketCount > 0) {
-                if (originalText[endPos] === '[') bracketCount++;
-                else if (originalText[endPos] === ']') bracketCount--;
-                if (bracketCount > 0) endPos++;
-            }
-            if (bracketCount === 0) {
-                const damageContent = originalText.substring(startPos, endPos);
-                damageRolls.push(damageContent);
-            }
-        }
-        
-        if (damageRolls.length >= 2) {
-            return `@Damage[${damageRolls.join(',')}]`;
-        }
-        
-        return originalText;
-    }
-    validate() {
-        if (this.match && this.match.replacement) return true;
-        return this.damageComponents.length > 0 && this.damageComponents.every(comp => comp.validate());
-    }
-    getInteractiveParams() {
-        // Return all damage components and rollType
-        return {
-            ...super.getInteractiveParams(),
-            damageComponents: this.damageComponents.map(dc => dc.toJSON()),
-            areaDamage: this.areaDamage,
-            originalText: this.originalText
-        };
-    }
-
-    toJSON() {
-        return {
-            type: this.type,
-            displayText: this.displayText,
-            areaDamage: this.areaDamage,
-            damageComponents: this.damageComponents.map(dc => dc.toJSON()),
-            enabled: this.enabled
-        };
-    }
-    resetToOriginal() {
-        super.resetToOriginal();
-        // Removed areaDamage reset (now in parseMatch)
-    }
-}
-
-// -------------------- Check Replacement --------------------
-class CheckReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'check';
-        this.priority = 90;
-        this.checkType = '';
-        this.skill = '';
-        this.save = '';
-        this.perception = 'perception';
-        this.flat = 'flat';
-        this.dcMethod = 'static';
-        this.statistic = '';
-        this.dc = null;
-        this.basic = false;
-        this.damagingEffect = false;
-        this.loreName = '';
-        this.showDC = 'owner';
-        this.traits = [];
-        this.options = [];
-        this.match = match;
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-
-    resetCategoryProperties() {
-        // Reset all category-specific properties
-        this.basic = false;
-        this.loreName = '';
-        this.skill = 'acrobatics';
-        this.save = 'reflex';
-        this.perception = 'perception';
-        this.flat = 'flat';
-        this.dcMethod = 'static';
-        this.statistic = 'ac';
-        this.showDC = 'owner';
-    }
-
-    determineCategory(match, config) {
-        // Priority 1: Explicit category from pattern handler
-        if (match && match.checkType) return match.checkType;
-        // Detect from match content
-        if (match && match.isLoreCheck) return 'lore';
-    }
-
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        this.resetCategoryProperties();
-        this.checkType = this.determineCategory(match, config);
-        // Route to category-specific parser
-        switch (this.checkType) {
-            case 'save':
-                this.parseSaveMatch(match, config);
-                break;
-            case 'skill':
-                this.parseSkillMatch(match, config);
-                break;
-            case 'perception':
-                this.parsePerceptionMatch(match, config);
-                break;
-            case 'lore':
-                this.parseLoreMatch(match, config);
-                break;
-            case 'flat':
-                this.parseFlatMatch(match, config);
-                break;
-            default:
-                this.parseSkillMatch(match, config);
-        }
-    }
-
-    parseSkillMatch(match, config) {
-        // Minimal logic for skill checks (already handled in previous parseMatch)
-        this.skill = match[2].toLowerCase() || '';
-        this.dc = match[1] || null;
-    }
-
-    parsePerceptionMatch(match, config) {
-        // Minimal logic for perception checks
-        this.dc = match[1] || null;
-    }
-
-    parseLoreMatch(match, config) {
-        // Lore check name extraction and DC
-        if (match && match.loreName) {
-            this.loreName = match.loreName;
-        } else if (match && match[2]) {
-            this.loreName = match[2];
-        } else if (match && match[1]) {
-            this.loreName = match[1];
-        }
-        this.dc = match[1] || null;
-    }
-
-    render() { return super.render(); }
-    conversionRender() {
-        // Handle special replacement cases
-        if (this.match && this.match.replacement) {
-            return this.match.replacement;
-        }
-        // Route to category-specific renderer
-        switch (this.checkType) {
-            case 'save':
-                return this.renderSaveCheck();
-            case 'lore':
-                return this.renderLoreCheck();
-            case 'flat':
-                return this.renderFlatCheck();
-            case 'perception':
-                return this.renderPerceptionCheck();
-            case 'skill':
-                return this.renderSkillCheck();
-            default:
-                return this.renderSkillCheck();
-        }
-    }
-
-    buildDCParams() {
-        const dcParams = [];
-        
-        // Handle DC method
-        if (this.dcMethod !== 'static') {
-            dcParams.push(`against:${this.statistic}`);
-            if (this.checkType === 'save' && this.dcMethod === 'target') {
-                dcParams.push('rollerRole:origin');
-            }
-            else if (this.checkType !== 'save' && this.dcMethod === 'origin') {
-                dcParams.push('rollerRole:target');
-            }
-        }
-        else if (this.dc) { dcParams.push(`dc:${this.dc}`); }
-
-        if (this.showDC !== 'owner') {
-            dcParams.push(`showDC:${this.showDC}`);
-        }
-
-        // Handle traits
-        if (this.traits && this.traits.length > 0) {
-            dcParams.push(`traits:${this.traits.join(',')}`);
-        }
-        
-        return dcParams;
-    }
-
-    renderSkillCheck() {
-        let params = [this.skill];
-        params.push(...this.buildDCParams());
-        
-        const baseRoll = `@Check[${params.join('|')}]`;
-        const displayText = this.getDisplayText ? this.getDisplayText() : this.displayText;
-        return baseRoll + (displayText ? `{${displayText}}` : '');
-    }
-    
-    renderPerceptionCheck() {
-        let params = [this.perception];
-        params.push(...this.buildDCParams());
-        
-        const baseRoll = `@Check[${params.join('|')}]`;
-        const displayText = this.getDisplayText ? this.getDisplayText() : this.displayText;
-        return baseRoll + (displayText ? `{${displayText}}` : '');
-    }
-    
-    renderLoreCheck() {
-        const loreSlug = this.loreName.toLowerCase().replace(/ /g, '-') + '-lore';
-        let params = [];
-        params.push(`type:${loreSlug}`);
-        params.push(...this.buildDCParams());
-        
-        params.push(`name:${this.loreName}`);
-        const baseRoll = `@Check[${params.join('|')}]`;
-        const displayText = this.displayText || `${this.loreName} Lore`;
-        return baseRoll + `{${displayText}}`;
-    }
-    
-    renderSaveCheck() {
-        let params = [this.save];
-        params.push(...this.buildDCParams());
-        
-        if (this.basic) params.push('basic');
-        if (this.damagingEffect) params.push('options:damaging-effect');
-        // Only append 'save' or 'saving throw' if it was present in the input
-        let saveTerm = '';
-        if (this.saveTermInInput) {
-            // Use the exact term found in the input (prefer 'saving throw' if present)
-            const found = this.match[0].match(/\b(saving throw|save)\b/i);
-            saveTerm = found ? ` ${found[1]}` : '';
-        }
-        
-        const replacement = `@Check[${params.join('|')}]` + (this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '') + saveTerm;
-        return this.hasWrappingParentheses ? `(${replacement})` : replacement;
-    }
-    
-    renderFlatCheck() {
-        let params = [this.flat];
-        
-        // Flat checks always use static DC (no defense/against options in UI)
-        if (this.dc) params.push(`dc:${this.dc}`);
-
-        // Handle showDC
-        if (this.showDC !== 'owner') {
-            params.push(`showDC:${this.showDC}`);
-        }
-
-        // Handle traits
-        if (this.traits && this.traits.length > 0) {
-            params.push(`traits:${this.traits.join(',')}`);
-        }
-        
-        const baseRoll = `@Check[${params.join('|')}]`;
-        const displayText = this.displayText;
-        return baseRoll + (displayText ? `{${displayText}}` : '');
-    }
-
-    validate() {
-        if (this.match && this.match.replacement) return true;
-        return this.skill || this.save || this.perception || this.flat || this.loreName;
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            checkType: this.checkType,
-            skill: this.skill,
-            save: this.save,
-            perception: this.perception,
-            flat: this.flat,
-            dcMethod: this.dcMethod,
-            statistic: this.statistic,
-            dc: this.dc,
-            basic: this.basic,
-            loreName: this.loreName,
-            originalText: this.originalText
-        };
-    }
-
-    resetToOriginal() {
-        super.resetToOriginal();
-    }
-    parseSaveMatch(match, config) {
-        super.parseMatch(match, config);
-        // Defensive: if match.replacement exists, skip parsing (already replaced)
-        if (match && match.replacement) return;
-        // Parentheses handling (for wrapping)
-        this.hasWrappingParentheses = false;
-        if (typeof match[0] === 'string' && match[0].startsWith('(') && match[0].endsWith(')')) {
-            this.hasWrappingParentheses = true;
-        }
-        // Save term detection
-        this.saveTermInInput = /\b(save|saving throw)\b/i.test(match[0]);
-        // Extract DC, type, and basic
-        this.basic = /\bbasic\b/i.test(match[0]);
-        for (let i = 1; i < (match.length || 0); i++) {
-            const value = match[i];
-            if (!value) continue;
-            if (/^\d{1,2}$/.test(value)) {
-                this.dc = value;
-            } else if (/^(fort(?:itude)?|ref(?:lex)?|will)$/i.test(value)) {
-                this.save = value.toLowerCase();
-                if (this.save.startsWith('fort')) this.save = 'fortitude';
-                else if (this.save.startsWith('ref')) this.save = 'reflex';
-                else if (this.save.startsWith('will')) this.save = 'will';
-            }
-        }
-    }
-
-    parseFlatMatch(match, config) {
-        super.parseMatch(match, config);
-        // Defensive: if match.replacement exists, skip parsing (already replaced)
-        if (match && match.replacement) return;
-        // Flat check pattern: match[1] is DC
-        this.dc = match[1] || null;
-    }
-}
-
-// -------------------- Healing Replacement --------------------
-class HealingReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'healing';
-        this.priority = 85;
-        this.dice = '';
-        this.match = match;
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        if (match && match.replacement) return;
-        this.dice = match[1] || '';
-        // Disable if dice is just a number (not a dice roll)
-        if (isNumberOnlyDice(this.dice)) {
-            this.enabled = false;
-        }
-    }
-    render() { return super.render(); }
-    conversionRender() {
-        if (this.match && this.match.replacement) {
-            return this.match.replacement;
-        }
-        const dice = this.dice;
-        let params = [`(${dice})[healing]`];
-        if (this.traits && this.traits.length > 0) {
-            params.push(`traits:${this.traits.join(',')}`);
-        }
-        let roll = `@Damage[${params.join('|')}]`;
-        let afterDice = '';
-        if (this._lastMatch && this._lastMatch[1]) {
-            const originalDice = this._lastMatch[1];
-            const diceIndex = this.originalText.indexOf(originalDice);
-            if (diceIndex !== -1) {
-                afterDice = this.originalText.substring(diceIndex + originalDice.length);
-            }
-        }
-        if (this.displayText && this.displayText.trim()) {
-            return `${roll}{${this.displayText}}${afterDice}`;
-        }
-        return `${roll}${afterDice}`;
-    }
-    validate() {
-        if (this.match && this.match.replacement) return true;
-        return this.dice && this.dice.length > 0;
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            dice: this.dice,
-            originalText: this.originalText
-        };
-    }
-
-    resetToOriginal() {
-        super.resetToOriginal();
-    }
-}
-
-// -------------------- Condition Replacement --------------------
-class ConditionReplacement extends Replacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.priority = 50;
-        this.conditionName = '';
-        this.degree = null;
-        this.uuid = '';
-        
-        // Handle the linkedConditions config
-        if (config && config.linkedConditions && config.linkedConditions.set) {
-            this.linkedConditions = config.linkedConditions.set;
-        } else {
-            this.linkedConditions = new Set();
-        }
-        
-        // Store state reference for UUID lookups
-        this._state = config?.linkedConditions?.state || null;
-        
-        this.parseMatch(match, config);
-        
-        let dedupKey = this.degree ? `${this.conditionName.toLowerCase()}-${this.degree}` : this.conditionName.toLowerCase();
-        if (dedupKey === 'flat-footed') dedupKey = 'off-guard';
-        if (this.linkedConditions.has(dedupKey)) {
-            this.enabled = false;
-        } else {
-            this.linkedConditions.add(dedupKey);
-            this.enabled = true;
-        }
-        this.displayText = '';
-        this.originalRender = this.render();
-    }
-
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        
-        // Extract condition name and degree from the regex match
-        // match[1] is the condition name, match[2] is the optional degree
-        let conditionName = (match[1] || '').toLowerCase();
-        
-        // Check for legacy condition conversion
-        const converted = LegacyConversionManager.convertLegacyCondition(conditionName);
-        if (converted) {
-            this.conditionName = converted.toLowerCase();
-            this.isLegacyConversion = true;
-        } else {
-            this.conditionName = conditionName;
-            this.isLegacyConversion = false;
-        }
-        
-        this.degree = match[2] || null;
-        this.updateUUID();
-    }
-    
-    // New method to update UUID when condition name changes
-    updateUUID() {
-        if (this._state) {
-            this.uuid = getConditionUUID(this.conditionName, this._state);
-        } else {
-            this.uuid = getConditionUUID(this.conditionName);
-        }
-        console.log('[ConditionReplacement] Updated UUID for', this.conditionName, ':', this.uuid);
-    }
-
-    render() { return super.render(); }
-    
-    conversionRender() {
-        if (!this.uuid) {
-            console.warn('[ConditionReplacement] No UUID found for condition:', this.conditionName);
-            // If disabled and this is a legacy conversion, preserve original case
-            if (!this.enabled && this.isLegacyConversion && this.originalConditionText) {
-                return LegacyConversionManager.convertLegacyCondition(this.originalConditionText) || this.originalText;
-            }
-            return this.originalText;
-        }
-    
-        // Get the proper display label from ConfigManager
-        const conditionOption = ConfigManager.CONDITIONS.options.find(opt => opt.value === this.conditionName);
-        const displayName = conditionOption ? conditionOption.label : 
-            this.conditionName.charAt(0).toUpperCase() + this.conditionName.slice(1);
-        
-        // Only include degree if this condition supports values AND we have a degree
-        const shouldIncludeDegree = this.degree && ConfigManager.conditionCanHaveValue(this.conditionName);
-        
-        let display;
-        if (shouldIncludeDegree) {
-            display = `${displayName} ${this.degree}`;
-        } else {
-            display = displayName;
-        }
-        
-        return `@UUID[${this.uuid}]{${display}}`;
-    }
-
-    validate() {
-        return this.conditionName && this.uuid;
-    }
-    
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            conditionName: this.conditionName,
-            degree: this.degree,
-            uuid: this.uuid,
-            originalText: this.originalText
-        };
-    }
-}
-
-// -------------------- Template Replacement --------------------
-class TemplateReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'template';
-        this.priority = 80;
-        this.shape = '';
-        this.distance = 0;
-        this.width = 5;
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        if (match && match.replacement) return;
-        const shapeName = match[2] ? match[2].toLowerCase() : '';
-        this.distance = match[1] ? parseInt(match[1], 10) : 0;
-        this.shape = ConfigManager.getStandardTemplateType(shapeName); // Get the standard template type from the alternate name if necessary
-        // Special handling for square/cube: width = distance
-        if ((shapeName === 'square' || shapeName === 'cube') && this.distance) {
-            this.width = this.distance;
-        } else {
-            this.width = 5; // default for lines
-        }
-        // If displayText is provided by the match, use it. Otherwise, if alternate shape, set displayText to the original phrase.
-        if (match.displayText) {
-            this.displayText = match.displayText;
-        } else if (ConfigManager.ALTERNATE_TEMPLATE_NAMES.includes(shapeName) && this.distance) {
-            this.displayText = `${this.distance}-foot ${shapeName}`;
-        } else {
-            this.displayText = '';
-        }
-        if (match.isWithin) this.isWithin = true; // optional, for future use
-    }
-    render() { return super.render(); }
-    conversionRender() {
-        let params = [`type:${this.shape}`, `distance:${this.distance}`];
-        if (this.shape === 'line' && this.width && this.width !== 5) {
-            params.push(`width:${this.width}`);
-        }
-        if (this.displayText && this.displayText.trim()) {
-            return `@Template[${params.join('|')}]` + `{${this.displayText}}`;
-        } else {
-            return `@Template[${params.join('|')}]`;
-        }
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            shape: this.shape,
-            distance: this.distance,
-            width: this.width,
-            originalText: this.originalText
-        };
-    }
-
-    resetToOriginal() {
-        super.resetToOriginal();
-    }
-}
-
-// -------------------- Duration Replacement --------------------
-class DurationReplacement extends RollReplacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.rollType = 'duration';
-        this.priority = 75;
-        this.dice = '';
-        this.unit = '';
-        this.isGM = false; // false = public, true = GM-only
-        this.label = 'Duration'; // New: label for the roll
-        this.match = match;
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        if (match && match.replacement) return;
-        this.dice = match[1] || '';
-        this.unit = match[2] || '';
-        this.isGM = false; // default to public
-        this.label = 'Duration'; // default label
-        // Disable if dice is just a number (not a dice roll)
-        if (isNumberOnlyDice(this.dice)) {
-            this.enabled = false;
-        }
-    }
-    render() { return super.render(); }
-    conversionRender() {
-        if (this.match && this.match.replacement) {
-            return this.match.replacement;
-        }
-        const rollType = this.isGM ? '/gmr' : '/r';
-        const label = this.displayText && this.displayText.trim() ? this.displayText : `${this.dice} ${this.unit}`;
-        const hashLabel = this.label && this.label.trim() ? this.label : 'Duration';
-        return `[[${rollType} ${this.dice} #${hashLabel}]]{${label}}`;
-    }
-    validate() {
-        if (this.match && this.match.replacement) return true;
-        return this.dice && this.unit;
-    }
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            dice: this.dice,
-            unit: this.unit,
-            isGM: this.isGM,
-            label: this.label,
-            originalText: this.originalText
-        };
-    }
-
-    resetToOriginal() {
-        super.resetToOriginal();
-        // isGM and label reset is handled in parseMatch
-    }
-}
-
-class ActionReplacement extends Replacement {
-    constructor(match, type, config) {
-        super(match, type);
-        this.priority = 60; // Utility level
-        this.action = '';
-        this.variant = '';
-        this.dc = '';
-        this.statistic = '';
-        this.displayText = '';
-        this.parseMatch(match, config);
-        this.originalRender = this.render();
-    }
-
-    setAction(newAction) {
-        this.action = newAction;
-        // Set the variant to the first variant of the action if it has variants,
-        // or set it to an empty string if it doesn't have variants
-        if (ConfigManager.actionHasVariants(newAction)) {
-            if (ConfigManager.ACTION_VARIANTS[newAction]) {
-                this.variant = ConfigManager.ACTION_VARIANTS[newAction].slugs[0];
-            }
-        } else {
-            this.variant = '';
-        }
-    }
-
-    parseMatch(match, config) {
-        super.parseMatch(match, config);
-        // match[1] contains the unslugged action name (e.g., "administer first aid")
-        const matchedAction = match[1] || '';
-        
-        // Convert the matched text to a slug
-        this.action = this.actionToSlug(matchedAction);
-        
-        // Check if this action has variants and set default if it does
-        if (ConfigManager.actionHasVariants(this.action)) {
-            const variants = ConfigManager.ACTION_VARIANTS[this.action];
-            if (variants && variants.slugs.length > 0) {
-                this.variant = variants.slugs[0]; // Set first variant as default
-            }
-        } else {
-            this.variant = '';
-        }
-        
-        this.dc = '';
-        this.statistic = '';
-    }
-    
-    // Helper method to convert matched action text to slug
-    actionToSlug(actionText) {
-        // The action text from the regex will match the "unslug" pattern
-        // We need to convert it back to the slug form
-        const normalizedText = actionText.toLowerCase().trim();
-        
-        // Find the matching action slug
-        for (const slug of ConfigManager.ACTIONS.slugs) {
-            const unsluggedAction = slug.replace(/-/g, ' ');
-            if (unsluggedAction === normalizedText) {
-                return slug;
-            }
-        }
-        
-        // Fallback: create slug from text
-        return normalizedText.replace(/\s+/g, '-');
-    }
-
-    render() { return super.render(); }
-
-    conversionRender() {
-        // Use this.action directly as it's already the slug
-        let paramsArr = [];
-        if (this.variant && this.variant.trim()) paramsArr.push(`variant=${this.variant.trim()}`);
-        if (this.dc && this.dc.trim()) paramsArr.push(`dc=${this.dc.trim()}`);
-        if (this.statistic && this.statistic.trim()) paramsArr.push(`statistic=${this.statistic.trim()}`);
-        let params = paramsArr.length ? ' ' + paramsArr.join(' ') : '';
-        
-        // Only include display text if explicitly set
-        let label = this.displayText && this.displayText.trim() ? `{${this.displayText}}` : '';
-            
-        return `[[/act ${this.action}${params}]]${label}`;
-    }
-    
-    validate() {
-        return !!this.action;
-    }
-
-    getInteractiveParams() {
-        return {
-            ...super.getInteractiveParams(),
-            action: this.action,
-            variant: this.variant,
-            dc: this.dc,
-            statistic: this.statistic,
-            originalText: this.originalText
-        };
-    }
-
-    resetToOriginal() {
-        super.resetToOriginal();
-        // Re-parse to reset everything
-        if (this._lastMatch) {
-            this.parseMatch(this._lastMatch, this._lastConfig);
-        }
-    }
-}
-
 // Replacement class mapping for pattern types
 const REPLACEMENT_CLASS_MAP = {
-    damage: DamageReplacement,
-    healing: HealingReplacement, // Dedicated healing replacement class
-    check: CheckReplacement, // Unified check replacement for all check/save/flat
-    template: TemplateReplacement,
-    condition: ConditionReplacement,
-    duration: DurationReplacement, // Duration replacement
-    action: ActionReplacement, // New action replacement class
+    damage: Replacement,
+    healing: Replacement, // Universal replacement class
+    check: Replacement, // Universal replacement class
+    template: Replacement,
+    condition: Replacement,
+    duration: Replacement, // Universal replacement class
+    action: Replacement, // Universal replacement class
 };
 
 class ReplacementFactory {
     static createFromMatch(match, patternType, patternConfig) {
         const Cls = REPLACEMENT_CLASS_MAP[patternType];
         if (!Cls) throw new Error(`Unknown pattern type: ${patternType}`);
-        let instance;
-        if (patternType === 'condition') {
-            instance = new Cls(match, patternType, patternConfig);
-        } else {
-            instance = new Cls(match, patternType, patternConfig);
-        }
+        
+        // All types now use the universal Replacement class
+        const instance = new Cls(match, patternType, patternConfig);
         return instance;
     }
     static getSupportedTypes() {
