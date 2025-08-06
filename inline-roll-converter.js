@@ -1055,8 +1055,7 @@ class ModifierPanelManager {
             check: new CheckRenderer(),
             condition: new ConditionRenderer(),
             template: new TemplateRenderer(),
-            //healing: new HealingRenderer(),
-            duration: new GenericRollRenderer(),
+            generic: new GenericRollRenderer(),
             action: new ActionRenderer()
         };
         
@@ -3377,7 +3376,7 @@ class CheckPattern extends BasePattern {
  * Healing pattern class extending BasePattern
  */
 class HealingPattern extends BasePattern {
-    static type = 'healing';
+    static type = 'damage';
     static priority = 80;
     static description = 'Healing roll patterns';
 
@@ -3536,7 +3535,7 @@ class TemplatePattern extends BasePattern {
  * Duration pattern class extending BasePattern
  */
 class DurationPattern extends BasePattern {
-    static type = 'duration';
+    static type = 'generic';
     static priority = 50;
     static description = 'Duration roll patterns';
 
@@ -3908,10 +3907,10 @@ class Replacement {
         this._originalParameters = JSON.parse(JSON.stringify(parameters));
         
         // Create InlineAutomation instance with parameters
-        this.inlineAutomation = this.createInlineAutomationFromType(type, parameters);
+        this.inlineAutomation = this.createInlineAutomation(type, parameters);
         
         // Create renderer instance
-        this.renderer = this.getRendererForType(type);
+        this.renderer = this.getRenderer(type);
         
         // Store original render
         this.originalRender = this.render();
@@ -3919,10 +3918,8 @@ class Replacement {
         console.log(`[Replacement] Created ${type} replacement with parameters:`, parameters);
     }
 
-    createInlineAutomationFromType(type, parameters) {
-        const consolidatedType = this.getConsolidatedType(type);
-        
-        switch (consolidatedType) {
+    createInlineAutomation(type, parameters) {
+        switch (type) {
             case 'damage':
                 return new InlineDamage(parameters);
             case 'check':
@@ -3940,23 +3937,8 @@ class Replacement {
         }
     }
 
-    getConsolidatedType(type) {
-        // Handle type consolidation
+    getRenderer(type) {
         switch (type) {
-            case 'healing':
-                return 'damage';
-            case 'duration':
-                return 'generic';
-            default:
-                return type;
-        }
-    }
-
-    getRendererForType(type) {
-        // Handle type consolidation
-        const consolidatedType = this.getConsolidatedType(type);
-        
-        switch (consolidatedType) {
             case 'damage':
                 return new DamageRenderer();
             case 'check':
@@ -3980,7 +3962,7 @@ class Replacement {
         console.log('[Replacement] Original parameters:', this._originalParameters);
         
         // Recreate the InlineAutomation object with original parameters
-        this.inlineAutomation = this.createInlineAutomationFromType(
+        this.inlineAutomation = this.createInlineAutomation(
             this.type, 
             this._originalParameters
         );
@@ -4056,32 +4038,6 @@ class Replacement {
             this.endPos -= spacesRemoved;
             this.originalText = trimmed;
         }
-    }
-}
-
-// Replacement class mapping for pattern types
-const REPLACEMENT_CLASS_MAP = {
-    damage: Replacement,
-    healing: Replacement, // Universal replacement class
-    check: Replacement, // Universal replacement class
-    template: Replacement,
-    condition: Replacement,
-    duration: Replacement, // Universal replacement class
-    action: Replacement, // Universal replacement class
-};
-
-class ReplacementFactory {
-    static createFromMatch(match, patternType, parameters) {
-        const Cls = REPLACEMENT_CLASS_MAP[patternType];
-        if (!Cls) throw new Error(`Unknown pattern type: ${patternType}`);
-        
-        // All types now use the universal Replacement class
-        const instance = new Cls(match, patternType, parameters);
-        return instance;
-    }
-    
-    static getSupportedTypes() {
-        return Object.keys(REPLACEMENT_CLASS_MAP);
     }
 }
 
