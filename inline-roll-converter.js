@@ -3013,7 +3013,120 @@ class ConfigManager {
     static HEALING_TERMS = new ConfigCategory([ 'hit\\s+points?', 'HP', 'healing' ]);
 }
 
-class DamagePattern {
+/**
+ * Base Pattern class that provides common functionality for all pattern types
+ * Eliminates code duplication across pattern implementations
+ */
+class BasePattern {
+    static type = 'base';
+    static priority = 0;
+    static description = 'Base pattern class';
+    static PATTERNS = []; // Must be defined by subclasses
+
+    /**
+     * Test text against all patterns defined by the subclass
+     * @param {string} text - Text to test
+     * @returns {Array} Array of match objects
+     */
+    static test(text) {
+        const matches = [];
+        
+        for (const pattern of this.PATTERNS) {
+            let match;
+            pattern.regex.lastIndex = 0;
+            while ((match = pattern.regex.exec(text)) !== null) {
+                if (this.validateMatch(match)) {
+                    matches.push({
+                        match: match,
+                        type: this.type,
+                        priority: pattern.priority || this.priority,
+                        config: { 
+                            pattern: pattern,
+                            parameters: this.extractParameters(match, pattern.subtype, pattern)
+                        }
+                    });
+                }
+            }
+        }
+        
+        return matches;
+    }
+
+    /**
+     * Validate a regex match object
+     * @param {Array} match - Regex match array
+     * @returns {boolean} Whether the match is valid
+     */
+    static validateMatch(match) {
+        return match && match[0] && typeof match.index === 'number';
+    }
+
+    /**
+     * Create a replacement object from a match and parameters
+     * @param {Array} match - Regex match array
+     * @param {Object} parameters - Extracted parameters
+     * @returns {Replacement} Replacement instance
+     */
+    static createReplacement(match, parameters) {
+        return new Replacement(match, this.type, parameters);
+    }
+
+    /**
+     * Extract parameters from a match based on subtype
+     * Must be implemented by subclasses
+     * @param {Array} match - Regex match array
+     * @param {string} subtype - Pattern subtype
+     * @param {Object} pattern - Full pattern object for additional context
+     * @returns {Object} Extracted parameters
+     */
+    static extractParameters(match, subtype, pattern) {
+        throw new Error(`${this.type} pattern must implement extractParameters() method`);
+    }
+
+    /**
+     * Helper method to extract text from match
+     * @param {Array} match - Regex match array
+     * @returns {string} Matched text
+     */
+    static getMatchedText(match) {
+        return match[0] || '';
+    }
+
+    /**
+     * Helper method to extract DC from text
+     * @param {string} text - Text to search
+     * @returns {number|null} Extracted DC or null
+     */
+    static extractDC(text) {
+        const dcMatch = text.match(/\bdc\s*(\d{1,2})\b/i);
+        return dcMatch ? parseInt(dcMatch[1]) : null;
+    }
+
+    /**
+     * Helper method to extract dice from text
+     * @param {string} text - Text to search
+     * @returns {string} Extracted dice string
+     */
+    static extractDice(text) {
+        const diceMatch = text.match(/(\d+(?:d\d+)?(?:[+-]\d+)?)/);
+        return diceMatch ? diceMatch[1] : '';
+    }
+
+    /**
+     * Helper method to check if text contains a word (case-insensitive)
+     * @param {string} text - Text to search
+     * @param {string} word - Word to find
+     * @returns {boolean} Whether the word is found
+     */
+    static containsWord(text, word) {
+        return text.toLowerCase().includes(word.toLowerCase());
+    }
+}
+
+/**
+ * Damage pattern class extending BasePattern
+ */
+class DamagePattern extends BasePattern {
     static type = 'damage';
     static priority = 100;
     static description = 'Damage roll patterns';
@@ -3030,43 +3143,10 @@ class DamagePattern {
             regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+persistent)(?:\\s+damage)?`, 'gi'),
             priority: 100,
             subtype: 'single'
-        },
-        // TODO: Add more damage patterns here
+        }
     ];
 
-    static test(text) {
-        const matches = [];
-        
-        for (const pattern of this.PATTERNS) {
-            let match;
-            pattern.regex.lastIndex = 0;
-            while ((match = pattern.regex.exec(text)) !== null) {
-                if (this.validateMatch(match)) {
-                    matches.push({
-                        match: match,
-                        type: this.type,
-                        priority: pattern.priority || this.priority,
-                        config: { 
-                            pattern: pattern,
-                            parameters: this.extractParameters(match, pattern.subtype)
-                        }
-                    });
-                }
-            }
-        }
-        
-        return matches;
-    }
-
-    static validateMatch(match) {
-        return match && match[0] && typeof match.index === 'number';
-    }
-
-    static createReplacement(match, parameters) {
-        return new Replacement(match, this.type, parameters);
-    }
-
-    static extractParameters(match, subtype) {
+    static extractParameters(match, subtype, pattern) {
         if (subtype === 'multi') {
             return this.extractMultiDamageParameters(match);
         } else {
@@ -3110,9 +3190,9 @@ class DamagePattern {
         // Extract damage type from various capture groups
         const type = match[2] || match[3] || match[4] || match[5] || match[6] || match[7] || match[8] || '';
         
-        const isPersistent = originalText.includes('persistent');
-        const isPrecision = originalText.includes('precision');
-        const isSplash = originalText.includes('splash');
+        const isPersistent = this.containsWord(originalText, 'persistent');
+        const isPrecision = this.containsWord(originalText, 'precision');
+        const isSplash = this.containsWord(originalText, 'splash');
         
         // Convert legacy types
         let remasterType = type;
@@ -3133,8 +3213,10 @@ class DamagePattern {
     }
 }
 
-// CheckPattern
-class CheckPattern {
+/**
+ * Check pattern class extending BasePattern
+ */
+class CheckPattern extends BasePattern {
     static type = 'check';
     static priority = 90;
     static description = 'Check patterns';
@@ -3184,47 +3266,8 @@ class CheckPattern {
         }
     ];
 
-    static test(text) {
-        const matches = [];
-        
-        for (const pattern of this.PATTERNS) {
-            let match;
-            pattern.regex.lastIndex = 0;
-            while ((match = pattern.regex.exec(text)) !== null) {
-                if (this.validateMatch(match)) {
-                    matches.push({
-                        match: match,
-                        type: this.type,
-                        priority: pattern.priority || this.priority,
-                        config: { 
-                            pattern: pattern,
-                            // Extract parameters immediately when match is found
-                            parameters: this.extractParameters(match, pattern.subtype)
-                        }
-                    });
-                }
-            }
-        }
-        
-        return matches;
-    }
-
-    static validateMatch(match) {
-        return match && match[0] && typeof match.index === 'number';
-    }
-
-    static createReplacement(match, parameters) {
-        return new Replacement(match, this.type, parameters);
-    }
-
-    /**
-     * Extract clean parameters from the match based on subtype
-     * @param {Array} match - Regex match array
-     * @param {string} subtype - The check subtype (save, skill, etc.)
-     * @returns {Object} Clean parameters for InlineAutomation
-     */
-    static extractParameters(match, subtype) {
-        const matchedText = match[0];
+    static extractParameters(match, subtype, pattern) {
+        const matchedText = this.getMatchedText(match);
         
         switch (subtype) {
             case 'save':
@@ -3246,17 +3289,16 @@ class CheckPattern {
         const normalizedText = text.toLowerCase().trim();
         
         // Extract DC
-        const dcMatch = normalizedText.match(/\b(\d{1,2})\b/);
-        const dc = dcMatch ? parseInt(dcMatch[1]) : null;
+        const dc = this.extractDC(normalizedText);
         
         // Extract save type
         let checkType = 'reflex'; // default
-        if (normalizedText.includes('fort')) checkType = 'fortitude';
-        else if (normalizedText.includes('ref')) checkType = 'reflex';
-        else if (normalizedText.includes('will')) checkType = 'will';
+        if (this.containsWord(normalizedText, 'fort')) checkType = 'fortitude';
+        else if (this.containsWord(normalizedText, 'ref')) checkType = 'reflex';
+        else if (this.containsWord(normalizedText, 'will')) checkType = 'will';
         
         // Check for basic
-        const basic = normalizedText.includes('basic');
+        const basic = this.containsWord(normalizedText, 'basic');
         
         return {
             checkType: checkType,
@@ -3266,8 +3308,7 @@ class CheckPattern {
     }
 
     static extractPerceptionParameters(text) {
-        const dcMatch = text.match(/\bdc\s*(\d{1,2})\b/i);
-        const dc = dcMatch ? parseInt(dcMatch[1]) : null;
+        const dc = this.extractDC(text);
         
         return {
             checkType: 'perception',
@@ -3277,8 +3318,7 @@ class CheckPattern {
     }
 
     static extractLoreParameters(text) {
-        const dcMatch = text.match(/\bdc\s*(\d{1,2})\b/i);
-        const dc = dcMatch ? parseInt(dcMatch[1]) : null;
+        const dc = this.extractDC(text);
         
         // Extract lore name
         const loreMatch = text.match(/^(.*?)\s+lore/i);
@@ -3303,8 +3343,7 @@ class CheckPattern {
     }
 
     static extractFlatParameters(text) {
-        const dcMatch = text.match(/\bdc\s*(\d{1,2})\b/i);
-        const dc = dcMatch ? parseInt(dcMatch[1]) : null;
+        const dc = this.extractDC(text);
         
         return {
             checkType: 'flat',
@@ -3314,14 +3353,13 @@ class CheckPattern {
     }
 
     static extractSkillParameters(text) {
-        const dcMatch = text.match(/\bdc\s*(\d{1,2})\b/i);
-        const dc = dcMatch ? parseInt(dcMatch[1]) : null;
+        const dc = this.extractDC(text);
         
         // Find which skill was matched
         const normalizedText = text.toLowerCase();
         let skill = 'acrobatics'; // default
         for (const skillName of ConfigManager.SKILLS.slugs) {
-            if (normalizedText.includes(skillName.toLowerCase())) {
+            if (this.containsWord(normalizedText, skillName)) {
                 skill = skillName;
                 break;
             }
@@ -3335,8 +3373,10 @@ class CheckPattern {
     }
 }
 
-// HealingPattern
-class HealingPattern {
+/**
+ * Healing pattern class extending BasePattern
+ */
+class HealingPattern extends BasePattern {
     static type = 'healing';
     static priority = 80;
     static description = 'Healing roll patterns';
@@ -3349,39 +3389,7 @@ class HealingPattern {
         }
     ];
 
-    static test(text) {
-        const matches = [];
-        
-        for (const pattern of this.PATTERNS) {
-            let match;
-            pattern.regex.lastIndex = 0;
-            while ((match = pattern.regex.exec(text)) !== null) {
-                if (this.validateMatch(match)) {
-                    matches.push({
-                        match: match,
-                        type: this.type,
-                        priority: pattern.priority || this.priority,
-                        config: { 
-                            pattern: pattern,
-                            parameters: this.extractParameters(match, pattern.subtype)
-                        }
-                    });
-                }
-            }
-        }
-        
-        return matches;
-    }
-
-    static validateMatch(match) {
-        return match && match[0] && typeof match.index === 'number';
-    }
-
-    static createReplacement(match, parameters) {
-        return new Replacement(match, this.type, parameters);
-    }
-
-    static extractParameters(match, subtype) {
+    static extractParameters(match, subtype, pattern) {
         const dice = match[1] || '';
         
         // Healing is treated as damage with healing type
@@ -3399,8 +3407,10 @@ class HealingPattern {
     }
 }
 
-// ConditionPattern
-class ConditionPattern {
+/**
+ * Condition pattern class extending BasePattern
+ */
+class ConditionPattern extends BasePattern {
     static type = 'condition';
     static priority = 70;
     static description = 'Condition patterns';
@@ -3420,39 +3430,7 @@ class ConditionPattern {
         }
     ];
 
-    static test(text) {
-        const matches = [];
-        
-        for (const pattern of this.PATTERNS) {
-            let match;
-            pattern.regex.lastIndex = 0;
-            while ((match = pattern.regex.exec(text)) !== null) {
-                if (this.validateMatch(match)) {
-                    matches.push({
-                        match: match,
-                        type: this.type,
-                        priority: pattern.priority || this.priority,
-                        config: { 
-                            pattern: pattern,
-                            parameters: this.extractParameters(match, pattern.subtype)
-                        }
-                    });
-                }
-            }
-        }
-        
-        return matches;
-    }
-
-    static validateMatch(match) {
-        return match && match[0] && typeof match.index === 'number';
-    }
-
-    static createReplacement(match, parameters) {
-        return new Replacement(match, this.type, parameters);
-    }
-
-    static extractParameters(match, subtype) {
+    static extractParameters(match, subtype, pattern) {
         let conditionText = match[1] || '';
         let value = null;
         
@@ -3484,8 +3462,10 @@ class ConditionPattern {
     }
 }
 
-// TemplatePattern
-class TemplatePattern {
+/**
+ * Template pattern class extending BasePattern
+ */
+class TemplatePattern extends BasePattern {
     static type = 'template';
     static priority = 60;
     static description = 'Template patterns';
@@ -3505,39 +3485,7 @@ class TemplatePattern {
         }
     ];
 
-    static test(text) {
-        const matches = [];
-        
-        for (const pattern of this.PATTERNS) {
-            let match;
-            pattern.regex.lastIndex = 0;
-            while ((match = pattern.regex.exec(text)) !== null) {
-                if (this.validateMatch(match)) {
-                    matches.push({
-                        match: match,
-                        type: this.type,
-                        priority: pattern.priority || this.priority,
-                        config: { 
-                            pattern: pattern,
-                            parameters: this.extractParameters(match, pattern.subtype)
-                        }
-                    });
-                }
-            }
-        }
-        
-        return matches;
-    }
-
-    static validateMatch(match) {
-        return match && match[0] && typeof match.index === 'number';
-    }
-
-    static createReplacement(match, parameters) {
-        return new Replacement(match, this.type, parameters);
-    }
-
-    static extractParameters(match, subtype) {
+    static extractParameters(match, subtype, pattern) {
         if (subtype === 'within') {
             return this.extractWithinParameters(match);
         } else {
@@ -3558,7 +3506,7 @@ class TemplatePattern {
         // Extract width for line templates from the full text
         let width = 5; // default
         if (templateType === 'line') {
-            const text = match[0].toLowerCase();
+            const text = this.getMatchedText(match).toLowerCase();
             const widthMatch = text.match(/(\d+)(?:-|\s+)?(?:foot|feet|ft)\s+wide/);
             if (widthMatch) {
                 width = parseInt(widthMatch[1]);
@@ -3583,8 +3531,11 @@ class TemplatePattern {
         };
     }
 }
-// DurationPattern
-class DurationPattern {
+
+/**
+ * Duration pattern class extending BasePattern
+ */
+class DurationPattern extends BasePattern {
     static type = 'duration';
     static priority = 50;
     static description = 'Duration roll patterns';
@@ -3597,41 +3548,9 @@ class DurationPattern {
         }
     ];
 
-    static test(text) {
-        const matches = [];
-        
-        for (const pattern of this.PATTERNS) {
-            let match;
-            pattern.regex.lastIndex = 0;
-            while ((match = pattern.regex.exec(text)) !== null) {
-                if (this.validateMatch(match)) {
-                    matches.push({
-                        match: match,
-                        type: this.type,
-                        priority: pattern.priority || this.priority,
-                        config: { 
-                            pattern: pattern,
-                            parameters: this.extractParameters(match, pattern.subtype)
-                        }
-                    });
-                }
-            }
-        }
-        
-        return matches;
-    }
-
-    static validateMatch(match) {
-        return match && match[0] && typeof match.index === 'number';
-    }
-
-    static createReplacement(match, parameters) {
-        return new Replacement(match, this.type, parameters);
-    }
-
-    static extractParameters(match, subtype) {
+    static extractParameters(match, subtype, pattern) {
         const dice = match[1] || '';
-        const text = match[0];
+        const text = this.getMatchedText(match);
         
         return {
             dice: dice,
@@ -3642,8 +3561,10 @@ class DurationPattern {
     }
 }
 
-// ActionPattern
-class ActionPattern {
+/**
+ * Action pattern class extending BasePattern
+ */
+class ActionPattern extends BasePattern {
     static type = 'action';
     static priority = 40;
     static description = 'Action patterns';
@@ -3656,39 +3577,7 @@ class ActionPattern {
         }
     ];
 
-    static test(text) {
-        const matches = [];
-        
-        for (const pattern of this.PATTERNS) {
-            let match;
-            pattern.regex.lastIndex = 0;
-            while ((match = pattern.regex.exec(text)) !== null) {
-                if (this.validateMatch(match)) {
-                    matches.push({
-                        match: match,
-                        type: this.type,
-                        priority: pattern.priority || this.priority,
-                        config: { 
-                            pattern: pattern,
-                            parameters: this.extractParameters(match, pattern.subtype)
-                        }
-                    });
-                }
-            }
-        }
-        
-        return matches;
-    }
-
-    static validateMatch(match) {
-        return match && match[0] && typeof match.index === 'number';
-    }
-
-    static createReplacement(match, parameters) {
-        return new Replacement(match, this.type, parameters);
-    }
-
-    static extractParameters(match, subtype) {
+    static extractParameters(match, subtype, pattern) {
         const actionText = match[1] || '';
         const actionSlug = this.actionToSlug(actionText);
         
