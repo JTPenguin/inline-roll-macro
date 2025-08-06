@@ -1545,27 +1545,24 @@ class ModifierPanelManager {
     setupCommonTraitCheckbox(traitCheckbox, trait, replacement, onChangeCallback) {
         const listenerKey = `${traitCheckbox.id}-change`;
         
-        // Prevent duplicate listeners (commented out because it prevented checkboxes and traits field from syncing properly)
-        // if (this.attachedListeners.has(listenerKey)) {
-        //     return;
-        // }
-        
         const listener = (event) => {
             const isChecked = event.target.checked;
-            if (!replacement.traits) replacement.traits = [];
+            
+            // FIX: Update inlineAutomation.traits instead of replacement.traits
+            if (!replacement.inlineAutomation.traits) replacement.inlineAutomation.traits = [];
             
             // Update traits array
-            if (isChecked && !replacement.traits.includes(trait)) {
-                replacement.traits.push(trait);
+            if (isChecked && !replacement.inlineAutomation.traits.includes(trait)) {
+                replacement.inlineAutomation.traits.push(trait);
                 console.log(`[ModifierPanelManager] Added trait ${trait} via checkbox`);
-            } else if (!isChecked && replacement.traits.includes(trait)) {
-                replacement.traits = replacement.traits.filter(t => t !== trait);
+            } else if (!isChecked && replacement.inlineAutomation.traits.includes(trait)) {
+                replacement.inlineAutomation.traits = replacement.inlineAutomation.traits.filter(t => t !== trait);
                 console.log(`[ModifierPanelManager] Removed trait ${trait} via checkbox`);
             }
             
             // Sync with traits input if it exists
-            console.log(`[ModifierPanelManager] Syncing traits input from array:`, replacement.traits);
-            this.syncTraitsInputFromArray(replacement.traits);
+            console.log(`[ModifierPanelManager] Syncing traits input from array:`, replacement.inlineAutomation.traits);
+            this.syncTraitsInputFromArray(replacement.inlineAutomation.traits);
             
             if (onChangeCallback) {
                 onChangeCallback(replacement, `trait-${trait}`);
@@ -1592,7 +1589,9 @@ class ModifierPanelManager {
             onChange: (selectedTraits) => {
                 // Convert trait objects to simple string array
                 let enhancedTraits = selectedTraits.map(t => t.value);
-                replacement.traits = enhancedTraits;
+                
+                // FIX: Update the inlineAutomation.traits instead of replacement.traits
+                replacement.inlineAutomation.traits = enhancedTraits;
                 
                 // Sync with common trait checkboxes
                 const commonTraits = renderer.getCommonTraits(replacement);
@@ -1616,9 +1615,9 @@ class ModifierPanelManager {
         // Store reference for syncing
         container.traitsInput = traitsInput;
         
-        // Set initial value and sync checkboxes
-        if (replacement.traits && Array.isArray(replacement.traits)) {
-            traitsInput.setValue(replacement.traits);
+        // FIX: Set initial value from inlineAutomation.traits instead of replacement.traits
+        if (replacement.inlineAutomation.traits && Array.isArray(replacement.inlineAutomation.traits)) {
+            traitsInput.setValue(replacement.inlineAutomation.traits);
             this.syncCheckboxesFromTraits(replacement, renderer);
         }
     }
@@ -1649,7 +1648,8 @@ class ModifierPanelManager {
      */
     syncCheckboxesFromTraits(replacement, renderer) {
         const commonTraits = renderer.getCommonTraits(replacement);
-        const currentTraits = replacement.traits || [];
+        // FIX: Use inlineAutomation.traits instead of replacement.traits
+        const currentTraits = replacement.inlineAutomation.traits || [];
         
         commonTraits.forEach(trait => {
             const traitCheckbox = this.currentForm?.querySelector(`#trait-${trait}`);
