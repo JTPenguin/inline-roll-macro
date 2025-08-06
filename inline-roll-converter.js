@@ -800,6 +800,15 @@ class CheckRenderer extends BaseRenderer {
             dependsOn: ['dc-method'],
             showIf: (r) => r.inlineAutomation.dcMethod === 'target' || r.inlineAutomation.dcMethod === 'origin'
         });
+
+        configs.push({
+            id: 'show-dc',
+            type: 'select',
+            label: 'Show DC',
+            getValue: (r) => r.inlineAutomation.showDC || 'owner',
+            setValue: (r, value) => { r.inlineAutomation.showDC = value; },
+            options: ConfigManager.SHOW_DCS.options
+        });
         
         configs.push({
             id: 'basic-save',
@@ -925,12 +934,9 @@ class TemplateRenderer extends BaseRenderer {
     }
 }
 
-/**
- * DurationRenderer - Handles duration modifier UI
- */
-class DurationRenderer extends BaseRenderer {
+class GenericRollRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Duration';
+        return 'Generic Roll';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -946,12 +952,12 @@ class DurationRenderer extends BaseRenderer {
         });
         
         configs.push({
-            id: 'unit',
-            type: 'select',
-            label: 'Unit',
-            getValue: (r) => r.inlineAutomation.label || 'rounds',
+            id: 'roll-label',
+            type: 'text',
+            label: 'Label',
+            getValue: (r) => r.inlineAutomation.label || 'Duration',
             setValue: (r, value) => { r.inlineAutomation.label = value; },
-            options: ConfigManager.DURATION_UNITS.options
+            placeholder: 'e.g., Duration'
         });
         
         configs.push({
@@ -1050,7 +1056,7 @@ class ModifierPanelManager {
             condition: new ConditionRenderer(),
             template: new TemplateRenderer(),
             //healing: new HealingRenderer(),
-            duration: new DurationRenderer(),
+            duration: new GenericRollRenderer(),
             action: new ActionRenderer()
         };
         
@@ -3255,11 +3261,7 @@ class CheckPattern {
         return {
             checkType: checkType,
             dcMethod: 'static',
-            dc: dc,
-            statistic: '',
-            showDC: 'owner',
-            basic: basic,
-            damagingEffect: false
+            dc: dc
         };
     }
 
@@ -3270,11 +3272,7 @@ class CheckPattern {
         return {
             checkType: 'perception',
             dcMethod: 'static',
-            dc: dc,
-            statistic: '',
-            showDC: 'owner',
-            basic: false,
-            damagingEffect: false
+            dc: dc
         };
     }
 
@@ -3300,11 +3298,7 @@ class CheckPattern {
             checkType: 'lore',
             loreName: loreName,
             dcMethod: 'static',
-            dc: dc,
-            statistic: '',
-            showDC: 'owner',
-            basic: false,
-            damagingEffect: false
+            dc: dc
         };
     }
 
@@ -3315,11 +3309,7 @@ class CheckPattern {
         return {
             checkType: 'flat',
             dcMethod: 'static',
-            dc: dc,
-            statistic: '',
-            showDC: 'owner',
-            basic: false,
-            damagingEffect: false
+            dc: dc
         };
     }
 
@@ -3340,11 +3330,7 @@ class CheckPattern {
         return {
             checkType: skill,
             dcMethod: 'static',
-            dc: dc,
-            statistic: '',
-            showDC: 'owner',
-            basic: false,
-            damagingEffect: false
+            dc: dc
         };
     }
 }
@@ -4089,7 +4075,7 @@ class Replacement {
             case 'template':
                 return new TemplateRenderer();
             case 'generic':
-                return new DurationRenderer(); // Keep existing name for compatibility
+                return new GenericRollRenderer();
             case 'action':
                 return new ActionRenderer();
             default:
