@@ -3062,8 +3062,8 @@ class DamagePattern {
         return match && match[0] && typeof match.index === 'number';
     }
 
-    static createReplacement(match, config) {
-        return new Replacement(match, this.type, config);
+    static createReplacement(match, parameters) {
+        return new Replacement(match, this.type, parameters);
     }
 
     static extractParameters(match, subtype) {
@@ -3213,8 +3213,8 @@ class CheckPattern {
         return match && match[0] && typeof match.index === 'number';
     }
 
-    static createReplacement(match, config) {
-        return new Replacement(match, this.type, config);
+    static createReplacement(match, parameters) {
+        return new Replacement(match, this.type, parameters);
     }
 
     /**
@@ -3377,8 +3377,8 @@ class HealingPattern {
         return match && match[0] && typeof match.index === 'number';
     }
 
-    static createReplacement(match, config) {
-        return new Replacement(match, this.type, config);
+    static createReplacement(match, parameters) {
+        return new Replacement(match, this.type, parameters);
     }
 
     static extractParameters(match, subtype) {
@@ -3448,8 +3448,8 @@ class ConditionPattern {
         return match && match[0] && typeof match.index === 'number';
     }
 
-    static createReplacement(match, config) {
-        return new Replacement(match, this.type, config);
+    static createReplacement(match, parameters) {
+        return new Replacement(match, this.type, parameters);
     }
 
     static extractParameters(match, subtype) {
@@ -3533,8 +3533,8 @@ class TemplatePattern {
         return match && match[0] && typeof match.index === 'number';
     }
 
-    static createReplacement(match, config) {
-        return new Replacement(match, this.type, config);
+    static createReplacement(match, parameters) {
+        return new Replacement(match, this.type, parameters);
     }
 
     static extractParameters(match, subtype) {
@@ -3625,8 +3625,8 @@ class DurationPattern {
         return match && match[0] && typeof match.index === 'number';
     }
 
-    static createReplacement(match, config) {
-        return new Replacement(match, this.type, config);
+    static createReplacement(match, parameters) {
+        return new Replacement(match, this.type, parameters);
     }
 
     static extractParameters(match, subtype) {
@@ -3684,8 +3684,8 @@ class ActionPattern {
         return match && match[0] && typeof match.index === 'number';
     }
 
-    static createReplacement(match, config) {
-        return new Replacement(match, this.type, config);
+    static createReplacement(match, parameters) {
+        return new Replacement(match, this.type, parameters);
     }
 
     static extractParameters(match, subtype) {
@@ -3771,9 +3771,10 @@ class PatternDetector {
             throw new Error(`No pattern class found for type: ${matchResult.type}`);
         }
         
-        const replacement = PatternClass.createReplacement(matchResult.match, matchResult.config);
+        // Extract parameters early - no more nested config object!
+        const parameters = matchResult.config?.parameters || {};
         
-        return replacement;
+        return PatternClass.createReplacement(matchResult.match, parameters);
     }
 
     /**
@@ -3999,7 +4000,7 @@ function generateId() {
 }
 
 class Replacement {
-    constructor(match, type, config) {
+    constructor(match, type, parameters = {}) {
         if (!match || typeof match !== 'object' || typeof match[0] !== 'string' || typeof match.index !== 'number') {
             throw new Error('Replacement: Invalid match object passed to constructor.');
         }
@@ -4014,8 +4015,11 @@ class Replacement {
         this.displayText = '';
         this.type = type;
         
-        // Create InlineAutomation instance with extracted parameters
-        this.inlineAutomation = this.createInlineAutomationFromType(type, config?.parameters || {});
+        // Store original parameters directly - much cleaner!
+        this._originalParameters = JSON.parse(JSON.stringify(parameters));
+        
+        // Create InlineAutomation instance with parameters
+        this.inlineAutomation = this.createInlineAutomationFromType(type, parameters);
         
         // Create renderer instance
         this.renderer = this.getRendererForType(type);
@@ -4023,9 +4027,7 @@ class Replacement {
         // Store original render
         this.originalRender = this.render();
         
-        // Store for reset
-        this._lastMatch = match;
-        this._lastConfig = config;
+        console.log(`[Replacement] Created ${type} replacement with parameters:`, parameters);
     }
 
     createInlineAutomationFromType(type, parameters) {
@@ -4083,32 +4085,24 @@ class Replacement {
         }
     }
 
-    parseMatch(match, config) {
-        // Store for reset
-        this._lastMatch = match;
-        this._lastConfig = config;
+    // Much simpler reset method!
+    resetToOriginal() {
+        console.log('[Replacement] Resetting to original state');
+        console.log('[Replacement] Original parameters:', this._originalParameters);
         
-        // Delegate to Pattern class
-        const patternClass = this.getPatternClassForType(this.type);
-        if (patternClass && patternClass.parseIntoInlineAutomation) {
-            patternClass.parseIntoInlineAutomation(match, this.inlineAutomation, config);
-        }
+        // Recreate the InlineAutomation object with original parameters
+        this.inlineAutomation = this.createInlineAutomationFromType(
+            this.type, 
+            this._originalParameters
+        );
         
-        // Set display text from InlineAutomation
+        // Reset enabled state
+        this.enabled = true;
+        
+        // Clear any custom display text
         this.displayText = this.inlineAutomation.displayText || '';
-    }
-
-    getPatternClassForType(type) {
-        const patternMap = {
-            'damage': DamagePattern,
-            'check': CheckPattern,
-            'healing': HealingPattern,
-            'condition': ConditionPattern,
-            'template': TemplatePattern,
-            'duration': DurationPattern,
-            'action': ActionPattern
-        };
-        return patternMap[type];
+        
+        console.log('[Replacement] Reset completed');
     }
 
     // Return the original or converted text depending on the enabled state
@@ -4158,24 +4152,10 @@ class Replacement {
         return this.render() !== this.originalRender;
     }
 
-    // Reset to the original text
-    resetToOriginal() {
-        // Use the last match/config, or re-detect if missing
-        let match = this._lastMatch, config = this._lastConfig;
-        if (!match) {
-            const detector = new TextProcessor().detector;
-            const matches = detector.detectAll(this.originalText);
-            for (const m of matches) {
-                if (m.type === this.type) {
-                    match = m.match;
-                    config = m.config;
-                    break;
-                }
-            }
-        }
-        if (match) {
-            this.parseMatch(match, config);
-        }
+    // Method to mark the replacement as modified (called by modifier panel)
+    markModified() {
+        // This method can be used by the modifier panel to trigger updates
+        // The actual modification detection is done by comparing renders
     }
 
     // Trim trailing spaces from the original text
@@ -4202,14 +4182,15 @@ const REPLACEMENT_CLASS_MAP = {
 };
 
 class ReplacementFactory {
-    static createFromMatch(match, patternType, patternConfig) {
+    static createFromMatch(match, patternType, parameters) {
         const Cls = REPLACEMENT_CLASS_MAP[patternType];
         if (!Cls) throw new Error(`Unknown pattern type: ${patternType}`);
         
         // All types now use the universal Replacement class
-        const instance = new Cls(match, patternType, patternConfig);
+        const instance = new Cls(match, patternType, parameters);
         return instance;
     }
+    
     static getSupportedTypes() {
         return Object.keys(REPLACEMENT_CLASS_MAP);
     }
