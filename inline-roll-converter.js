@@ -25,14 +25,58 @@ class InlineAutomation {
     render() {
         throw new Error('Must implement render() method');
     }
+
+    static toSlug(text) {
+        return text.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    }
+
+    static isValidDiceExpression(diceExpression) {
+        if (!diceExpression || typeof diceExpression !== 'string') { return false; }
+        const dicePattern = /^\d+(?:d\d+(?:[+-]\d+)?)?$/;
+        return dicePattern.test(diceExpression);
+    }
 }
 
 // Damage partial with dice, damage type, and category
 class DamageComponent {
     constructor(dice = '', damageType = '', category = '') {
+        this._dice = '';
+        this._damageType = 'untyped';
+        this._category = '';
+
         this.dice = dice || '';
-        this.damageType = damageType || '';
+        this.damageType = damageType || 'untyped';
         this.category = category || ''; // 'persistent', 'precision', 'splash', or ''
+    }
+
+    get damageType() { return this._damageType; }
+    set damageType(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.DAMAGE_TYPES.slugs.includes(valueSlug)) {
+            this._damageType = valueSlug;
+        } else {
+            console.warn(`Invalid damage type: ${valueSlug}`);
+        }
+    }
+
+    get category() { return this._category; }
+    set category(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.DAMAGE_CATEGORIES.slugs.includes(valueSlug)) {
+            this._category = valueSlug;
+        } else {
+            console.warn(`Invalid damage category: ${valueSlug}`);
+        }
+    }
+
+    get dice() { return this._dice; }
+    set dice(value) {
+        const normalizedValue = value.toLowerCase().trim();
+        if (InlineAutomation.isValidDiceExpression(normalizedValue)) {
+            this._dice = normalizedValue;
+        } else {
+            console.warn(`Invalid dice expression: ${normalizedValue}`);
+        }
     }
 
     /**
@@ -40,7 +84,7 @@ class DamageComponent {
      * @returns {boolean} - True if the component has dice
      */
     hasDice() {
-        return this.dice && this.dice.length > 0;
+        return this._dice && this._dice.length > 0;
     }
 
     /**
@@ -48,7 +92,7 @@ class DamageComponent {
      * @returns {string} - The rendered damage expression
      */
     render(isHealing = false) {
-        let formula = this.dice;
+        let formula = this._dice;
 
         const typeParts = [];
         if (this.damageType !== '') {typeParts.push(this.damageType);}
@@ -75,9 +119,9 @@ class DamageComponent {
      */
     toJSON() {
         return {
-            dice: this.dice,
-            damageType: this.damageType,
-            category: this.category
+            dice: this._dice,
+            damageType: this._damageType,
+            category: this._category
         };
     }
 }
@@ -121,8 +165,16 @@ class InlineDamage extends InlineAutomation {
 class InlineCheck extends InlineAutomation {
     constructor(params = {}) {
         super('check', params);
+        // Create internal properties
+        this._checkType = 'flat';
+        this._loreName = 'warfare';
+        this._dcMethod = 'none';
+        this._dc = 0;
+        this._statistic = 'acrobatics';
+        this._showDC = 'owner';
+
         this.checkType = params.checkType || 'flat';
-        this.loreName = params.loreName || 'Warfare';
+        this.loreName = params.loreName || 'warfare';
         this.dcMethod = params.dcMethod || 'none';
         this.dc = params.dc || 0;
         this.statistic = params.statistic || 'acrobatics';
@@ -131,11 +183,63 @@ class InlineCheck extends InlineAutomation {
         this.damagingEffect = params.damagingEffect || false;
     }
 
+    get checkType() { return this._checkType; }
+    set checkType(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.CHECK_TYPES.slugs.includes(valueSlug)) {
+            this._checkType = valueSlug;
+        } else {
+            console.warn(`Invalid check type: ${valueSlug}`);
+        }
+    }
+
+    get loreName() { return this._loreName; }
+    set loreName(value) { this._loreName = InlineAutomation.toSlug(value); }
+
+    get dcMethod() { return this._dcMethod; }
+    set dcMethod(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.DC_METHODS.slugs.includes(valueSlug)) {
+            this._dcMethod = valueSlug;
+        } else {
+            console.warn(`Invalid dc method: ${valueSlug}`);
+        }
+    }
+
+    get dc() { return this._dc; }
+    set dc(value) {
+        if (typeof value === 'number') {
+            this._dc = value;
+        } else {
+            console.warn(`Invalid dc: ${value}`);
+        }
+    }
+
+    get statistic() { return this._statistic; }
+    set statistic(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.STATISTICS.slugs.includes(valueSlug)) {
+            this._statistic = valueSlug;
+        } else {
+            console.warn(`Invalid statistic: ${valueSlug}`);
+        }
+    }
+
+    get showDC() { return this._showDC; }
+    set showDC(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.SHOW_DCS.slugs.includes(valueSlug)) {
+            this._showDC = valueSlug;
+        } else {
+            console.warn(`Invalid showDC: ${valueSlug}`);
+        }
+    }
+
     render() {
         const parts = [];
         // Add checkType, unless it's a lore, in which case add a slug created from the lore name
         if (this.checkType === 'lore') {
-            parts.push(this.loreName.toLowerCase().replace(/ /g, '-') + '-lore');
+            parts.push(InlineAutomation.toSlug(this.loreName) + '-lore');
         } else {
             parts.push(this.checkType);
         }
@@ -174,6 +278,9 @@ class InlineLink extends InlineAutomation {
         this.uuid = params.uuid || '';
     }
 
+    // TODO: Add getter for uuid
+    // TODO: Add setter for uuid that validates the uuid
+
     render() {
         const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : ''; // Add display text syntax if it's not empty
         return `@UUID[${this.uuid}]${displayTextSyntax}`;
@@ -183,19 +290,35 @@ class InlineLink extends InlineAutomation {
 class InlineCondition extends InlineLink {
     constructor(params = {}) {
         super(params);
+        this._condition = '';
+        this._value = 0;
         
-        this._condition = params.condition || '';
-        this.value = params.value || '';
+        this.condition = params.condition || '';
+        this.value = params.value || 0;
         this.uuid = ConfigManager.getConditionUUID(this._condition) || '';
     }
 
-    get condition() { 
-        return this._condition; 
+    get condition() { return this._condition; }
+    set condition(newCondition) {
+        const valueSlug = InlineAutomation.toSlug(newCondition);
+        if (ConfigManager.CONDITIONS.slugs.includes(valueSlug)) {
+            this._condition = valueSlug;
+        } else if (valueSlug === 'flat-footed') { // Special case for flat-footed legacy conversion
+            this._condition = 'off-guard';
+        } else {
+            console.warn(`Invalid condition: ${valueSlug}`);
+        }
+
+        this.uuid = ConfigManager.getConditionUUID(this._condition) || '';
     }
 
-    set condition(newCondition) {
-        this._condition = newCondition;
-        this.uuid = ConfigManager.getConditionUUID(newCondition) || '';
+    get value() { return this._value; }
+    set value(newValue) {
+        if (typeof newValue === 'number') {
+            this._value = newValue;
+        } else {
+            console.warn(`Invalid value: ${newValue}`);
+        }
     }
     
     render() {
@@ -203,11 +326,11 @@ class InlineCondition extends InlineLink {
         let displayTextSyntax = '';
         if (this.displayText !== '') {
             displayTextSyntax = `{${this.displayText}}`;
-        } else if (this._condition === 'flat-footed' || this._condition === 'off-guard') {
+        } else if (this.condition === 'flat-footed' || this.condition === 'off-guard') {
             displayTextSyntax = '{Off-Guard}';
         } else {
-            displayTextSyntax = this._condition.charAt(0).toUpperCase() + this._condition.slice(1).toLowerCase();
-            if (ConfigManager.conditionCanHaveValue(this._condition) && this.value !== '') {
+            displayTextSyntax = this.condition.charAt(0).toUpperCase() + this.condition.slice(1).toLowerCase();
+            if (ConfigManager.conditionCanHaveValue(this.condition) && this.value > 0) {
                 displayTextSyntax += ` ${this.value}`;
             }
             displayTextSyntax = `{${displayTextSyntax}}`;
@@ -220,10 +343,41 @@ class InlineCondition extends InlineLink {
 class InlineTemplate extends InlineAutomation {
     constructor(params = {}) {
         super('template', params);
+        this._templateType = 'burst';
+        this._distance = 30;
+        this._width = 5;
         
         this.templateType = params.templateType || 'burst';
         this.distance = params.distance || 30;
         this.width = params.width || 5;
+    }
+
+    get templateType() { return this._templateType; }
+    set templateType(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.TEMPLATE_TYPES.slugs.includes(valueSlug)) {
+            this._templateType = valueSlug;
+        } else {
+            console.warn(`Invalid template type: ${valueSlug}`);
+        }
+    }
+
+    get distance() { return this._distance; }
+    set distance(value) {
+        if (typeof value === 'number') {
+            this._distance = value;
+        } else {
+            console.warn(`Invalid distance: ${value}`);
+        }
+    }
+
+    get width() { return this._width; }
+    set width(value) {
+        if (typeof value === 'number') {
+            this._width = value;
+        } else {
+            console.warn(`Invalid width: ${value}`);
+        }
     }
 
     render() {
@@ -245,10 +399,21 @@ class InlineTemplate extends InlineAutomation {
 class InlineGenericRoll extends InlineAutomation {
     constructor(params = {}) {
         super('generic', params);
-        
+        this._dice = '1d20';
+
         this.dice = params.dice || '1d20';
         this.label = params.label || '';
         this.gmOnly = params.gmOnly || false;
+    }
+
+    get dice() { return this._dice; }
+    set dice(value) {
+        const normalizedValue = value.toLowerCase().trim();
+        if (InlineAutomation.isValidDiceExpression(normalizedValue)) {
+            this._dice = normalizedValue;
+        } else {
+            console.warn(`Invalid dice expression: ${normalizedValue}`);
+        }
     }
 
     render() {
@@ -275,21 +440,81 @@ class InlineGenericRoll extends InlineAutomation {
 class InlineAction extends InlineAutomation {
     constructor(params = {}) {
         super('action', params);
-        
-        this._action = params.action || 'administer-first-aid';
+        this._action = 'administer-first-aid';
+        this._variant = '';
+        this._dcMethod = 'none';
+        this._dc = 0;
+        this._statistic = 'ac';
+        this._alternateRollStatistic = 'none';
+
+        this.action = params.action || 'administer-first-aid';
         this.variant = params.variant || '';
         this.dcMethod = params.dcMethod || 'none';
-        this.dc = params.dc || null;
-        this.statistic = params.statistic || '';
-        this.alternateRollStatistic = params.alternateRollStatistic || '';
+        this.dc = params.dc || 0;
+        this.statistic = params.statistic || 'ac';
+        this.alternateRollStatistic = params.alternateRollStatistic || 'none';
         
         this.correctInvalidVariant();
     }
 
     get action() { return this._action; }
-    set action(newAction) {
-        this._action = newAction;
-        this.correctInvalidVariant();
+    set action(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.ACTIONS.slugs.includes(valueSlug)) {
+            this._action = valueSlug;
+            this.correctInvalidVariant();
+        } else {
+            console.warn(`Invalid action: ${valueSlug}`);
+        }
+    }
+
+    get variant() { return this._variant; }
+    set variant(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.ACTION_VARIANTS[this.action].slugs.includes(valueSlug)) {
+            this._variant = valueSlug;
+        } else {
+            console.warn(`Invalid variant: ${valueSlug}`);
+        }
+    }
+
+    get dcMethod() { return this._dcMethod; }
+    set dcMethod(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.ACTION_DC_METHODS.slugs.includes(valueSlug)) {
+            this._dcMethod = valueSlug;
+        } else {
+            console.warn(`Invalid dc method: ${valueSlug}`);
+        }
+    }
+
+    get dc() { return this._dc; }
+    set dc(value) {
+        if (typeof value === 'number') {
+            this._dc = value;
+        } else {
+            console.warn(`Invalid dc: ${value}`);
+        }
+    }
+
+    get statistic() { return this._statistic; }
+    set statistic(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.STATISTICS.slugs.includes(valueSlug)) {
+            this._statistic = valueSlug;
+        } else {
+            console.warn(`Invalid statistic: ${valueSlug}`);
+        }
+    }
+
+    get alternateRollStatistic() { return this._alternateRollStatistic; }
+    set alternateRollStatistic(value) {
+        const valueSlug = InlineAutomation.toSlug(value);
+        if (ConfigManager.ALTERNATE_ROLL_STATISTICS.slugs.includes(valueSlug)) {
+            this._alternateRollStatistic = valueSlug;
+        } else {
+            console.warn(`Invalid alternate roll statistic: ${valueSlug}`);
+        }
     }
 
     correctInvalidVariant() {
@@ -314,7 +539,8 @@ class InlineAction extends InlineAutomation {
             parts.push(`dc=${this.statistic}`);
         }
 
-        if (this.alternateRollStatistic !== '') {
+        // Add alternate roll statistic if it's not empty and not 'none'
+        if (this.alternateRollStatistic !== 'none' && this.alternateRollStatistic !== '') {
             parts.push(`statistic=${this.alternateRollStatistic}`);
         }
 
@@ -654,7 +880,7 @@ class FieldRenderer {
  */
 class DamageRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Damage';
+        return 'Inline Damage Roll';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -740,7 +966,7 @@ class DamageRenderer extends BaseRenderer {
  */
 class CheckRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Check';
+        return 'Inline Check/Save';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -793,7 +1019,7 @@ class CheckRenderer extends BaseRenderer {
         configs.push({
             id: 'statistic',
             type: 'select',
-            label: 'Statistic',
+            label: 'Defense Stat',
             getValue: (r) => r.inlineAutomation.statistic || '',
             setValue: (r, value) => { r.inlineAutomation.statistic = value; },
             options: ConfigManager.STATISTICS.options,
@@ -841,7 +1067,7 @@ class CheckRenderer extends BaseRenderer {
  */
 class ConditionRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Condition';
+        return 'Inline Condition Link';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -888,7 +1114,7 @@ class ConditionRenderer extends BaseRenderer {
  */
 class TemplateRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Template';
+        return 'Inline Template Link';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -936,7 +1162,7 @@ class TemplateRenderer extends BaseRenderer {
 
 class GenericRollRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Generic Roll';
+        return 'Generic Inline Roll';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -982,7 +1208,7 @@ class GenericRollRenderer extends BaseRenderer {
  */
 class ActionRenderer extends BaseRenderer {
     getTitle(replacement) {
-        return 'Action';
+        return 'Inline Action';
     }
 
     getTypeSpecificFieldConfigs(replacement) {
@@ -1018,6 +1244,47 @@ class ActionRenderer extends BaseRenderer {
             setValue: (r, value) => { r.inlineAutomation.variant = value; },
             dependsOn: ['action-name'],
             showIf: (r) => r.inlineAutomation.action && ConfigManager.actionHasVariants(r.inlineAutomation.action)
+        });
+
+        configs.push({
+            id: 'alternate-roll-statistic',
+            type: 'select',
+            label: 'Statistic',
+            getValue: (r) => r.inlineAutomation.alternateRollStatistic || 'none',
+            setValue: (r, value) => { r.inlineAutomation.alternateRollStatistic = value; },
+            options: ConfigManager.ALTERNATE_ROLL_STATISTICS.options
+        });
+
+        configs.push({
+            id: 'dc-method',
+            type: 'select',
+            label: 'DC Method',
+            getValue: (r) => r.inlineAutomation.dcMethod || 'none',
+            setValue: (r, value) => { r.inlineAutomation.dcMethod = value; },
+            options: ConfigManager.ACTION_DC_METHODS.options,
+            affects: ['dc', 'statistic'],
+            triggersUpdate: 'visibility'
+        });
+
+        configs.push({
+            id: 'dc',
+            type: 'number',
+            label: 'DC',
+            getValue: (r) => r.inlineAutomation.dc || 0,
+            setValue: (r, value) => { r.inlineAutomation.dc = value; },
+            dependsOn: ['dc-method'],
+            showIf: (r) => r.inlineAutomation.dcMethod === 'static'
+        });
+
+        configs.push({
+            id: 'statistic',
+            type: 'select',
+            label: 'Defense Stat',
+            getValue: (r) => r.inlineAutomation.statistic || 'ac',
+            setValue: (r, value) => { r.inlineAutomation.statistic = value; },
+            options: ConfigManager.STATISTICS.options,
+            dependsOn: ['dc-method'],
+            showIf: (r) => r.inlineAutomation.dcMethod === 'target'
         });
 
         return configs;
@@ -2837,8 +3104,9 @@ class ConfigManager {
     ]);
 
     static DC_METHODS = new ConfigCategory(
-        [ 'static', 'target', 'origin' ],
+        [ 'none', 'static', 'target', 'origin' ],
         {
+            none: 'No DC',
             static: 'Static DC',
             target: 'Target\'s Statistic',
             origin: 'Origin\'s Statistic'
@@ -3003,6 +3271,33 @@ class ConfigManager {
         'create-a-diversion': new ConfigCategory([ 'distracting-words', 'gesture', 'trick' ]),
         'perform': new ConfigCategory([ 'acting', 'comedy', 'dance', 'keyboards', 'oratory', 'percussion', 'singing', 'strings', 'winds' ])
     };
+
+    static ACTION_DC_METHODS = new ConfigCategory(
+        [ 'none', 'static', 'target' ],
+        {
+            none: 'Use Default',
+            static: 'Static DC',
+            target: 'Target\'s Statistic'
+        }
+    );
+
+    static ALTERNATE_ROLL_STATISTICS = new ConfigCategory(
+        [
+            'none',
+            'perception',
+            ...this.SAVES.slugs, // Saves are also statistics
+            'class',
+            'spell',
+            'class-spell',
+            ...this.SKILLS.slugs, // Skills are also statistics
+        ],
+        {
+            none: 'Use Default',
+            class: 'Class DC Roll',
+            spell: 'Spell Attack Roll',
+            'class-spell': 'Class or Spell'
+        }
+    );
 
     // Helper method for checking if an action has variants
     static actionHasVariants(action) {
@@ -3206,7 +3501,7 @@ class DamagePattern extends BasePattern {
         
         return {
             dice: dice,
-            damageType: remasterType,
+            damageType: remasterType.toLowerCase().trim(),
             category: category
         };
     }
@@ -3335,7 +3630,7 @@ class CheckPattern extends BasePattern {
         
         return {
             checkType: 'lore',
-            loreName: loreName,
+            loreName: loreName.toLowerCase().trim(),
             dcMethod: 'static',
             dc: dc
         };
@@ -3365,7 +3660,7 @@ class CheckPattern extends BasePattern {
         }
         
         return {
-            checkType: skill,
+            checkType: skill.toLowerCase().trim(),
             dcMethod: 'static',
             dc: dc
         };
