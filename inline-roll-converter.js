@@ -3603,6 +3603,271 @@ class BasePattern {
 }
 
 /**
+ * Automation pattern class for detecting existing inline automations
+ */
+class AutomationPattern extends BasePattern {
+    static type = 'automation';
+    static priority = 200;
+    static description = 'Existing automation syntax detection';
+
+    static PATTERNS = [
+        {
+            regex: /@Damage\[([^\]]+)\](?:\{([^}]+)\})?/gi,
+            priority: 210,
+            subtype: 'damage'
+        },
+        {
+            regex: /@Check\[([^\]]+)\](?:\{([^}]+)\})?/gi,
+            priority: 205,
+            subtype: 'check'
+        },
+        {
+            regex: /@Template\[([^\]]+)\](?:\{([^}]+)\})?/gi,
+            priority: 200,
+            subtype: 'template'
+        },
+        {
+            regex: /\[\[\/(?:r|gmr)\s+([^\]#]+?)(?:\s*#([^\]]+))?\]\](?:\{([^}]+)\})?/gi,
+            priority: 195,
+            subtype: 'generic'
+        },
+        {
+            regex: /\[\[\/act\s+([^\]]+)\]\](?:\{([^}]+)\})?/gi,
+            priority: 190,
+            subtype: 'action'
+        }
+    ];
+
+    static extractParameters(match, subtype, pattern) {
+        try {
+            switch (subtype) {
+                case 'damage':
+                    return this.extractDamageParameters(match[1] || '', match[2] || '');
+                case 'check':
+                    return this.extractCheckParameters(match[1] || '', match[2] || '');
+                case 'template':
+                    return this.extractTemplateParameters(match[1] || '', match[2] || '');
+                case 'generic':
+                    return this.extractGenericParameters(match);
+                case 'action':
+                    return this.extractActionParameters(match);
+                default:
+                    return this.createFallbackParameters(subtype);
+            }
+        } catch (error) {
+            return this.createFallbackParameters(subtype);
+        }
+    }
+
+    static extractDamageParameters(paramContent, displayText) {
+        const result = {
+            components: [],
+            areaDamage: /area-damage/.test(paramContent) || /options:\s*[^|]*area-damage/i.test(paramContent),
+            healing: /healing/.test(paramContent),
+            displayText: displayText || ''
+        };
+
+        const dicePattern = /(\d+(?:d\d+)?(?:[+-]\d+)?)/g;
+        const diceMatches = [...paramContent.matchAll(dicePattern)];
+
+        diceMatches.forEach((diceMatch) => {
+            const dice = diceMatch[1];
+            const position = diceMatch.index ?? 0;
+
+            const contextStart = Math.max(0, position - 30);
+            const contextEnd = Math.min(paramContent.length, position + dice.length + 30);
+            const context = paramContent.substring(contextStart, contextEnd);
+
+            const component = {
+                dice: dice,
+                damageType: this.findDamageTypeInContext(context, dice),
+                category: this.findCategoryInContext(context)
+            };
+
+            result.components.push(component);
+        });
+
+        return result;
+    }
+
+    static findDamageTypeInContext(context, dice) {
+        const afterDice = context.substring(context.indexOf(dice) + dice.length);
+        const bracketMatch = afterDice.match(/\[\s*([a-z]+)(?:\s*,\s*[a-z]+)*\s*\]/i);
+
+        if (bracketMatch) {
+            const types = bracketMatch[1].split(',').map((t) => t.trim());
+            const damageType = types.find((t) => !['persistent', 'precision', 'splash', 'healing'].includes(t));
+            if (damageType) {
+                return LegacyConversionManager.convertLegacyDamageType(damageType);
+            }
+        }
+
+        const typePattern = new RegExp(`\\b(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\b`, 'i');
+        const fallbackMatch = context.match(typePattern);
+        return fallbackMatch ? fallbackMatch[1] : 'untyped';
+    }
+
+    static findCategoryInContext(context) {
+        if (/persistent/i.test(context)) return 'persistent';
+        if (/precision/i.test(context)) return 'precision';
+        if (/splash/i.test(context)) return 'splash';
+        return '';
+    }
+
+    static extractCheckParameters(paramContent, displayText) {
+        const result = {
+            checkType: 'flat',
+            dcMethod: 'none',
+            dc: null,
+            statistic: '',
+            basic: false,
+            damagingEffect: false,
+            displayText: displayText || ''
+        };
+
+        const segments = paramContent.split('|').map((s) => s.trim()).filter((s) => s !== '');
+        if (segments.length > 0) {
+            result.checkType = segments[0].toLowerCase();
+        }
+
+        segments.slice(1).forEach((segment) => {
+            if (segment.startsWith('dc:')) {
+                result.dcMethod = 'static';
+                const parsed = parseInt(segment.substring(3));
+                result.dc = Number.isFinite(parsed) ? parsed : null;
+            } else if (segment.startsWith('against:')) {
+                result.dcMethod = 'target';
+                result.statistic = segment.substring(8);
+            } else if (segment === 'basic') {
+                result.basic = true;
+            } else if (segment.includes('damaging-effect')) {
+                result.damagingEffect = true;
+            }
+        });
+
+        return result;
+    }
+
+    static extractTemplateParameters(paramContent, displayText) {
+        const result = {
+            templateType: 'burst',
+            distance: 30,
+            width: 5,
+            displayText: displayText || ''
+        };
+
+        const segments = paramContent.split('|').map((s) => s.trim());
+
+        segments.forEach((segment) => {
+            if (segment.startsWith('type:')) {
+                result.templateType = segment.substring(5);
+            } else if (segment.startsWith('distance:')) {
+                const parsed = parseInt(segment.substring(9));
+                if (Number.isFinite(parsed)) result.distance = parsed;
+            } else if (segment.startsWith('width:')) {
+                const parsed = parseInt(segment.substring(6));
+                if (Number.isFinite(parsed)) result.width = parsed;
+            }
+        });
+
+        return result;
+    }
+
+    static extractGenericParameters(match) {
+        const dice = (match[1] || '').trim();
+        const label = (match[2] || '').trim() || 'Roll';
+        const displayText = match[3] || '';
+        const gmOnly = /\[\[\/gmr/i.test(match[0] || '');
+        return {
+            dice: dice,
+            label: label,
+            gmOnly: gmOnly,
+            displayText: displayText
+        };
+    }
+
+    static extractActionParameters(match) {
+        const paramContent = match[1] || '';
+        const displayText = match[2] || '';
+        const segments = paramContent.split(' ').map((s) => s.trim()).filter((s) => s !== '');
+
+        const result = {
+            action: segments[0] || 'grapple',
+            variant: '',
+            dcMethod: 'none',
+            dc: null,
+            statistic: '',
+            alternateRollStatistic: 'none',
+            displayText: displayText || ''
+        };
+
+        segments.slice(1).forEach((segment) => {
+            if (segment.startsWith('variant=')) {
+                result.variant = segment.substring(8);
+            } else if (segment.startsWith('dc=')) {
+                const dcValue = segment.substring(3);
+                if (/^\d+$/.test(dcValue)) {
+                    result.dcMethod = 'static';
+                    result.dc = parseInt(dcValue);
+                } else {
+                    result.dcMethod = 'target';
+                    result.statistic = dcValue;
+                }
+            } else if (segment.startsWith('statistic=')) {
+                result.alternateRollStatistic = segment.substring(10);
+            }
+        });
+
+        return result;
+    }
+
+    static createFallbackParameters(subtype) {
+        switch (subtype) {
+            case 'damage':
+                return {
+                    components: [{ dice: '1d1', damageType: 'untyped', category: '' }],
+                    areaDamage: false,
+                    healing: false,
+                    displayText: ''
+                };
+            case 'check':
+                return {
+                    checkType: 'flat',
+                    dcMethod: 'none',
+                    dc: null,
+                    displayText: ''
+                };
+            case 'template':
+                return {
+                    templateType: 'burst',
+                    distance: 30,
+                    width: 5,
+                    displayText: ''
+                };
+            case 'generic':
+                return {
+                    dice: '1d20',
+                    label: 'Roll',
+                    gmOnly: false,
+                    displayText: ''
+                };
+            case 'action':
+                return {
+                    action: 'grapple',
+                    variant: '',
+                    dcMethod: 'none',
+                    dc: null,
+                    statistic: '',
+                    alternateRollStatistic: 'none',
+                    displayText: ''
+                };
+            default:
+                return {};
+        }
+    }
+}
+
+/**
  * Damage pattern class extending BasePattern
  */
 class DamagePattern extends BasePattern {
@@ -4088,6 +4353,7 @@ class ActionPattern extends BasePattern {
 class PatternDetector {
     // All patterns defined as a static constant - no runtime changes
     static PATTERN_CLASSES = [
+        AutomationPattern,
         DamagePattern,
         CheckPattern,
         HealingPattern,
@@ -4141,7 +4407,12 @@ class PatternDetector {
         
         // Extract parameters early - no more nested config object!
         const parameters = matchResult.config?.parameters || {};
-        
+        // Map automation subtypes directly to replacement types
+        if (matchResult.type === 'automation') {
+            const subtype = matchResult.config?.pattern?.subtype;
+            return new Replacement(matchResult.match, subtype, parameters);
+        }
+
         return PatternClass.createReplacement(matchResult.match, parameters);
     }
 
