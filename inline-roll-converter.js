@@ -3516,13 +3516,21 @@ class BasePattern {
             pattern.regex.lastIndex = 0;
             while ((match = pattern.regex.exec(text)) !== null) {
                 if (this.validateMatch(match)) {
+                    // Extract parameters and check if they're valid
+                    const parameters = this.extractParametersForPattern(match, pattern);
+                    
+                    // If extractor returns null, skip this match
+                    if (parameters === null) {
+                        continue;
+                    }
+                    
                     matches.push({
                         match: match,
                         type: pattern.type || this.type,
                         priority: pattern.priority || this.priority,
                         config: { 
                             pattern: pattern,
-                            parameters: this.extractParametersForPattern(match, pattern)
+                            parameters: parameters
                         }
                     });
                 }
@@ -3554,6 +3562,7 @@ class BasePattern {
     /**
      * Flexible extraction resolution with support for pattern-level extractors.
      * If no extractor is specified, fallback to the class extractParameters(match, pattern).
+     * Returns null if the match should be ignored.
      */
     static extractParametersForPattern(match, pattern) {
         if (pattern.extractor && this.EXTRACTORS && typeof this.EXTRACTORS[pattern.extractor] === 'function') {
@@ -3561,6 +3570,7 @@ class BasePattern {
                 return this.EXTRACTORS[pattern.extractor](match, pattern);
             } catch (e) {
                 console.warn(`[${this.type}] extractor '${pattern.extractor}' failed:`, e);
+                return null;
             }
         }
         // Fallback: class-level extractor method
@@ -3568,8 +3578,8 @@ class BasePattern {
             return this.extractParameters(match, pattern);
         } catch (e) {
             console.warn(`[${this.type}] extractParameters fallback failed:`, e);
+            return null;
         }
-        return {};
     }
 
     /**
@@ -3578,7 +3588,7 @@ class BasePattern {
      * @param {Array} match - Regex match array
      * @param {string} subtype - Pattern subtype
      * @param {Object} pattern - Full pattern object for additional context
-     * @returns {Object} Extracted parameters
+     * @returns {Object|null} Extracted parameters, or null to skip this match
      */
     static extractParameters(match, pattern) {
         throw new Error(`${this.type} pattern must implement extractParameters() method`);
@@ -3637,7 +3647,8 @@ class AutomationPattern extends BasePattern {
         check: (match, pattern) => AutomationPattern.extractCheckParameters(match[1] || '', match[2] || ''),
         template: (match, pattern) => AutomationPattern.extractTemplateParameters(match[1] || '', match[2] || ''),
         generic: (match, pattern) => AutomationPattern.extractGenericParameters(match),
-        action: (match, pattern) => AutomationPattern.extractActionParameters(match)
+        action: (match, pattern) => AutomationPattern.extractActionParameters(match),
+        condition: (match, pattern) => AutomationPattern.extractConditionParameters(match)
     };
 
     static PATTERNS = [
@@ -3660,6 +3671,12 @@ class AutomationPattern extends BasePattern {
             extractor: 'template'
         },
         {
+            regex: /@UUID\[(Compendium\.pf2e\.conditionitems\.Item\.[^\]]+)\](?:\{([^}]+)\})?/gi,
+            priority: 198,
+            type: 'condition',
+            extractor: 'condition'
+        },
+        {
             regex: /\[\[\/(?:r|gmr)\s+([^\]#]+?)(?:\s*#([^\]]+))?\]\](?:\{([^}]+)\})?/gi,
             priority: 195,
             type: 'generic',
@@ -3672,6 +3689,63 @@ class AutomationPattern extends BasePattern {
             extractor: 'action'
         }
     ];
+
+    // Extract condition parameters from @UUID links
+    static extractConditionParameters(match) {
+        const uuid = match[1] || '';
+        const displayText = match[2] || '';
+        
+        // First, validate that this UUID is actually a condition
+        const conditionName = this.extractConditionNameFromUUID(uuid);
+        
+        // If we can't find a matching condition, return null to indicate
+        // this match should not create a replacement
+        if (!conditionName) {
+            return null;
+        }
+        
+        // Extract value from display text if present
+        const value = this.extractConditionValueFromDisplayText(displayText);
+        
+        return {
+            condition: conditionName,
+            value: value,
+            uuid: uuid,
+            displayText: displayText
+        };
+    }
+
+    // Helper: Extract condition name from UUID
+    static extractConditionNameFromUUID(uuid) {
+        // Look up condition name from the UUID in ConfigManager
+        const conditions = ConfigManager.CONDITIONS;
+        
+        // Find the condition by UUID
+        for (const [conditionSlug, conditionUUID] of Object.entries(conditions.metadata.uuids)) {
+            if (conditionUUID === uuid) {
+                return conditionSlug;
+            }
+        }
+        
+        // Return null if no matching condition found
+        // This indicates the UUID is not a condition link
+        return null;
+    }
+
+    // Helper: Extract condition value from display text
+    static extractConditionValueFromDisplayText(displayText) {
+        if (!displayText) return null;
+        
+        // Look for numbers in the display text
+        // Examples: "Frightened 2", "Stupefied 1", "Off-Guard" (no number)
+        const numberMatch = displayText.match(/(\d+)/);
+        
+        if (numberMatch) {
+            return parseInt(numberMatch[1]);
+        }
+        
+        return null;
+    }
 
     static extractDamageParameters(paramContent, displayText) {
         const result = {
@@ -3873,6 +3947,13 @@ class AutomationPattern extends BasePattern {
                     dc: null,
                     statistic: '',
                     alternateRollStatistic: 'none',
+                    displayText: ''
+                };
+            case 'condition':
+                return {
+                    condition: 'off-guard',
+                    value: null,
+                    uuid: 'Compendium.pf2e.conditionitems.Item.AJh5ex99aV6VTggg',
                     displayText: ''
                 };
             default:
