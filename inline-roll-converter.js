@@ -3653,7 +3653,7 @@ class AutomationPattern extends BasePattern {
 
     static PATTERNS = [
         {
-            regex: /@Damage\[([^\]]+)\](?:\{([^}]+)\})?/gi,
+            regex: /@Damage\[((?:[^\[\]]+|\[[^\]]*\])*)\](?:\{([^}]+)\})?/gi,
             priority: 210,
             type: 'damage',
             extractor: 'damage'
@@ -3754,53 +3754,83 @@ class AutomationPattern extends BasePattern {
             healing: /healing/.test(paramContent),
             displayText: displayText || ''
         };
-
+    
+        // Find all dice expressions and their positions
         const dicePattern = /(\d+(?:d\d+)?(?:[+-]\d+)?)/g;
         const diceMatches = [...paramContent.matchAll(dicePattern)];
-
-        diceMatches.forEach((diceMatch) => {
-            const dice = diceMatch[1];
-            const position = diceMatch.index ?? 0;
-
-            const contextStart = Math.max(0, position - 30);
-            const contextEnd = Math.min(paramContent.length, position + dice.length + 30);
-            const context = paramContent.substring(contextStart, contextEnd);
-
+    
+        if (diceMatches.length === 0) return result;
+    
+        // Create component boundaries based on dice positions
+        const componentBoundaries = [];
+        
+        for (let i = 0; i < diceMatches.length; i++) {
+            const currentDice = diceMatches[i];
+            const nextDice = diceMatches[i + 1];
+            
+            const startPos = i === 0 ? 0 : componentBoundaries[i - 1].end;
+            const endPos = nextDice ? nextDice.index : paramContent.length;
+            
+            componentBoundaries.push({
+                start: startPos,
+                end: endPos,
+                diceMatch: currentDice
+            });
+        }
+    
+        // Process each component
+        componentBoundaries.forEach(boundary => {
+            const componentText = paramContent.substring(boundary.start, boundary.end);
+            const dice = boundary.diceMatch[1];
+            
             const component = {
                 dice: dice,
-                damageType: this.findDamageTypeInContext(context, dice),
-                category: this.findCategoryInContext(context)
+                damageType: this.findDamageTypeInComponent(componentText),
+                category: this.findDamageCategoryInComponent(componentText)
             };
-
+    
             result.components.push(component);
         });
-
+    
         return result;
     }
 
-    static findDamageTypeInContext(context, dice) {
-        const afterDice = context.substring(context.indexOf(dice) + dice.length);
-        const bracketMatch = afterDice.match(/\[\s*([a-z]+)(?:\s*,\s*[a-z]+)*\s*\]/i);
-
-        if (bracketMatch) {
-            const types = bracketMatch[1].split(',').map((t) => t.trim());
-            const damageType = types.find((t) => !['persistent', 'precision', 'splash', 'healing'].includes(t));
-            if (damageType) {
-                return LegacyConversionManager.convertLegacyDamageType(damageType);
-            }
+    /**
+ * Find damage type in a component text using ConfigManager
+ * @param {string} componentText - The component text to search
+ * @returns {string} - The damage type, defaults to 'untyped'
+ */
+static findDamageTypeInComponent(componentText) {
+    const lowerText = componentText.toLowerCase();
+    
+    // Search for damage types from ConfigManager
+    for (const damageType of ConfigManager.ALL_DAMAGE_TYPES.slugs) {
+        if (damageType && lowerText.includes(damageType)) {
+            // Convert legacy damage types if needed
+            return LegacyConversionManager.convertLegacyDamageType(damageType);
         }
-
-        const typePattern = new RegExp(`\\b(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\b`, 'i');
-        const fallbackMatch = context.match(typePattern);
-        return fallbackMatch ? fallbackMatch[1] : 'untyped';
     }
+    
+    return 'untyped';
+}
 
-    static findCategoryInContext(context) {
-        if (/persistent/i.test(context)) return 'persistent';
-        if (/precision/i.test(context)) return 'precision';
-        if (/splash/i.test(context)) return 'splash';
-        return '';
+/**
+ * Find damage category in a component text using ConfigManager
+ * @param {string} componentText - The component text to search
+ * @returns {string} - The damage category, defaults to empty string
+ */
+static findDamageCategoryInComponent(componentText) {
+    const lowerText = componentText.toLowerCase();
+    
+    // Search for damage categories from ConfigManager (excluding empty string)
+    for (const category of ConfigManager.DAMAGE_CATEGORIES.slugs) {
+        if (category && lowerText.includes(category)) {
+            return category;
+        }
     }
+    
+    return '';
+}
 
     static extractCheckParameters(paramContent, displayText) {
         const result = {
