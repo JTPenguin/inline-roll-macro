@@ -3501,6 +3501,7 @@ class BasePattern {
     static priority = 0;
     static description = 'Base pattern class';
     static PATTERNS = []; // Must be defined by subclasses
+    static EXTRACTORS = {}; // Must be defined by subclasses
 
     /**
      * Test text against all patterns defined by the subclass
@@ -3517,11 +3518,11 @@ class BasePattern {
                 if (this.validateMatch(match)) {
                     matches.push({
                         match: match,
-                        type: this.type,
+                        type: pattern.type || this.type,
                         priority: pattern.priority || this.priority,
                         config: { 
                             pattern: pattern,
-                            parameters: this.extractParameters(match, pattern.subtype, pattern)
+                            parameters: this.extractParametersForPattern(match, pattern)
                         }
                     });
                 }
@@ -3551,6 +3552,27 @@ class BasePattern {
     }
 
     /**
+     * Flexible extraction resolution with support for pattern-level extractors.
+     * If no extractor is specified, fallback to the class extractParameters(match, pattern).
+     */
+    static extractParametersForPattern(match, pattern) {
+        if (pattern.extractor && this.EXTRACTORS && typeof this.EXTRACTORS[pattern.extractor] === 'function') {
+            try {
+                return this.EXTRACTORS[pattern.extractor](match, pattern);
+            } catch (e) {
+                console.warn(`[${this.type}] extractor '${pattern.extractor}' failed:`, e);
+            }
+        }
+        // Fallback: class-level extractor method
+        try {
+            return this.extractParameters(match, pattern);
+        } catch (e) {
+            console.warn(`[${this.type}] extractParameters fallback failed:`, e);
+        }
+        return {};
+    }
+
+    /**
      * Extract parameters from a match based on subtype
      * Must be implemented by subclasses
      * @param {Array} match - Regex match array
@@ -3558,7 +3580,7 @@ class BasePattern {
      * @param {Object} pattern - Full pattern object for additional context
      * @returns {Object} Extracted parameters
      */
-    static extractParameters(match, subtype, pattern) {
+    static extractParameters(match, pattern) {
         throw new Error(`${this.type} pattern must implement extractParameters() method`);
     }
 
@@ -3610,54 +3632,46 @@ class AutomationPattern extends BasePattern {
     static priority = 200;
     static description = 'Existing automation syntax detection';
 
+    static EXTRACTORS = {
+        damage: (match, pattern) => AutomationPattern.extractDamageParameters(match[1] || '', match[2] || ''),
+        check: (match, pattern) => AutomationPattern.extractCheckParameters(match[1] || '', match[2] || ''),
+        template: (match, pattern) => AutomationPattern.extractTemplateParameters(match[1] || '', match[2] || ''),
+        generic: (match, pattern) => AutomationPattern.extractGenericParameters(match),
+        action: (match, pattern) => AutomationPattern.extractActionParameters(match)
+    };
+
     static PATTERNS = [
         {
             regex: /@Damage\[([^\]]+)\](?:\{([^}]+)\})?/gi,
             priority: 210,
-            subtype: 'damage'
+            type: 'damage',
+            extractor: 'damage'
         },
         {
             regex: /@Check\[([^\]]+)\](?:\{([^}]+)\})?/gi,
             priority: 205,
-            subtype: 'check'
+            type: 'check',
+            extractor: 'check'
         },
         {
             regex: /@Template\[([^\]]+)\](?:\{([^}]+)\})?/gi,
             priority: 200,
-            subtype: 'template'
+            type: 'template',
+            extractor: 'template'
         },
         {
             regex: /\[\[\/(?:r|gmr)\s+([^\]#]+?)(?:\s*#([^\]]+))?\]\](?:\{([^}]+)\})?/gi,
             priority: 195,
-            subtype: 'generic'
+            type: 'generic',
+            extractor: 'generic'
         },
         {
             regex: /\[\[\/act\s+([^\]]+)\]\](?:\{([^}]+)\})?/gi,
             priority: 190,
-            subtype: 'action'
+            type: 'action',
+            extractor: 'action'
         }
     ];
-
-    static extractParameters(match, subtype, pattern) {
-        try {
-            switch (subtype) {
-                case 'damage':
-                    return this.extractDamageParameters(match[1] || '', match[2] || '');
-                case 'check':
-                    return this.extractCheckParameters(match[1] || '', match[2] || '');
-                case 'template':
-                    return this.extractTemplateParameters(match[1] || '', match[2] || '');
-                case 'generic':
-                    return this.extractGenericParameters(match);
-                case 'action':
-                    return this.extractActionParameters(match);
-                default:
-                    return this.createFallbackParameters(subtype);
-            }
-        } catch (error) {
-            return this.createFallbackParameters(subtype);
-        }
-    }
 
     static extractDamageParameters(paramContent, displayText) {
         const result = {
@@ -3875,28 +3889,25 @@ class DamagePattern extends BasePattern {
     static priority = 100;
     static description = 'Damage roll patterns';
 
+    static EXTRACTORS = {
+        multi: (match) => DamagePattern.extractMultiDamageParameters(match),
+        single: (match) => DamagePattern.extractSingleDamageParameters(match)
+    };
+
     static PATTERNS = [
         // Multi-damage pattern (highest priority)
         {
             regex: new RegExp(`((?:\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+persistent)?|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+splash|splash\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+precision|precision\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|precision|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s*,\\s*plus\\s*|\\s+and\\s+|\\s+plus\\s+))*\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+persistent)?|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+splash|splash\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+precision|precision\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|precision|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?)`, 'gi'),
             priority: 110,
-            subtype: 'multi'
+            extractor: 'multi'
         },
         // Persistent damage
         {
             regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+persistent)(?:\\s+damage)?`, 'gi'),
             priority: 100,
-            subtype: 'single'
+            extractor: 'single'
         }
     ];
-
-    static extractParameters(match, subtype, pattern) {
-        if (subtype === 'multi') {
-            return this.extractMultiDamageParameters(match);
-        } else {
-            return this.extractSingleDamageParameters(match);
-        }
-    }
 
     static extractMultiDamageParameters(match) {
         // Parse multiple damage components from the match
@@ -3965,69 +3976,58 @@ class CheckPattern extends BasePattern {
     static priority = 90;
     static description = 'Check patterns';
 
+    static EXTRACTORS = {
+        save: (match) => CheckPattern.extractSaveParameters(CheckPattern.getMatchedText(match)),
+        perception: (match) => CheckPattern.extractPerceptionParameters(CheckPattern.getMatchedText(match)),
+        lore: (match) => CheckPattern.extractLoreParameters(CheckPattern.getMatchedText(match)),
+        flat: (match) => CheckPattern.extractFlatParameters(CheckPattern.getMatchedText(match)),
+        skill: (match) => CheckPattern.extractSkillParameters(CheckPattern.getMatchedText(match))
+    };
+
     static PATTERNS = [
         // Comprehensive save pattern (highest priority)
         {
             regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?\s*(?:basic)?(?:\s*[,;:\(\)]?\s*(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?(?:DC\s*(\d{1,2})\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b|(?:DC\s*(\d{1,2})\s+)?(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b)(?:\)?)/gi,
             priority: 95,
-            subtype: 'save'
+            extractor: 'save'
         },
         // Perception checks
         {
             regex: /(?:DC\s+(\d+)\s+)?Perception(?:\s+check)?/gi,
             priority: 90,
-            subtype: 'perception'
+            extractor: 'perception'
         },
         // Lore skill checks (DC first)
         {
             regex: /(?:DC\s+(\d+)\s+)?([^0-9\n]+?)\s+Lore(?:\s+check)?/gi,
             priority: 90,
-            subtype: 'lore'
+            extractor: 'lore'
         },
         // Lore skill checks (lore name first)
         {
             regex: /([^0-9\n]+?)\s+Lore\s+(?:DC\s+(\d+)\s+)?check/gi,
             priority: 90,
-            subtype: 'lore'
+            extractor: 'lore'
         },
         // Lore skill checks (DC at end)
         {
             regex: /([^0-9\n]+?)\s+Lore(?:\s+check)?(?:\s+DC\s+(\d+))?/gi,
             priority: 90,
-            subtype: 'lore'
+            extractor: 'lore'
         },
         // Flat checks
         {
             regex: /DC\s+(\d+)\s+flat\s+check/gi,
             priority: 85,
-            subtype: 'flat'
+            extractor: 'flat'
         },
         // Single skill checks
         {
             regex: new RegExp(`(?:DC\\s+(\\d+)\\s+)?(${ConfigManager.SKILLS.pattern})(?:\\s+check)?`, 'gi'),
             priority: 80,
-            subtype: 'skill'
+            extractor: 'skill'
         }
     ];
-
-    static extractParameters(match, subtype, pattern) {
-        const matchedText = this.getMatchedText(match);
-        
-        switch (subtype) {
-            case 'save':
-                return this.extractSaveParameters(matchedText);
-            case 'perception':
-                return this.extractPerceptionParameters(matchedText);
-            case 'lore':
-                return this.extractLoreParameters(matchedText);
-            case 'flat':
-                return this.extractFlatParameters(matchedText);
-            case 'skill':
-                return this.extractSkillParameters(matchedText);
-            default:
-                return {};
-        }
-    }
 
     static extractSaveParameters(text) {
         const normalizedText = text.toLowerCase().trim();
@@ -4125,29 +4125,22 @@ class HealingPattern extends BasePattern {
     static priority = 80;
     static description = 'Healing roll patterns';
 
+    static EXTRACTORS = {
+        healing: (match) => HealingPattern.extractHealingParameters(match)
+    };
+
     static PATTERNS = [
         {
             regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)(?:\\s+\\b(?:${ConfigManager.HEALING_TERMS.pattern})\\b)(?:\\s+(?:healed|damage))?`, 'gi'),
             priority: 80,
-            subtype: 'healing'
+            extractor: 'healing'
         }
     ];
 
-    static extractParameters(match, subtype, pattern) {
+    static extractHealingParameters(match) {
         const dice = match[1] || '';
-        
-        // Healing is treated as damage with healing type
-        const healingComponent = {
-            dice: dice,
-            damageType: 'untyped',
-            category: ''
-        };
-        
-        return {
-            components: [healingComponent],
-            areaDamage: false,
-            healing: true
-        };
+        const healingComponent = { dice: dice, damageType: 'untyped', category: '' };
+        return { components: [healingComponent], areaDamage: false, healing: true };
     }
 }
 
@@ -4159,45 +4152,51 @@ class ConditionPattern extends BasePattern {
     static priority = 70;
     static description = 'Condition patterns';
 
+    static EXTRACTORS = {
+        legacy: (match) => ConditionPattern.extractLegacyParameters(match),
+        condition: (match) => ConditionPattern.extractConditionParameters(match)
+    };
+
     static PATTERNS = [
         // Legacy flat-footed
         {
             regex: /(?<!@UUID\[[^\]]*\]\{[^}]*\})\b(flat-footed)\b(?!\})/gi,
             priority: 75,
-            subtype: 'legacy'
+            extractor: 'legacy'
         },
         // Condition linking
         {
             regex: new RegExp(`(?<!@UUID\\[[^\\]]*\\]\\{[^}]*\\})\\b(${ConfigManager.CONDITIONS.pattern})(?:\\s+(\\d+))?\\b(?!\\})`, 'gi'),
             priority: 70,
-            subtype: 'condition'
+            extractor: 'condition'
         }
     ];
 
-    static extractParameters(match, subtype, pattern) {
+    static extractLegacyParameters(match) {
+        const text = match[1] || '';
+        const converted = LegacyConversionManager.isLegacyCondition(text)
+            ? (LegacyConversionManager.convertLegacyCondition(text) || text)
+            : text;
+        return {
+            condition: converted.toLowerCase().trim(),
+            value: null,
+            uuid: ConfigManager.getConditionUUID(converted) || ''
+        };
+    }
+
+    static extractConditionParameters(match) {
         let conditionText = match[1] || '';
         let value = null;
-        
-        // Handle legacy condition conversions
         if (LegacyConversionManager.isLegacyCondition(conditionText)) {
             const converted = LegacyConversionManager.convertLegacyCondition(conditionText);
-            if (converted) {
-                conditionText = converted;
-            }
+            if (converted) conditionText = converted;
         }
-        
-        // Extract value if present in second capture group
-        if (match[2]) {
-            value = parseInt(match[2]);
-        }
-        
-        // Also check for value embedded in condition text (e.g., "frightened 2")
+        if (match[2]) value = parseInt(match[2]);
         const valueMatch = conditionText.match(/^(.+?)\s+(\d+)$/);
         if (valueMatch) {
             conditionText = valueMatch[1];
             value = parseInt(valueMatch[2]);
         }
-        
         return {
             condition: conditionText.toLowerCase().trim(),
             value: value,
@@ -4214,28 +4213,25 @@ class TemplatePattern extends BasePattern {
     static priority = 60;
     static description = 'Template patterns';
 
+    static EXTRACTORS = {
+        area: (match) => TemplatePattern.extractAreaParameters(match),
+        within: (match) => TemplatePattern.extractWithinParameters(match)
+    };
+
     static PATTERNS = [
         // Standard template patterns
         {
             regex: new RegExp(`(\\d+)(?:[\\s-]+)(?:foot|feet)\\s+(${ConfigManager.TEMPLATE_CONFIG.all.pattern})`, 'gi'),
             priority: 60,
-            subtype: 'area'
+            extractor: 'area'
         },
         // "within X feet" pattern
         {
             regex: /within\s+(\d+)\s+(?:foot|feet)/gi,
             priority: 60,
-            subtype: 'within'
+            extractor: 'within'
         }
     ];
-
-    static extractParameters(match, subtype, pattern) {
-        if (subtype === 'within') {
-            return this.extractWithinParameters(match);
-        } else {
-            return this.extractAreaParameters(match);
-        }
-    }
 
     static extractAreaParameters(match) {
         const distance = parseInt(match[1]) || 30;
@@ -4284,24 +4280,22 @@ class DurationPattern extends BasePattern {
     static priority = 50;
     static description = 'Duration roll patterns';
 
+    static EXTRACTORS = {
+        duration: (match) => DurationPattern.extractDurationParameters(match)
+    };
+
     static PATTERNS = [
         {
             regex: new RegExp(`(\\d+d\\d+(?:[+-]\\d+)?|\\d+)(?:\\s+)(${ConfigManager.DURATION_UNITS.pattern})`, 'gi'),
             priority: 50,
-            subtype: 'duration'
+            extractor: 'duration'
         }
     ];
 
-    static extractParameters(match, subtype, pattern) {
+    static extractDurationParameters(match) {
         const dice = match[1] || '';
         const text = this.getMatchedText(match);
-        
-        return {
-            dice: dice,
-            label: 'Duration',
-            gmOnly: true, // Duration rolls are typically GM-only
-            displayText: text
-        };
+        return { dice: dice, label: 'Duration', gmOnly: true, displayText: text };
     }
 }
 
@@ -4313,35 +4307,29 @@ class ActionPattern extends BasePattern {
     static priority = 40;
     static description = 'Action patterns';
 
+    static EXTRACTORS = {
+        action: (match) => ActionPattern.extractActionParameters(match)
+    };
+
     static PATTERNS = [
         {
             regex: new RegExp(`\\b(${ConfigManager.ACTIONS.pattern})\\b`, 'gi'),
             priority: 40,
-            subtype: 'action'
+            extractor: 'action'
         }
     ];
 
-    static extractParameters(match, subtype, pattern) {
+    static extractActionParameters(match) {
         const actionText = match[1] || '';
         const actionSlug = this.actionToSlug(actionText);
-        
-        // Set default variant if action has variants
         let variant = '';
         if (ConfigManager.actionHasVariants(actionSlug)) {
             const variants = ConfigManager.ACTION_VARIANTS[actionSlug];
             if (variants && variants.slugs && variants.slugs.length > 0) {
-                variant = variants.slugs[0]; // Default to first variant
+                variant = variants.slugs[0];
             }
         }
-        
-        return {
-            action: actionSlug,
-            variant: variant,
-            dcMethod: 'none',
-            dc: null,
-            statistic: '',
-            alternateRollStatistic: ''
-        };
+        return { action: actionSlug, variant: variant, dcMethod: 'none', dc: null, statistic: '', alternateRollStatistic: '' };
     }
 
     static actionToSlug(actionText) {
@@ -4405,14 +4393,7 @@ class PatternDetector {
             throw new Error(`No pattern class found for type: ${matchResult.type}`);
         }
         
-        // Extract parameters early - no more nested config object!
         const parameters = matchResult.config?.parameters || {};
-        // Map automation subtypes directly to replacement types
-        if (matchResult.type === 'automation') {
-            const subtype = matchResult.config?.pattern?.subtype;
-            return new Replacement(matchResult.match, subtype, parameters);
-        }
-
         return PatternClass.createReplacement(matchResult.match, parameters);
     }
 
