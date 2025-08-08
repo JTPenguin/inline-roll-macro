@@ -383,7 +383,7 @@ class InlineTemplate extends InlineAutomation {
     render() {
         const parts = [];
 
-        parts.push(`type:${this.templateType}`);
+        parts.push(`${this.templateType}`);
         parts.push(`distance:${this.distance}`);
 
         if (this.width >= 10 && this.templateType === 'line') {
@@ -3868,16 +3868,28 @@ static findDamageCategoryInComponent(componentText) {
 
     static extractTemplateParameters(paramContent, displayText) {
         const result = {
-            templateType: 'burst',
-            distance: 30,
+            templateType: null,
+            distance: null,
             width: 5,
             displayText: displayText || ''
         };
 
+        // First, search the whole match for template type using all template types from ConfigManager
+        const allTemplateTypes = ConfigManager.TEMPLATE_CONFIG.all.slugs;
+        for (const templateType of allTemplateTypes) {
+            // Check if this template type appears in the paramContent
+            if (paramContent.toLowerCase().includes(templateType.toLowerCase())) {
+                result.templateType = templateType;
+                break; // Use the first one found
+            }
+        }
+
+        // Then go segment by segment to determine the rest of the parameters
         const segments = paramContent.split('|').map((s) => s.trim());
 
         segments.forEach((segment) => {
             if (segment.startsWith('type:')) {
+                // Override with explicit type if present
                 result.templateType = segment.substring(5);
             } else if (segment.startsWith('distance:')) {
                 const parsed = parseInt(segment.substring(9));
@@ -3887,6 +3899,17 @@ static findDamageCategoryInComponent(componentText) {
                 if (Number.isFinite(parsed)) result.width = parsed;
             }
         });
+
+        // If either templateType or distance is still null, return null to skip this match
+        if (result.templateType === null || result.distance === null) {
+            return null;
+        }
+
+        // Convert alternate template types to standard types
+        const standardType = ConfigManager.TEMPLATE_CONFIG.getStandardType(result.templateType);
+        if (standardType) {
+            result.templateType = standardType;
+        }
 
         return result;
     }
