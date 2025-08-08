@@ -93,6 +93,10 @@ class DamageComponent {
      */
     render(isHealing = false) {
         let formula = this._dice;
+        // If formula contains '+' or '-' and is not wrapped in parentheses, wrap it in parentheses
+        if (/[+-]/.test(formula) && !/^\(.*\)/.test(formula)) {
+            formula = `(${formula})`;
+        }
 
         const typeParts = [];
         if (this.damageType !== '') {typeParts.push(this.damageType);}
@@ -102,7 +106,7 @@ class DamageComponent {
         
         if (["precision", "splash"].includes(this.category)) formula = `(${formula})[${this.category}]`; // Handle precision and splash (they wrap the formula)
         
-        return `(${formula})${typeSyntax}`;
+        return `${formula}${typeSyntax}`;
     }
 
     /**
