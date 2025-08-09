@@ -868,38 +868,50 @@ class FieldRenderer {
                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
                 }).join('');
                 return `
-                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="rollconverter-field-label">${label}</label>
-                        <select id="${fieldId}" class="rollconverter-field-input">
-                            ${selectOptions}
-                        </select>
+                    <div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label>${label}</label>
+                        <div class="form-fields">
+                            <select id="${fieldId}" class="rollconverter-field-input">
+                                ${selectOptions}
+                            </select>
+                        </div>
+                        ${options.notes ? `<p class="notes">${options.notes}</p>` : ''}
                     </div>
                 `;
 
             case 'number':
                 const minAttr = options.min !== undefined ? `min="${options.min}"` : '';
                 return `
-                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="rollconverter-field-label">${label}</label>
-                        <input type="number" id="${fieldId}" class="rollconverter-field-input" ${minAttr} value="${value}" />
+                    <div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label>${label}</label>
+                        <div class="form-fields">
+                            <input type="number" id="${fieldId}" class="rollconverter-field-input" ${minAttr} value="${value}" />
+                        </div>
+                        ${options.notes ? `<p class="notes">${options.notes}</p>` : ''}
                     </div>
                 `;
 
             case 'checkbox':
                 const checked = value ? 'checked' : '';
                 return `
-                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="rollconverter-field-label">${label}</label>
-                        <input type="checkbox" id="${fieldId}" class="rollconverter-field-checkbox" ${checked} />
+                    <div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label>${label}</label>
+                        <div class="form-fields">
+                            <input type="checkbox" id="${fieldId}" class="rollconverter-field-checkbox" ${checked} />
+                        </div>
+                        ${options.notes ? `<p class="notes">${options.notes}</p>` : ''}
                     </div>
                 `;
 
             case 'text':
                 const placeholder = options.placeholder ? `placeholder="${options.placeholder}"` : '';
                 return `
-                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="rollconverter-field-label">${label}</label>
-                        <input type="text" id="${fieldId}" class="rollconverter-field-input" ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+                    <div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label>${label}</label>
+                        <div class="form-fields">
+                            <input type="text" id="${fieldId}" class="rollconverter-field-input" ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+                        </div>
+                        ${options.notes ? `<p class="notes">${options.notes}</p>` : ''}
                     </div>
                 `;
 
@@ -907,9 +919,12 @@ class FieldRenderer {
                 const textareaPlaceholder = options.placeholder ? `placeholder="${options.placeholder}"` : '';
                 const rows = options.rows || 3;
                 return `
-                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="rollconverter-field-label">${label}</label>
-                        <textarea id="${fieldId}" class="rollconverter-field-input" ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+                    <div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label>${label}</label>
+                        <div class="form-fields">
+                            <textarea id="${fieldId}" class="rollconverter-field-input" ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+                        </div>
+                        ${options.notes ? `<p class="notes">${options.notes}</p>` : ''}
                     </div>
                 `;
 
@@ -917,14 +932,17 @@ class FieldRenderer {
                 // Use the fieldId directly as the container ID for the traits input
                 const traitsContainerId = `${fieldId}-input-container`;
                 return `
-                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="rollconverter-field-label">${label}</label>
-                        <div id="${traitsContainerId}" class="rollconverter-field-input-wrapper"></div>
+                    <div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label>${label}</label>
+                        <div class="form-fields">
+                            <div id="${traitsContainerId}" class="rollconverter-field-input-wrapper"></div>
+                        </div>
+                        ${options.notes ? `<p class="notes">${options.notes}</p>` : ''}
                     </div>
                 `;
 
             default:
-                return `<div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">Unknown field type: ${type}</div>`;
+                return `<div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">Unknown field type: ${type}</div>`;
         }
     }
 
@@ -946,7 +964,8 @@ class FieldRenderer {
                 placeholder: field.placeholder,
                 min: field.min,
                 rows: field.rows,
-                hidden: field.hideIf && field.hideIf(target)
+                hidden: field.hideIf && field.hideIf(target),
+                notes: field.notes
             };
 
             return FieldRenderer.render(field.type, fieldId, field.label, value, options);
@@ -1476,7 +1495,11 @@ class CSSManager {
                 width: 100%;
                 resize: vertical;
                 font-family: monospace;
+            }
+
+            .rollconverter-modifier-fieldset p.notes {
                 font-size: 12px;
+                margin: 3px 0;
             }
 
             /* ===== OUTPUT AREAS ===== */
@@ -1485,12 +1508,8 @@ class CSSManager {
                 height: 150px;
                 max-height: 150px;
                 overflow-y: auto;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                background-color: #fafafa;
-                padding: 8px;
                 font-family: 'Signika', sans-serif;
-                font-size: 13px;
+                padding: 0 4px 0 4px;
             }
 
             .rollconverter-output-converted {
@@ -1522,129 +1541,14 @@ class CSSManager {
             }
 
             /* ===== MODIFIER PANEL ===== */
-            .rollconverter-modifier-panel-label {
-                font-weight: bold;
-                display: block;
-                margin: 0 0 4px 12px;
-            }
-
-            .rollconverter-modifier-panel-content {
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                padding: 12px 10px;
-                margin: 0 12px 12px 12px;
-                min-height: 120px;
-                color: #444;
-                font-size: 14px;
-            }
-
-            .rollconverter-modifier-panel-placeholder {
-                font-style: italic;
-                color: #666;
-            }
-
-            /* ===== MODIFIER FIELDS ===== */
-            .rollconverter-modifier-form {
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-
-            .rollconverter-field-row {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                margin-bottom: 0;
-            }
-
-            .rollconverter-field-row:last-child {
-                margin-bottom: 0;
-            }
-
-            .rollconverter-field-label {
-                width: 80px;
-                flex-shrink: 0;
-                display: flex;
-                align-items: center;
-                height: 100%;
-                margin-bottom: 0;
-            }
-
-            .rollconverter-field-label-title {
-                font-weight: bold;
-                width: 200px;
-            }
-
-            .rollconverter-field-input {
-                width: 100%;
-            }
-
-            .rollconverter-field-checkbox {
-                width: auto;
-                margin: 0;
-            }
-
-            .rollconverter-field-input-wrapper {
-                flex: 1;
-            }
-
-            /* ===== RESET BUTTON ===== */
-            .rollconverter-reset-button {
-                margin-left: auto;
-                display: inline-flex;
-                align-items: center;
-                gap: 3px;
-                font-size: 11px;
-                padding: 2px 7px;
-                height: 22px;
-                width: auto;
-                border-radius: 4px;
-                background: #f4f4f4;
-                border: 1px solid #bbb;
-                color: #1976d2;
-                cursor: pointer;
-                transition: background 0.2s, border 0.2s;
-                vertical-align: middle;
-            }
-
-            .rollconverter-reset-button:hover {
-                background: #e3eafc !important;
-                border-color: #1976d2 !important;
-            }
 
             /* ===== DAMAGE COMPONENTS ===== */
             .rollconverter-damage-component {
-                border: 1px solid #ddd;
-                border-radius: 6px;
-                padding: 12px;
-                background: #f9f9f9;
-                position: relative;
-                transition: border-color 0.2s ease;
-            }
-
-            .rollconverter-damage-component-header {
-                font-weight: bold;
-                color: #555;
-                margin-bottom: 8px;
-                font-size: 13px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-
-            .rollconverter-damage-component-fields {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-            }
-
-            .rollconverter-damage-component .rollconverter-field-label {
-                width: 68px;
-            }
-
-            .rollconverter-damage-component .rollconverter-field-row {
-                gap: 6px;
-                margin-bottom: 0;
+                background: var(--color-bg-option);
+                border: 1px solid var(--color-border-light-secondary);
+                border-radius: 4px;
+                margin: 8px 0;
+                padding: 8px 10px;
             }
 
             /* ===== INTERACTIVE ELEMENTS ===== */
@@ -1696,40 +1600,6 @@ class CSSManager {
                 font-size: 14px;
                 line-height: 1.4;
                 color: #191813;
-            }
-
-            .rollconverter-preview-content .inline-roll {
-                background: #1f5582;
-                color: white;
-                padding: 2px 4px;
-                border-radius: 2px;
-                font-weight: bold;
-                text-decoration: none;
-                border: 1px solid #0d4068;
-                transition: background-color 0.2s;
-            }
-
-            .rollconverter-preview-content .inline-roll:hover {
-                background: #2a6590;
-                text-decoration: none;
-            }
-
-            .rollconverter-preview-content .inline-roll.damage {
-                background: #8b0000;
-                border-color: #660000;
-            }
-
-            .rollconverter-preview-content .inline-roll.damage:hover {
-                background: #a50000;
-            }
-
-            .rollconverter-preview-content .inline-roll.healing {
-                background: #006400;
-                border-color: #004d00;
-            }
-
-            .rollconverter-preview-content .inline-roll.healing:hover {
-                background: #007800;
             }
 
             /* ===== TRAITS INPUT SYSTEM ===== */
@@ -2124,11 +1994,13 @@ class ModifierPanelManager {
 
     renderPanelHeader(title) {
         return `
-            <div class="rollconverter-field-row">
-                <span class="rollconverter-field-label rollconverter-field-label-title">${title}</span>
-                <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" class="rollconverter-reset-button">
-                    Reset
-                </button>
+            <div class="form-group">
+                <div class="form-fields">
+                    <label class="rollconverter-field-label-title" style="margin-right:auto;">${title}</label>
+                    <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" class="rollconverter-reset-button">
+                        Reset
+                    </button>
+                </div>
             </div>
         `;
     }
@@ -2144,17 +2016,34 @@ class ModifierPanelManager {
         
         let fields = '';
         
+        // Exclude the header-managed 'enabled' field from visual field rendering
+        const renderableFieldConfigs = fieldConfigs.filter(cfg => cfg.id !== 'enabled');
         if (type === 'damage') {
-            fields = this.renderDamageFields(fieldConfigs, rep);
+            fields = this.renderDamageFields(renderableFieldConfigs, rep);
         } else {
-            fields = fieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
+            fields = renderableFieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
         }
 
         return `
             <form id="${type}-modifier-form" class="rollconverter-modifier-form">
-                ${this.renderPanelHeader(title)}
-                ${fields}
+                <fieldset class="rollconverter-modifier-fieldset">
+                    <legend>${title}</legend>
+                    ${this.renderHeaderControls(rep)}
+                    ${fields}
+                </fieldset>
             </form>
+        `;
+    }
+
+    renderHeaderControls(rep) {
+        return `
+            <div class="form-group">
+                <div class="form-fields">
+                    <label>Enabled</label>
+                    <input type="checkbox" id="enabled" class="rollconverter-field-checkbox" ${rep.enabled !== false ? 'checked' : ''}>
+                    <button type="button" id="modifier-reset-btn" class="rollconverter-reset-button">Reset</button>
+                </div>
+            </div>
         `;
     }
 
@@ -2214,14 +2103,15 @@ class ModifierPanelManager {
      * Render a damage component container with its fields
      */
     renderDamageComponentContainer(componentFields, rep, componentIndex) {        
-        const fieldsHtml = componentFields.map(config => this.renderFieldFromConfig(config, rep)).join('');
+        const fieldsHtml = componentFields
+            .filter(cfg => cfg.id !== 'enabled')
+            .map(config => this.renderFieldFromConfig(config, rep)).join('');
 
         return `
-            <div class="rollconverter-damage-component">
-                <div class="rollconverter-damage-component-fields">
-                    ${fieldsHtml}
-                </div>
-            </div>
+            <fieldset class="rollconverter-damage-component">
+                <legend>Component ${componentIndex + 1}</legend>
+                ${fieldsHtml}
+            </fieldset>
         `;
     }
     
@@ -2237,7 +2127,8 @@ class ModifierPanelManager {
             placeholder: config.placeholder,
             min: config.min,
             max: config.max,
-            rows: config.rows
+            rows: config.rows,
+            notes: config.notes
         };
         
         return FieldRenderer.render(config.type, config.id, config.label, value, options);
@@ -2862,7 +2753,7 @@ class ModifierPanelManager {
             const containerSelectors = [
                 `#${config.id}-container`,
                 `[data-field-id="${config.id}"]`,
-                `.rollconverter-field-row:has(#${config.id})`, // Updated class name
+                `.form-group:has(#${config.id})`,
                 `#${config.id}`.replace(/-/g, '\\-') + '-container'
             ];
             
@@ -2872,11 +2763,11 @@ class ModifierPanelManager {
                 if (container) break;
             }
             
-            // Fallback: find container by looking for parent with rollconverter-field-row class
+            // Fallback: find container by looking for parent with .form-group
             if (!container) {
                 const field = formElement.querySelector(`#${config.id}`);
                 if (field) {
-                    container = field.closest('.rollconverter-field-row') || field.parentElement; // Updated class name
+                    container = field.closest('.form-group') || field.parentElement;
                 }
             }
             
@@ -3074,7 +2965,14 @@ class ConverterDialog {
             }
         } else {
             if (this.ui.modifierPanelContent) {
-                this.ui.modifierPanelContent.innerHTML = '<em class="rollconverter-modifier-panel-placeholder">Select an element to modify.</em>';
+                this.ui.modifierPanelContent.innerHTML = `
+                    <form id="placeholder-modifier-form" class="rollconverter-modifier-form">
+                        <fieldset class="rollconverter-modifier-fieldset">
+                            <legend>Modifier Panel</legend>
+                            <p>Select an element to modify.</p>
+                        </fieldset>
+                    </form>
+                `;
             }
         }
     }
@@ -5532,7 +5430,7 @@ class TextProcessor {
  */
 async function createLivePreview(text, container) {
     if (!text || text.trim() === '') {
-        container.innerHTML = '<em class="rollconverter-output-placeholder">Live preview will appear here...</em>';
+        container.innerHTML = '<em class="rollconverter-output-placeholder"></em>';
         return;
     }
 
@@ -5607,37 +5505,51 @@ function showConverterDialog() {
     CSSManager.injectStyles();
     
     const dialogContent = `
-        <div class="rollconverter-dialog">
+            <div class="rollconverter-dialog">
             <div class="rollconverter-main">
-                <div class="rollconverter-form-group">
-                    <label for="input-text"><strong>Input Text</strong> <small>Changes here will clear any modifications made below.</small></label>
-                    <textarea 
-                        id="input-text" 
-                        name="inputText" 
-                        rows="6" 
-                        placeholder="Paste your spell, ability, or feat description here..."
-                        class="rollconverter-input-textarea"
-                        >${DEFAULT_TEST_INPUT}</textarea>
-                </div>
-                <div class="rollconverter-form-group">
-                    <label for="output-text"><strong>Converted Text</strong> <small>Click an inline roll to modify it.</small></label>
-                    <div id="output-html" class="rollconverter-output-area rollconverter-output-converted">
-                        <em class="rollconverter-output-placeholder">Live preview will appear here...</em>
+                <fieldset class="rollconverter-modifier-fieldset">
+                    <legend>Input Text</legend>
+                    <div class="form-group">
+                        <div class="form-fields">
+                            <textarea 
+                                id="input-text" 
+                                name="inputText" 
+                                rows="6" 
+                                placeholder="Paste your spell, ability, or feat description here..."
+                                class="rollconverter-input-textarea"
+                                >${DEFAULT_TEST_INPUT}</textarea>
+                        </div>
+                        <p class="notes">Making changes here will clear any modifications made below.</p>
                     </div>
-                </div>
-                <div class="rollconverter-form-group">
-                    <label for="live-preview"><strong>Live Preview</strong> <small>Click inline rolls to test them.</small></label>
-                    <div id="live-preview" class="rollconverter-output-area">
-                        <em class="rollconverter-output-placeholder">Live preview will appear here...</em>
+                </fieldset>
+                <fieldset class="rollconverter-modifier-fieldset">
+                    <legend>Converted Text</legend>
+                    <div class="form-group">
+                        <div class="form-fields">
+                            <div id="output-html" class="rollconverter-output-area rollconverter-output-converted">
+                                <em class="rollconverter-output-placeholder">Live preview will appear here...</em>
+                            </div>
+                        </div>
+                        <p class="notes">Click an inline roll to modify it.</p>
                     </div>
-                </div>
+                </fieldset>
+                <fieldset class="rollconverter-modifier-fieldset">
+                    <legend>Live Preview</legend>
+                    <div class="form-group">
+                        <div class="form-fields">
+                            <div id="live-preview" class="rollconverter-output-area">
+                                <em class="rollconverter-output-placeholder">Live preview will appear here...</em>
+                            </div>
+                        </div>
+                        <p class="notes">Click inline rolls to test them.</p>
+                    </div>
+                </fieldset>
                 <div class="rollconverter-controls">
                     <button type="button" id="copy-output" class="rollconverter-control-button">Copy Output</button>
                     <button type="button" id="clear-all" class="rollconverter-control-button">Clear All</button>
                 </div>
             </div>
             <div class="rollconverter-sidebar">
-                <label class="rollconverter-modifier-panel-label">Modifier Panel</label>
                 <div id="modifier-panel-content" class="rollconverter-modifier-panel-content">
                     <em class="rollconverter-modifier-panel-placeholder">Select an element to modify.</em>
                 </div>
