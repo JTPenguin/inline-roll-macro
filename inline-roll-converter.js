@@ -2107,7 +2107,7 @@ class ModifierPanelManager {
 
         return `
             <fieldset class="rollconverter-damage-component">
-                <legend>Component ${componentIndex + 1}</legend>
+                <legend>Damage Partial ${componentIndex + 1}</legend>
                 ${fieldsHtml}
             </fieldset>
         `;
@@ -3980,20 +3980,23 @@ class BasePattern {
 }
 
 /**
- * Automation pattern class for detecting existing inline automations
+ * Enhanced AutomationPattern with generic parameter extraction
+ * This refactor eliminates code duplication and provides a consistent
+ * approach to parsing inline automation syntax
  */
 class AutomationPattern extends BasePattern {
     static type = 'automation';
     static priority = 200;
     static description = 'Existing automation syntax detection';
 
+    // Updated extractors to use generic method
     static EXTRACTORS = {
-        damage: (match, pattern) => AutomationPattern.extractDamageParameters(match[1] || '', match[2] || ''),
-        check: (match, pattern) => AutomationPattern.extractCheckParameters(match[1] || '', match[2] || ''),
-        template: (match, pattern) => AutomationPattern.extractTemplateParameters(match[1] || '', match[2] || ''),
-        generic: (match, pattern) => AutomationPattern.extractGenericParameters(match),
-        action: (match, pattern) => AutomationPattern.extractActionParameters(match),
-        condition: (match, pattern) => AutomationPattern.extractConditionParameters(match)
+        damage: (match, pattern) => AutomationPattern.extractGenericParameters(match, 'damage'),
+        check: (match, pattern) => AutomationPattern.extractGenericParameters(match, 'check'),
+        template: (match, pattern) => AutomationPattern.extractGenericParameters(match, 'template'),
+        generic: (match, pattern) => AutomationPattern.extractGenericParameters(match, 'generic'),
+        action: (match, pattern) => AutomationPattern.extractGenericParameters(match, 'action'),
+        condition: (match, pattern) => AutomationPattern.extractGenericParameters(match, 'condition')
     };
 
     static PATTERNS = [
@@ -4036,12 +4039,98 @@ class AutomationPattern extends BasePattern {
     ];
 
     /**
-     * Centralized parameter list parser for both options and traits
+     * Generic parameter extraction method
+     * @param {Array} match - Regex match array
+     * @param {string} type - The automation type (damage, check, template, etc.)
+     * @returns {Object|null} Extracted parameters or null to skip
+     */
+    static extractGenericParameters(match, type) {
+        // Get the appropriate handler for this type
+        const handler = this.PARAMETER_HANDLERS[type];
+        if (!handler) {
+            console.warn(`[AutomationPattern] No handler found for type: ${type}`);
+            return null;
+        }
+
+        // Use the handler to process the raw match directly
+        // Each handler knows how to parse its own syntax
+        return handler.call(this, match);
+    }
+
+    /**
+     * Generic parameter segment parser with configurable separators
+     * @param {string} paramContent - The parameter content string
+     * @param {Object} options - Configuration options for parsing
+     * @param {string} options.segmentSeparator - Character to split segments (default: '|')
+     * @param {string} options.keyValueSeparator - Character to split key-value pairs (default: ':')
+     * @returns {Object} Object with main value, parameters, options, traits, and flags
+     */
+    static parseParameterSegments(paramContent, options = {}) {
+        const {
+            segmentSeparator = '|',
+            keyValueSeparator = ':'
+        } = options;
+
+        if (!paramContent || typeof paramContent !== 'string') {
+            return { main: '', parameters: {}, options: [], traits: [], flags: [] };
+        }
+
+        const segments = paramContent.split(segmentSeparator).map(s => s.trim()).filter(s => s !== '');
+        const result = {
+            main: '',
+            parameters: {},
+            options: [],
+            traits: [],
+            flags: []
+        };
+
+        // First segment is typically the main identifier (unless it has a key-value separator)
+        if (segments.length > 0 && !segments[0].includes(keyValueSeparator)) {
+            result.main = segments[0];
+            segments.shift(); // Remove first segment as we've processed it
+        }
+
+        // Process remaining segments by their prefixes
+        segments.forEach(segment => {
+            const separatorIndex = segment.indexOf(keyValueSeparator);
+            
+            if (separatorIndex > 0) {
+                // Has prefix (e.g., "dc:20", "variant=stop-bleeding", "options:area-damage,basic")
+                const prefix = segment.substring(0, separatorIndex).toLowerCase();
+                const content = segment.substring(separatorIndex + 1);
+                
+                // Handle special multi-value parameters
+                if (prefix === 'options') {
+                    const values = content.split(',')
+                        .map(v => v.trim().toLowerCase())
+                        .filter(v => v.length > 0);
+                    result.options.push(...values);
+                } else if (prefix === 'traits') {
+                    const values = content.split(',')
+                        .map(v => v.trim().toLowerCase())
+                        .filter(v => v.length > 0);
+                    result.traits.push(...values);
+                } else {
+                    // Single-value parameter
+                    result.parameters[prefix] = content;
+                }
+            } else {
+                // No separator - treat as flag (e.g., "basic", "secret")
+                const flag = segment.toLowerCase();
+                result.flags.push(flag);
+            }
+        });
+
+        return result;
+    }
+
+    /**
+     * Parse parameter list from parameter content (backward compatibility)
      * @param {string} paramContent - The parameter content to search
      * @param {string} paramType - The parameter type ('options' or 'traits')
      * @returns {Array} Array of parsed parameter values
      */
-    static parseParameterListFromSegment(paramContent, paramType) {
+    static parseParameterList(paramContent, paramType) {
         if (!paramContent || typeof paramContent !== 'string') {
             return [];
         }
@@ -4065,97 +4154,218 @@ class AutomationPattern extends BasePattern {
     }
 
     /**
-     * Parse options from parameter content (backward compatibility)
-     * @param {string} paramContent - The parameter content to search
-     * @returns {Array} Array of option strings
+     * Parameter handlers for each automation type
+     * Each handler receives the raw match and handles its own syntax parsing
      */
-    static parseOptionsFromSegment(paramContent) {
-        return this.parseParameterListFromSegment(paramContent, 'options');
-    }
+    static PARAMETER_HANDLERS = {
+        damage: function(match) {
+            const paramContent = match[1] || '';
+            const displayText = match[2] || '';
+            
+            const result = {
+                components: [],
+                options: [],
+                healing: /healing/.test(paramContent),
+                displayText: displayText
+            };
 
-    /**
-     * Parse traits from parameter content
-     * @param {string} paramContent - The parameter content to search
-     * @returns {Array} Array of trait strings
-     */
-    static parseTraitsFromSegment(paramContent) {
-        return this.parseParameterListFromSegment(paramContent, 'traits');
-    }
+            // Parse options from pipe-delimited segments (only for options, not damage components)
+            result.options = this.parseParameterList(paramContent, 'options');
 
-    // Extract condition parameters from @UUID links
-    static extractConditionParameters(match) {
-        const uuid = match[1] || '';
-        const displayText = match[2] || '';
-        
-        // First, validate that this UUID is actually a condition
-        const conditionName = this.extractConditionNameFromUUID(uuid);
-        
-        // If we can't find a matching condition, return null to indicate
-        // this match should not create a replacement
-        if (!conditionName) {
-            return null;
-        }
-        
-        // Extract value from display text if present
-        const value = this.extractConditionValueFromDisplayText(displayText);
-        
-        return {
-            condition: conditionName,
-            value: value,
-            uuid: uuid,
-            displayText: displayText
-        };
-    }
+            // Parse damage components from the parameter content
+            const dicePattern = /(\d+(?:d\d+)?(?:[+-]\d+)?)/g;
+            const diceMatches = [...paramContent.matchAll(dicePattern)];
 
-    // Helper: Extract condition name from UUID
-    static extractConditionNameFromUUID(uuid) {
-        // Look up condition name from the UUID in ConfigManager
-        const conditions = ConfigManager.CONDITIONS;
-        
-        // Find the condition by UUID
-        for (const [conditionSlug, conditionUUID] of Object.entries(conditions.metadata.uuids)) {
-            if (conditionUUID === uuid) {
-                return conditionSlug;
+            if (diceMatches.length === 0) return result;
+
+            // Create component boundaries based on dice positions
+            const componentBoundaries = this.createComponentBoundaries(diceMatches, paramContent);
+
+            // Process each component
+            componentBoundaries.forEach(boundary => {
+                const componentText = paramContent.substring(boundary.start, boundary.end);
+                const dice = boundary.diceMatch[1];
+
+                const component = {
+                    dice: dice,
+                    damageType: this.findDamageTypeInComponent(componentText),
+                    category: this.findDamageCategoryInComponent(componentText)
+                };
+
+                result.components.push(component);
+            });
+
+            return result;
+        },
+
+        check: function(match) {
+            const paramContent = match[1] || '';
+            const displayText = match[2] || '';
+            
+            // Parse pipe-delimited segments with colon separators for checks
+            const segments = this.parseParameterSegments(paramContent, {
+                segmentSeparator: '|',
+                keyValueSeparator: ':'
+            });
+            
+            const result = {
+                checkType: segments.main || 'flat',
+                dcMethod: 'none',
+                dc: null,
+                statistic: '',
+                basic: segments.flags.includes('basic'),
+                options: segments.options,
+                traits: segments.traits,
+                displayText: displayText
+            };
+
+            // Handle DC method and value
+            if (segments.parameters.dc) {
+                result.dcMethod = 'static';
+                const dcValue = parseInt(segments.parameters.dc);
+                result.dc = Number.isFinite(dcValue) ? dcValue : null;
+            } else if (segments.parameters.against) {
+                result.dcMethod = 'target';
+                result.statistic = segments.parameters.against;
             }
-        }
-        
-        // Return null if no matching condition found
-        // This indicates the UUID is not a condition link
-        return null;
-    }
 
-    // Helper: Extract condition value from display text
-    static extractConditionValueFromDisplayText(displayText) {
-        if (!displayText) return null;
-        
-        // Look for numbers in the display text
-        // Examples: "Frightened 2", "Stupefied 1", "Off-Guard" (no number)
-        const numberMatch = displayText.match(/(\d+)/);
-        
-        if (numberMatch) {
-            return parseInt(numberMatch[1]);
-        }
-        
-        return null;
-    }
+            return result;
+        },
 
-    static extractDamageParameters(paramContent, displayText) {
-        const result = {
-            components: [],
-            options: [],
-            healing: /healing/.test(paramContent),
-            displayText: displayText || ''
-        };
-        // Parse options early so we capture them even if no dice are found
-        result.options = this.parseOptionsFromSegment(paramContent);
-    
-        // Find all dice expressions and their positions
-        const dicePattern = /(\d+(?:d\d+)?(?:[+-]\d+)?)/g;
-        const diceMatches = [...paramContent.matchAll(dicePattern)];
-    
-        if (diceMatches.length === 0) return result;
-    
-        // Create component boundaries based on dice positions
+        template: function(match) {
+            const paramContent = match[1] || '';
+            const displayText = match[2] || '';
+            
+            // Parse pipe-delimited segments with colon separators for templates
+            const segments = this.parseParameterSegments(paramContent, {
+                segmentSeparator: '|',
+                keyValueSeparator: ':'
+            });
+            
+            const result = {
+                templateType: null,
+                distance: null,
+                width: 5,
+                displayText: displayText
+            };
+
+            // Find template type - could be in main or type parameter
+            result.templateType = segments.parameters.type || segments.main;
+            
+            // Get distance
+            if (segments.parameters.distance) {
+                const distanceValue = parseInt(segments.parameters.distance);
+                if (Number.isFinite(distanceValue)) {
+                    result.distance = distanceValue;
+                }
+            }
+
+            // Get width
+            if (segments.parameters.width) {
+                const widthValue = parseInt(segments.parameters.width);
+                if (Number.isFinite(widthValue)) {
+                    result.width = widthValue;
+                }
+            }
+
+            // Validate required fields
+            if (result.templateType === null || result.distance === null) {
+                return null;
+            }
+
+            // Convert alternate template types to standard types
+            const standardType = ConfigManager.TEMPLATE_CONFIG.getStandardType(result.templateType);
+            if (standardType) {
+                result.templateType = standardType;
+            }
+
+            return result;
+        },
+
+        condition: function(match) {
+            const uuid = match[1] || '';
+            const displayText = match[2] || '';
+            
+            // Validate that this UUID is actually a condition
+            const conditionName = this.extractConditionNameFromUUID(uuid);
+            
+            if (!conditionName) {
+                return null; // Not a condition UUID
+            }
+            
+            // Extract value from display text if present
+            const value = this.extractConditionValueFromDisplayText(displayText);
+            
+            return {
+                condition: conditionName,
+                value: value,
+                uuid: uuid,
+                displayText: displayText
+            };
+        },
+
+        generic: function(match) {
+            const dice = (match[1] || '').trim();
+            const label = (match[2] || '').trim() || '';
+            const displayText = match[3] || '';
+            const gmOnly = /\[\[\/gmr/i.test(match[0] || '');
+            
+            return {
+                dice: dice,
+                label: label,
+                gmOnly: gmOnly,
+                displayText: displayText
+            };
+        },
+
+        action: function(match) {
+            const paramContent = match[1] || '';
+            const displayText = match[2] || '';
+            
+            // Actions use space-separated key=value pairs
+            const segments = this.parseParameterSegments(paramContent, {
+                segmentSeparator: ' ',
+                keyValueSeparator: '='
+            });
+            
+            const result = {
+                action: segments.main || 'grapple',
+                variant: '',
+                dcMethod: 'none',
+                dc: null,
+                statistic: '',
+                alternateRollStatistic: 'none',
+                displayText: displayText
+            };
+
+            // Handle variant parameter
+            if (segments.parameters.variant) {
+                result.variant = segments.parameters.variant;
+            }
+
+            // Handle DC parameter
+            if (segments.parameters.dc) {
+                const dcValue = segments.parameters.dc;
+                if (/^\d+$/.test(dcValue)) {
+                    result.dcMethod = 'static';
+                    result.dc = parseInt(dcValue);
+                } else {
+                    result.dcMethod = 'target';
+                    result.statistic = dcValue;
+                }
+            }
+
+            // Handle statistic parameter
+            if (segments.parameters.statistic) {
+                result.alternateRollStatistic = segments.parameters.statistic;
+            }
+
+            return result;
+        }
+    };
+
+    // Helper methods for handlers
+    static createComponentBoundaries(diceMatches, paramContent) {
         const componentBoundaries = [];
         
         for (let i = 0; i < diceMatches.length; i++) {
@@ -4171,36 +4381,16 @@ class AutomationPattern extends BasePattern {
                 diceMatch: currentDice
             });
         }
-    
-        // Process each component
-        componentBoundaries.forEach(boundary => {
-            const componentText = paramContent.substring(boundary.start, boundary.end);
-            const dice = boundary.diceMatch[1];
-            
-            const component = {
-                dice: dice,
-                damageType: this.findDamageTypeInComponent(componentText),
-                category: this.findDamageCategoryInComponent(componentText)
-            };
-    
-            result.components.push(component);
-        });
-    
-        return result;
+        
+        return componentBoundaries;
     }
 
-    /**
-     * Find damage type in a component text using ConfigManager
-     * @param {string} componentText - The component text to search
-     * @returns {string} - The damage type, defaults to 'untyped'
-     */
+    // Keep existing helper methods
     static findDamageTypeInComponent(componentText) {
         const lowerText = componentText.toLowerCase();
         
-        // Search for damage types from ConfigManager
         for (const damageType of ConfigManager.ALL_DAMAGE_TYPES.slugs) {
             if (damageType && lowerText.includes(damageType)) {
-                // Convert legacy damage types if needed
                 return LegacyConversionManager.convertLegacyDamageType(damageType);
             }
         }
@@ -4208,15 +4398,9 @@ class AutomationPattern extends BasePattern {
         return 'untyped';
     }
 
-    /**
-     * Find damage category in a component text using ConfigManager
-     * @param {string} componentText - The component text to search
-     * @returns {string} - The damage category, defaults to empty string
-     */
     static findDamageCategoryInComponent(componentText) {
         const lowerText = componentText.toLowerCase();
         
-        // Search for damage categories from ConfigManager (excluding empty string)
         for (const category of ConfigManager.DAMAGE_CATEGORIES.slugs) {
             if (category && lowerText.includes(category)) {
                 return category;
@@ -4226,197 +4410,23 @@ class AutomationPattern extends BasePattern {
         return '';
     }
 
-    /**
-     * Extract check parameters with enhanced traits support
-     * @param {string} paramContent - The parameter content
-     * @param {string} displayText - The display text
-     * @returns {Object} Check parameters including traits
-     */
-    static extractCheckParameters(paramContent, displayText) {
-        const result = {
-            checkType: 'flat',
-            dcMethod: 'none',
-            dc: null,
-            statistic: '',
-            basic: false,
-            options: [],
-            traits: [], // Add traits array
-            displayText: displayText || ''
-        };
-
-        const segments = paramContent.split('|').map((s) => s.trim()).filter((s) => s !== '');
-        if (segments.length > 0) {
-            result.checkType = segments[0].toLowerCase();
-        }
-
-        segments.slice(1).forEach((segment) => {
-            if (segment.startsWith('dc:')) {
-                result.dcMethod = 'static';
-                const parsed = parseInt(segment.substring(3));
-                result.dc = Number.isFinite(parsed) ? parsed : null;
-            } else if (segment.startsWith('against:')) {
-                result.dcMethod = 'target';
-                result.statistic = segment.substring(8);
-            } else if (segment === 'basic') {
-                result.basic = true;
-            }
-        });
-
-        // Parse options and traits using centralized methods
-        result.options = this.parseOptionsFromSegment(paramContent);
-        result.traits = this.parseTraitsFromSegment(paramContent);
-
-        return result;
-    }
-
-    static extractTemplateParameters(paramContent, displayText) {
-        const result = {
-            templateType: null,
-            distance: null,
-            width: 5,
-            displayText: displayText || ''
-        };
-
-        // First, search the whole match for template type using all template types from ConfigManager
-        const allTemplateTypes = ConfigManager.TEMPLATE_CONFIG.all.slugs;
-        for (const templateType of allTemplateTypes) {
-            // Check if this template type appears in the paramContent
-            if (paramContent.toLowerCase().includes(templateType.toLowerCase())) {
-                result.templateType = templateType;
-                break; // Use the first one found
+    static extractConditionNameFromUUID(uuid) {
+        const conditions = ConfigManager.CONDITIONS;
+        
+        for (const [conditionSlug, conditionUUID] of Object.entries(conditions.metadata.uuids)) {
+            if (conditionUUID === uuid) {
+                return conditionSlug;
             }
         }
-
-        // Then go segment by segment to determine the rest of the parameters
-        const segments = paramContent.split('|').map((s) => s.trim());
-
-        segments.forEach((segment) => {
-            if (segment.startsWith('type:')) {
-                // Override with explicit type if present
-                result.templateType = segment.substring(5);
-            } else if (segment.startsWith('distance:')) {
-                const parsed = parseInt(segment.substring(9));
-                if (Number.isFinite(parsed)) result.distance = parsed;
-            } else if (segment.startsWith('width:')) {
-                const parsed = parseInt(segment.substring(6));
-                if (Number.isFinite(parsed)) result.width = parsed;
-            }
-        });
-
-        // If either templateType or distance is still null, return null to skip this match
-        if (result.templateType === null || result.distance === null) {
-            return null;
-        }
-
-        // Convert alternate template types to standard types
-        const standardType = ConfigManager.TEMPLATE_CONFIG.getStandardType(result.templateType);
-        if (standardType) {
-            result.templateType = standardType;
-        }
-
-        return result;
+        
+        return null;
     }
 
-    static extractGenericParameters(match) {
-        const dice = (match[1] || '').trim();
-        const label = (match[2] || '').trim() || '';
-        const displayText = match[3] || '';
-        const gmOnly = /\[\[\/gmr/i.test(match[0] || '');
-        return {
-            dice: dice,
-            label: label,
-            gmOnly: gmOnly,
-            displayText: displayText
-        };
-    }
-
-    static extractActionParameters(match) {
-        const paramContent = match[1] || '';
-        const displayText = match[2] || '';
-        const segments = paramContent.split(' ').map((s) => s.trim()).filter((s) => s !== '');
-
-        const result = {
-            action: segments[0] || 'grapple',
-            variant: '',
-            dcMethod: 'none',
-            dc: null,
-            statistic: '',
-            alternateRollStatistic: 'none',
-            displayText: displayText || ''
-        };
-
-        segments.slice(1).forEach((segment) => {
-            if (segment.startsWith('variant=')) {
-                result.variant = segment.substring(8);
-            } else if (segment.startsWith('dc=')) {
-                const dcValue = segment.substring(3);
-                if (/^\d+$/.test(dcValue)) {
-                    result.dcMethod = 'static';
-                    result.dc = parseInt(dcValue);
-                } else {
-                    result.dcMethod = 'target';
-                    result.statistic = dcValue;
-                }
-            } else if (segment.startsWith('statistic=')) {
-                result.alternateRollStatistic = segment.substring(10);
-            }
-        });
-
-        return result;
-    }
-
-    static createFallbackParameters(subtype) {
-        switch (subtype) {
-            case 'damage':
-                return {
-                    components: [{ dice: '1d1', damageType: 'untyped', category: '' }],
-                    options: [],
-                    healing: false,
-                    displayText: ''
-                };
-            case 'check':
-                return {
-                    checkType: 'flat',
-                    dcMethod: 'none',
-                    dc: null,
-                    options: [],
-                    traits: [], // Add traits to fallback
-                    displayText: ''
-                };
-            case 'template':
-                return {
-                    templateType: 'burst',
-                    distance: 30,
-                    width: 5,
-                    displayText: ''
-                };
-            case 'generic':
-                return {
-                    dice: '1d20',
-                    label: 'Roll',
-                    gmOnly: false,
-                    displayText: ''
-                };
-            case 'action':
-                return {
-                    action: 'grapple',
-                    variant: '',
-                    dcMethod: 'none',
-                    dc: null,
-                    statistic: '',
-                    alternateRollStatistic: 'none',
-                    displayText: ''
-                };
-            case 'condition':
-                return {
-                    condition: 'off-guard',
-                    value: null,
-                    uuid: 'Compendium.pf2e.conditionitems.Item.AJh5ex99aV6VTggg',
-                    displayText: ''
-                };
-            default:
-                return {};
-        }
+    static extractConditionValueFromDisplayText(displayText) {
+        if (!displayText) return null;
+        
+        const numberMatch = displayText.match(/(\d+)/);
+        return numberMatch ? parseInt(numberMatch[1]) : null;
     }
 }
 
