@@ -4609,6 +4609,47 @@ class CheckPattern extends BasePattern {
         }
     ];
 
+    /**
+     * Create a replacement object from a match and parameters
+     * Override to trim trailing "check" from the match
+     * @param {Array} match - Regex match array
+     * @param {Object} parameters - Extracted parameters
+     * @returns {Replacement} Replacement instance
+     */
+    static createReplacement(match, parameters) {
+        const trimmedMatch = this.trimTrailingCheck(match);
+        return new Replacement(trimmedMatch, this.type, parameters);
+    }
+
+    /**
+     * Trim trailing "check" from a match to prevent it from being replaced
+     * @param {Array} match - Regex match array
+     * @returns {Array} - Modified match array with "check" trimmed
+     */
+    static trimTrailingCheck(match) {
+        if (!match || !match[0]) return match;
+        
+        const originalText = match[0];
+        const trimmedText = originalText.replace(/\s+check\s*$/i, '');
+        
+        // If we trimmed something, create a new match object with the shorter text
+        if (trimmedText.length !== originalText.length) {
+            // Create a new match array that preserves all properties
+            const newMatch = Array.from(match); // Copy all elements
+            newMatch[0] = trimmedText; // Update the matched text
+            newMatch.index = match.index; // Preserve the index
+            newMatch.input = match.input; // Preserve the input
+            newMatch.groups = match.groups; // Preserve groups if they exist
+            
+            // Preserve any other properties that might exist on the match object
+            Object.setPrototypeOf(newMatch, Object.getPrototypeOf(match));
+            
+            return newMatch;
+        }
+        
+        return match;
+    }
+
     static extractSaveParameters(text) {
         const normalizedText = text.toLowerCase().trim();
         
