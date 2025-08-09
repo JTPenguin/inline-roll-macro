@@ -150,7 +150,7 @@ class DamageComponent {
         if (isHealing) {typeParts.push("healing");}
         const typeSyntax = typeParts.length > 0 ? `[${typeParts.join(',')}]` : ''; // Create the damage type syntax, including persistent and/or healing
         
-        if (["precision", "splash"].includes(this.category)) formula = `(${formula})[${this.category}]`; // Handle precision and splash (they wrap the formula)
+        if (["precision", "splash"].includes(this.category)) formula = `(${formula}[${this.category}])`; // Handle precision and splash (they wrap the formula)
         
         return `${formula}${typeSyntax}`;
     }
