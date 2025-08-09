@@ -945,12 +945,13 @@ class DamageRenderer extends BaseRenderer {
 
     getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
-
-        // Damage components (special handling)
+    
+        // Ensure components array exists
         if (!replacement.inlineAutomation.components || !Array.isArray(replacement.inlineAutomation.components)) {
             replacement.inlineAutomation.components = [];
         }
         
+        // Generate field configs for each component using the standard system
         replacement.inlineAutomation.components.forEach((component, index) => {
             configs.push({
                 id: `component-${index}-dice`,
@@ -958,12 +959,16 @@ class DamageRenderer extends BaseRenderer {
                 label: `Dice`,
                 getValue: (r) => r.inlineAutomation.components[index]?.dice || '',
                 setValue: (r, value) => {
-                    if (!r.inlineAutomation.components[index]) r.inlineAutomation.components[index] = new DamageComponent();
+                    if (!r.inlineAutomation.components[index]) {
+                        r.inlineAutomation.components[index] = new DamageComponent();
+                    }
                     r.inlineAutomation.components[index].dice = value;
                 },
+                placeholder: 'e.g., 2d6+3',
+                // ADD these new properties:
+                isComponentField: true,
                 componentIndex: index,
-                componentField: 'dice',
-                placeholder: 'e.g., 2d6+3'
+                componentField: 'dice'
             });
             
             configs.push({
@@ -973,9 +978,13 @@ class DamageRenderer extends BaseRenderer {
                 options: ConfigManager.DAMAGE_TYPES.options,
                 getValue: (r) => r.inlineAutomation.components[index]?.damageType || '',
                 setValue: (r, value) => {
-                    if (!r.inlineAutomation.components[index]) r.inlineAutomation.components[index] = new DamageComponent();
+                    if (!r.inlineAutomation.components[index]) {
+                        r.inlineAutomation.components[index] = new DamageComponent();
+                    }
                     r.inlineAutomation.components[index].damageType = value;
                 },
+                // ADD these new properties:
+                isComponentField: true,
                 componentIndex: index,
                 componentField: 'damageType'
             });
@@ -987,24 +996,27 @@ class DamageRenderer extends BaseRenderer {
                 options: ConfigManager.DAMAGE_CATEGORIES.options,
                 getValue: (r) => r.inlineAutomation.components[index]?.category || '',
                 setValue: (r, value) => {
-                    if (!r.inlineAutomation.components[index]) r.inlineAutomation.components[index] = new DamageComponent();
+                    if (!r.inlineAutomation.components[index]) {
+                        r.inlineAutomation.components[index] = new DamageComponent();
+                    }
                     r.inlineAutomation.components[index].category = value;
                 },
+                // ADD these new properties:
+                isComponentField: true,
                 componentIndex: index,
                 componentField: 'category'
             });
         });
-
-        // Area damage field
+    
+        // Area damage field (no changes needed)
         configs.push({
             id: 'area-damage',
             type: 'checkbox',
             label: 'Area Damage',
-            // Update to use options
             getValue: (r) => r.inlineAutomation.hasOption('area-damage') || false,
             setValue: (r, value) => r.inlineAutomation.setOption('area-damage', value)
         });
-
+    
         configs.push({
             id: 'healing',
             type: 'checkbox',
@@ -1013,7 +1025,7 @@ class DamageRenderer extends BaseRenderer {
             setValue: (r, value) => { r.inlineAutomation.healing = value; },
             showIf: (r) => r.inlineAutomation.components.length === 1
         });
-
+    
         return configs;
     }
 
@@ -1698,15 +1710,13 @@ class ModifierPanelManager {
         
         // First pass: group component fields and track field order
         fieldConfigs.forEach((config, index) => {
-            if (config.componentIndex !== undefined) {
+            if (config.isComponentField && config.componentIndex !== undefined) {
                 if (!componentGroups.has(config.componentIndex)) {
                     componentGroups.set(config.componentIndex, []);
-                    // Track where this component group should appear in the order
                     fieldOrder.push({ type: 'component', index: config.componentIndex, originalIndex: index });
                 }
                 componentGroups.get(config.componentIndex).push(config);
             } else {
-                // Track non-component fields in order
                 fieldOrder.push({ type: 'field', config: config, originalIndex: index });
             }
         });
@@ -1833,32 +1843,28 @@ class ModifierPanelManager {
  * @param {Function} onChangeCallback - The change callback
  */
     setupSpecialComponentListeners(formElement, type, replacement, onChangeCallback) {
-        const renderer = this.renderers[type];
-        
-        // Special handling for damage components
-        if (type === 'damage') {
-            this.addDamageFormListeners(formElement, replacement, renderer, onChangeCallback);
-        }
+        // REMOVED: Special damage handling - now uses standard field configs
         
         // Setup traits inputs - look for traits containers that were created by FieldRenderer  
         const traitsContainers = formElement.querySelectorAll('[id$="-input-container"]');
         traitsContainers.forEach(container => {
-            // Only process if this is actually a traits container
             const parentContainer = container.closest('[data-field-id="traits"]');
             if (parentContainer) {
                 this.setupTraitsInput(container, replacement, onChangeCallback);
             }
         });
         
-        // Setup common trait checkboxes - look for checkboxes with trait- prefix
-        const commonTraits = renderer.getCommonTraits(replacement);
-        commonTraits.forEach(trait => {
-            const traitCheckbox = formElement.querySelector(`#trait-${trait}`);
-            if (traitCheckbox) {
-                console.log(`[ModifierPanelManager] Setting up listener for common trait ${trait}`);
-                this.setupCommonTraitCheckbox(traitCheckbox, trait, replacement, onChangeCallback);
-            }
-        });
+        // Setup common trait checkboxes
+        const renderer = this.renderers[type];
+        if (renderer.supportsTraits && renderer.supportsTraits(replacement)) {
+            const commonTraits = renderer.getCommonTraits(replacement);
+            commonTraits.forEach(trait => {
+                const traitCheckbox = formElement.querySelector(`#trait-${trait}`);
+                if (traitCheckbox) {
+                    this.setupCommonTraitCheckbox(traitCheckbox, trait, replacement, onChangeCallback);
+                }
+            });
+        }
     }
 
     /**
@@ -2107,76 +2113,6 @@ class ModifierPanelManager {
             case 'text':
             default:
                 return element.value;
-        }
-    }
-
-    addDamageFormListeners(formElement, rep, renderer, onChangeCallback) {
-        if (!rep.damageComponents || !Array.isArray(rep.damageComponents)) {
-            rep.damageComponents = [];
-        }
-
-        // Use event delegation for both input and change events
-        formElement.addEventListener('input', (event) => {
-            this.handleDamageFieldChange(event, rep, onChangeCallback);
-        });
-
-        formElement.addEventListener('change', (event) => {
-            this.handleDamageFieldChange(event, rep, onChangeCallback);
-        });
-    }
-
-    handleDamageFieldChange(event, rep, onChangeCallback) {
-        const element = event.target;
-        const fieldId = element.id;
-        let value = element.type === 'checkbox' ? element.checked : element.value;
-        
-        console.log('[ModifierPanelManager] Damage field changed:', fieldId, 'new value:', value);
-        
-        // Check if this is a component field using data attributes
-        const componentIndex = element.dataset.componentIndex;
-        const componentField = element.dataset.componentField;
-        
-        if (componentIndex !== undefined && componentField !== undefined) {
-            // This is a component field
-            const index = parseInt(componentIndex);
-            
-            // Ensure the component exists
-            if (!rep.damageComponents[index]) {
-                rep.damageComponents[index] = new DamageComponent();
-            }
-            
-            const component = rep.damageComponents[index];
-            
-            // Update the appropriate component property
-            switch (componentField) {
-                case 'dice':
-                    component.dice = value;
-                    break;
-                case 'damageType':
-                    component.damageType = value;
-                    break;
-                case 'category':
-                    component.category = value;
-                    break;
-                default:
-                    console.warn('[ModifierPanelManager] Unknown component field:', componentField);
-            }
-            
-            console.log(`[ModifierPanelManager] Updated component ${index} ${componentField}:`, value);
-            console.log('[ModifierPanelManager] Component state:', component);
-        } else {
-            // Handle main damage fields
-            if (fieldId === 'enabled') {
-                rep.enabled = value;
-            } else if (fieldId === 'area-damage') {
-                rep.inlineAutomation.setOption('area-damage', value);
-            }
-            
-            console.log('[ModifierPanelManager] Updated main field:', fieldId, value);
-        }
-        
-        if (onChangeCallback) {
-            onChangeCallback(rep);
         }
     }
 
