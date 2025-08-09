@@ -5629,7 +5629,7 @@ function getTraitOptions() {
 /**
  * Enhanced traits input component that mimics pf2e system behavior
  * Supports typing, filtering, multiple selection, and tab completion
- * FIXED: Proper handling of contenteditable span value access
+ * UPDATED: Maintains alphabetical order when adding traits
  */
 class TraitsInput {
     constructor(containerId, options = {}) {
@@ -5679,7 +5679,7 @@ class TraitsInput {
     }
     
     /**
-     * FIXED: Safe method to get the current input value from contenteditable span
+     * Safe method to get the current input value from contenteditable span
      * @returns {string} Current input value
      */
     getCurrentInputValue() {
@@ -5691,7 +5691,7 @@ class TraitsInput {
     }
     
     /**
-     * FIXED: Safe method to set the input value
+     * Safe method to set the input value
      * @param {string} value - Value to set
      */
     setCurrentInputValue(value) {
@@ -5701,13 +5701,25 @@ class TraitsInput {
         this.searchInput.textContent = value || '';
     }
     
+    /**
+     * Sort traits alphabetically by label
+     * @param {Array} traits - Array of trait objects to sort
+     * @returns {Array} Sorted array of traits
+     */
+    sortTraitsAlphabetically(traits) {
+        return traits.sort((a, b) => {
+            if (!a || !a.label || !b || !b.label) return 0;
+            return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+        });
+    }
+    
     bindEvents() {
         if (!this.searchInput || !this.dropdown) return;
         
         // Input events - note that we're now working with a contenteditable span
         this.searchInput.addEventListener('input', (e) => {
             e.stopPropagation();
-            const query = this.getCurrentInputValue(); // FIXED: Use safe method
+            const query = this.getCurrentInputValue();
             this.handleInput({ target: { value: query } });
         });
         
@@ -5763,7 +5775,7 @@ class TraitsInput {
                 this.closeDropdown();
                 break;
             case 'Backspace':
-                const inputText = this.getCurrentInputValue(); // FIXED: Use safe method
+                const inputText = this.getCurrentInputValue();
                 if (inputText === '' && this.selectedTraits.length > 0) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -5774,19 +5786,19 @@ class TraitsInput {
     }
     
     filterOptions(query) {
-        const normalizedQuery = (query || '').toLowerCase().trim(); // FIXED: Handle undefined query
+        const normalizedQuery = (query || '').toLowerCase().trim();
         
         if (normalizedQuery === '') {
             // When no query, show all available traits (not already selected)
             this.filteredOptions = this.traitOptions.filter(trait => 
-                trait && trait.label && // FIXED: Check trait and trait.label exist
+                trait && trait.label &&
                 !this.selectedTraits.some(selected => selected && selected.value === trait.value)
             );
             this.activeIndex = -1; // No auto-selection when showing all options
         } else {
             // When there's a query, filter by the search term
             this.filteredOptions = this.traitOptions.filter(trait => 
-                trait && trait.label && // FIXED: Check trait and trait.label exist
+                trait && trait.label &&
                 trait.label.toLowerCase().includes(normalizedQuery) &&
                 !this.selectedTraits.some(selected => selected && selected.value === trait.value)
             );
@@ -5828,7 +5840,7 @@ class TraitsInput {
             // Use selected option from dropdown
             this.addTrait(this.filteredOptions[this.activeIndex]);
         } else {
-            const inputText = this.getCurrentInputValue(); // FIXED: Use safe method
+            const inputText = this.getCurrentInputValue();
             if (inputText.trim()) {
                 // Try to add based on typed text
                 this.addTraitFromText(inputText.trim());
@@ -5837,9 +5849,9 @@ class TraitsInput {
     }
     
     addTraitFromText(text) {
-        const normalizedText = (text || '').toLowerCase().trim(); // FIXED: Handle undefined text
+        const normalizedText = (text || '').toLowerCase().trim();
         
-        if (!normalizedText) return; // FIXED: Exit early if no text
+        if (!normalizedText) return;
         
         // First, try to find exact match by label
         let matchedTrait = this.traitOptions.find(trait => 
@@ -5869,7 +5881,7 @@ class TraitsInput {
     openDropdown() {
         this.isOpen = true;
         this.dropdown.style.display = 'block';
-        const query = this.getCurrentInputValue(); // FIXED: Use safe method
+        const query = this.getCurrentInputValue();
         
         // Always filter and show available options when dropdown opens
         this.filterOptions(query);
@@ -5883,7 +5895,7 @@ class TraitsInput {
     
     renderDropdown() {
         if (this.filteredOptions.length === 0) {
-            const query = this.getCurrentInputValue(); // FIXED: Use safe method
+            const query = this.getCurrentInputValue();
             if (query) {
                 this.dropdown.innerHTML = `
                     <div class="rollconverter-traits-dropdown-empty">
@@ -5916,16 +5928,25 @@ class TraitsInput {
         });
     }
     
+    /**
+     * Add a trait and maintain alphabetical order
+     * UPDATED: Now sorts traits alphabetically after adding
+     */
     addTrait(trait) {
-        if (!trait || !trait.value) return; // FIXED: Check trait exists
+        if (!trait || !trait.value) return;
         
         if (!this.selectedTraits.some(selected => selected && selected.value === trait.value)) {
             this.selectedTraits.push(trait);
+            
+            // UPDATED: Sort traits alphabetically after adding
+            this.selectedTraits = this.sortTraitsAlphabetically(this.selectedTraits);
+            
             this.renderSelected();
-            this.setCurrentInputValue(''); // FIXED: Use safe method to clear contenteditable
+            this.setCurrentInputValue('');
             this.filterOptions('');
-            this.closeDropdown(); // Close dropdown when trait is added
-            this.searchInput.blur(); // Remove focus to align with PF2e system behavior
+            this.closeDropdown();
+            this.searchInput.blur();
+            
             if (this.options.onChange) {
                 this.options.onChange(this.selectedTraits);
             }
@@ -5933,12 +5954,13 @@ class TraitsInput {
     }
     
     removeTrait(value) {
-        if (!value) return; // FIXED: Check value exists
+        if (!value) return;
         
         this.selectedTraits = this.selectedTraits.filter(trait => trait && trait.value !== value);
+        
+        // No need to sort after removal since remaining items are already sorted
         this.renderSelected();
         
-        // FIXED: Use safe method to get current input value
         const currentQuery = this.getCurrentInputValue();
         this.filterOptions(currentQuery);
         
@@ -5952,8 +5974,9 @@ class TraitsInput {
         const existingTags = this.selectedContainer.querySelectorAll('tag.tagify__tag');
         existingTags.forEach(tag => tag.remove());
         
+        // UPDATED: Traits are already sorted, so render them in order
         this.selectedTraits.forEach((trait, index) => {
-            if (!trait || !trait.value || !trait.label) return; // FIXED: Check trait properties exist
+            if (!trait || !trait.value || !trait.label) return;
             
             const tag = document.createElement('tag');
             
@@ -5964,9 +5987,9 @@ class TraitsInput {
             tag.setAttribute('tabindex', '-1');
             tag.setAttribute('id', trait.value);
             tag.setAttribute('value', trait.label);
-            tag.setAttribute('data-tooltip', `PF2E.TraitDescription${trait.label}`); // PF2e tooltip pattern
+            tag.setAttribute('data-tooltip', `PF2E.TraitDescription${trait.label}`);
             tag.setAttribute('isvalid', 'true');
-            tag.setAttribute('tagid', this.generateTagId()); // Generate unique tag ID
+            tag.setAttribute('tagid', this.generateTagId());
             
             tag.innerHTML = `
                 <x class="tagify__tag__removeBtn" role="button" aria-label="remove tag"></x>
@@ -5993,6 +6016,10 @@ class TraitsInput {
         });
     }
     
+    /**
+     * Set traits and maintain alphabetical order
+     * UPDATED: Now sorts traits alphabetically when setting values
+     */
     setValue(traits, triggerChange = false) {
         if (!Array.isArray(traits)) {
             console.warn('[TraitsInput] setValue called with non-array:', traits);
@@ -6001,10 +6028,13 @@ class TraitsInput {
         
         // Convert string array to trait objects
         this.selectedTraits = traits.map(value => {
-            if (!value) return null; // FIXED: Handle undefined/null values
+            if (!value) return null;
             const traitOption = this.traitOptions.find(option => option && option.value === value);
             return traitOption || { label: value, value: value };
-        }).filter(trait => trait !== null); // FIXED: Remove null entries
+        }).filter(trait => trait !== null);
+        
+        // UPDATED: Sort traits alphabetically when setting values
+        this.selectedTraits = this.sortTraitsAlphabetically(this.selectedTraits);
         
         this.renderSelected();
         this.filterOptions('');
@@ -6017,7 +6047,7 @@ class TraitsInput {
     
     getValue() {
         return this.selectedTraits
-            .filter(trait => trait && trait.value) // FIXED: Filter out invalid traits
+            .filter(trait => trait && trait.value)
             .map(trait => trait.value);
     }
 }
