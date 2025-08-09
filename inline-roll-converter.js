@@ -360,25 +360,15 @@ class InlineCheck extends InlineAutomation {
         return `@Check[${parts.join('|')}]${displayTextSyntax}`; // Return the complete syntax
     }
 
-    isSave() { // Return true if the check type is 'reflex', 'fortitude', or 'will'
-        return this.checkType === 'reflex' || this.checkType === 'fortitude' || this.checkType === 'will';
-    }
+    isSave() {  return this.checkType === 'reflex' || this.checkType === 'fortitude' || this.checkType === 'will'; }
 
-    isSkillCheck() {
-        return ConfigManager.SKILLS.slugs.includes(this.checkType);
-    }
+    isSkillCheck() { return ConfigManager.SKILLS.slugs.includes(this.checkType); }
 
-    isPerceptionCheck() {
-        return this.checkType === 'perception';
-    }
+    isPerceptionCheck() { return this.checkType === 'perception'; }
 
-    isLoreCheck() {
-        return this.checkType === 'lore';
-    }
+    isLoreCheck() { return this.checkType === 'lore'; }
 
-    isFlatCheck() {
-        return this.checkType === 'flat';
-    }
+    isFlatCheck() { return this.checkType === 'flat'; }
 
     isOptionRelevant(option) {
         const relevanceRules = {
@@ -4722,7 +4712,7 @@ class HealingPattern extends BasePattern {
 
     static PATTERNS = [
         {
-            regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)(?:\\s+\\b(?:${ConfigManager.HEALING_TERMS.pattern})\\b)(?:\\s+(?:healed|damage))?`, 'gi'),
+            regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)(?=\\s+\\b(?:${ConfigManager.HEALING_TERMS.pattern})\\b)`, 'gi'),
             priority: 80,
             extractor: 'healing'
         }
