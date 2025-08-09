@@ -1483,18 +1483,11 @@ class CSSManager {
             }
 
             /* ===== FORM GROUPS ===== */
-            .rollconverter-form-group {
-                margin-bottom: 15px;
-            }
-
-            .rollconverter-form-group label {
-                display: block;
-            }
 
             .rollconverter-input-textarea {
                 width: 100%;
                 resize: vertical;
-                font-family: monospace;
+                /* font-family: monospace; */
             }
 
             .rollconverter-modifier-fieldset p.notes {
@@ -1513,7 +1506,7 @@ class CSSManager {
             }
 
             .rollconverter-output-converted {
-                line-height: 1.7;
+                line-height: 1.5;
             }
 
             .rollconverter-output-placeholder {
@@ -1524,7 +1517,7 @@ class CSSManager {
             .rollconverter-output-pre {
                 margin: 0;
                 white-space: pre-wrap;
-                font-family: monospace;
+                /* font-family: monospace; */
                 font-size: 12px;
             }
 
@@ -1555,7 +1548,7 @@ class CSSManager {
             .rollconverter-interactive {
                 cursor: pointer;
                 background: #dddddd;
-                padding: 1px 3px;
+                padding: 0 2px;
                 color: #191813;
                 border-radius: 1px;
                 outline: 1px solid #444;
@@ -2921,7 +2914,7 @@ class ConverterDialog {
         
         if (this.ui.outputHtmlDiv) {
             // Use semantic class for the pre element
-            this.ui.outputHtmlDiv.innerHTML = `<pre class="rollconverter-output-pre">${outputText}</pre>`;
+            this.ui.outputHtmlDiv.innerHTML = outputText;
             this.setupInteractiveElementHandlers();
         }
     }
@@ -5528,7 +5521,6 @@ function showConverterDialog() {
                     <div class="form-group">
                         <div class="form-fields">
                             <div id="output-html" class="rollconverter-output-area rollconverter-output-converted">
-                                <em class="rollconverter-output-placeholder">Live preview will appear here...</em>
                             </div>
                         </div>
                         <p class="notes">Click an inline roll to modify it.</p>
