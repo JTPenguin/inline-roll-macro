@@ -17,7 +17,41 @@ class InlineAutomation {
         this.type = type;
         this.params = {...params};
         this.traits = params.traits || [];
+        this.options = params.options || [];
         this.displayText = params.displayText || '';
+    }
+
+    // Helper methods to manage options
+    
+    // Return true if the option is in the options array
+    // @param {string} option - The option to check
+    // @returns {boolean} - True if the option is in the options array
+    hasOption(option) {
+        return this.options.includes(option);
+    }
+
+    // Add an option if the option is not already in the options array
+    // @param {string} option - The option to add
+    // @returns {void}
+    addOption(option) {
+        if (!this.hasOption(option)) {
+            this.options.push(option);
+        }
+    }
+
+    // Remove an option if the option is in the options array
+    // @param {string} option - The option to remove
+    // @returns {void}
+    removeOption(option) {
+        if (this.hasOption(option)) {
+            this.options = this.options.filter(o => o !== option);
+        }
+    }
+
+    // Render the options as a string for the inline roll syntax (in alphabetical order)
+    // @returns {string} - The rendered options syntax
+    renderOptions() {
+        return this.options.length > 0 ? `|options:${this.options.sort().join(',')}` : '';
     }
 
     // Generate the inline roll syntax
@@ -135,15 +169,29 @@ class DamageComponent {
 class InlineDamage extends InlineAutomation {
     constructor(params = {}) {
         super('damage', params);
+
+        // Migrate legacy areaDamage parameter to options
+        if (params.areaDamage) {
+            this.addOption('area-damage');
+        }
         
         // Set properties directly from parameters
-        this.areaDamage = params.areaDamage || false;
         this.healing = params.healing || false;
         
         // Convert component parameter objects to DamageComponent instances
         this.components = (params.components || []).map(comp => 
             new DamageComponent(comp.dice, comp.damageType, comp.category)
         );
+    }
+
+    // areaDamage getter/setter for backwards compatibility
+    get areaDamage() { return this.hasOption('area-damage'); }
+    set areaDamage(value) {
+        if (value) {
+            this.addOption('area-damage');
+        } else {
+            this.removeOption('area-damage');
+        }
     }
 
     render() {
@@ -153,11 +201,8 @@ class InlineDamage extends InlineAutomation {
             componentSyntax.push(component.render(this.healing));
         });
 
-        // Render the syntax for the area damage
-        const optionsSyntax = this.areaDamage ? `|options:area-damage` : '';
-
-        // Add display text syntax if it's not empty
-        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : '';
+        const optionsSyntax = this.renderOptions();
+        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : ''; // Add display text syntax if it's not empty
 
         // Return the complete syntax
         return `@Damage[${componentSyntax.join(',')}${optionsSyntax}]${displayTextSyntax}`;
@@ -169,6 +214,12 @@ class InlineDamage extends InlineAutomation {
 class InlineCheck extends InlineAutomation {
     constructor(params = {}) {
         super('check', params);
+
+        // Migrate legacy damagingEffect parameter to options
+        if (params.damagingEffect) {
+            this.addOption('damaging-effect');
+        }
+
         // Create internal properties
         this._checkType = 'flat';
         this._loreName = 'warfare';
@@ -184,7 +235,6 @@ class InlineCheck extends InlineAutomation {
         this.statistic = params.statistic || 'acrobatics';
         this.showDC = params.showDC || 'owner';
         this.basic = params.basic || false;
-        this.damagingEffect = params.damagingEffect || false;
     }
 
     get checkType() { return this._checkType; }
@@ -262,7 +312,10 @@ class InlineCheck extends InlineAutomation {
         // Add other parameters conditionally
         if (this.basic && this.isSave()) { parts.push(`basic`); } // Add basic parameter syntax if it's a save and it's basic
         if (this.showDC !== 'owner') { parts.push(`showDC:${this.showDC}`); } // Add showDC syntax if it's not 'owner'
-        if (this.damagingEffect && this.isSave()) { parts.push(`options:damaging-effect`); } // Add damaging effect syntax if it's a save and it's a damaging effect
+
+        // Add options syntax to parts, minus the leading '|'
+        const optionsSyntax = this.renderOptions().slice(1); // Remove the leading '|'
+        if (optionsSyntax !== '') { parts.push(optionsSyntax); }
 
         if (this.traits.length > 0) { parts.push(`traits:${this.traits.join(',')}`); } // Add traits syntax if traits is not empty
 
@@ -1065,10 +1118,31 @@ class CheckRenderer extends BaseRenderer {
             id: 'damaging-effect',
             type: 'checkbox',
             label: 'Damaging Effect',
-            getValue: (r) => r.inlineAutomation.damagingEffect || false,
-            setValue: (r, value) => { r.inlineAutomation.damagingEffect = value; },
+            getValue: (r) => r.inlineAutomation.hasOption('damaging-effect') || false,
+            setValue: (r, value) => {
+                if (value) {
+                    r.inlineAutomation.addOption('damaging-effect');
+                } else {
+                    r.inlineAutomation.removeOption('damaging-effect');
+                }
+            },
             showIf: (r) => r.inlineAutomation.isSave()
-        })
+        });
+
+        configs.push({
+            id: 'area-effect',
+            type: 'checkbox',
+            label: 'Area Effect',
+            getValue: (r) => r.inlineAutomation.hasOption('area-effect') || false,
+            setValue: (r, value) => {
+                if (value) {
+                    r.inlineAutomation.addOption('area-effect');
+                } else {
+                    r.inlineAutomation.removeOption('area-effect');
+                }
+            },
+            showIf: (r) => r.inlineAutomation.isSave()
+        });
 
         return configs;
     }
