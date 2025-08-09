@@ -845,8 +845,6 @@ class BaseRenderer {
  * Provides static methods for generating field HTML
  */
 class FieldRenderer {
-    static labelWidth = '100px';
-
     /**
      * Render a field with consistent styling
      * @param {string} type - Field type (text, select, checkbox, number, textarea, multiselect, traits)
@@ -859,8 +857,6 @@ class FieldRenderer {
     static render(type, id, label, value, options = {}) {
         const fieldId = id;
         const containerStyle = options.hidden ? 'display: none;' : '';
-        const rowClass = 'modifier-field-row';
-        const labelClass = 'modifier-panel-label';
 
         switch (type) {
             case 'select':
@@ -872,9 +868,9 @@ class FieldRenderer {
                     return `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
                 }).join('');
                 return `
-                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="${labelClass}">${label}</label>
-                        <select id="${fieldId}" class="modifier-panel-input">
+                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label class="rollconverter-field-label">${label}</label>
+                        <select id="${fieldId}" class="rollconverter-field-input">
                             ${selectOptions}
                         </select>
                     </div>
@@ -883,27 +879,27 @@ class FieldRenderer {
             case 'number':
                 const minAttr = options.min !== undefined ? `min="${options.min}"` : '';
                 return `
-                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="${labelClass}">${label}</label>
-                        <input type="number" id="${fieldId}" class="modifier-panel-input" ${minAttr} value="${value}" />
+                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label class="rollconverter-field-label">${label}</label>
+                        <input type="number" id="${fieldId}" class="rollconverter-field-input" ${minAttr} value="${value}" />
                     </div>
                 `;
 
             case 'checkbox':
                 const checked = value ? 'checked' : '';
                 return `
-                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="${labelClass}">${label}</label>
-                        <input type="checkbox" id="${fieldId}" class="modifier-panel-checkbox" ${checked} />
+                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label class="rollconverter-field-label">${label}</label>
+                        <input type="checkbox" id="${fieldId}" class="rollconverter-field-checkbox" ${checked} />
                     </div>
                 `;
 
             case 'text':
                 const placeholder = options.placeholder ? `placeholder="${options.placeholder}"` : '';
                 return `
-                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="${labelClass}">${label}</label>
-                        <input type="text" id="${fieldId}" class="modifier-panel-input" ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
+                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label class="rollconverter-field-label">${label}</label>
+                        <input type="text" id="${fieldId}" class="rollconverter-field-input" ${placeholder} value="${value}" onkeydown="event.stopPropagation();" />
                     </div>
                 `;
 
@@ -911,9 +907,9 @@ class FieldRenderer {
                 const textareaPlaceholder = options.placeholder ? `placeholder="${options.placeholder}"` : '';
                 const rows = options.rows || 3;
                 return `
-                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="${labelClass}">${label}</label>
-                        <textarea id="${fieldId}" class="modifier-panel-input" ${textareaPlaceholder} rows="${rows}">${value}</textarea>
+                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label class="rollconverter-field-label">${label}</label>
+                        <textarea id="${fieldId}" class="rollconverter-field-input" ${textareaPlaceholder} rows="${rows}">${value}</textarea>
                     </div>
                 `;
 
@@ -921,14 +917,14 @@ class FieldRenderer {
                 // Use the fieldId directly as the container ID for the traits input
                 const traitsContainerId = `${fieldId}-input-container`;
                 return `
-                    <div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">
-                        <label class="${labelClass}">${label}</label>
-                        <div id="${traitsContainerId}" style="flex: 1;"></div>
+                    <div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">
+                        <label class="rollconverter-field-label">${label}</label>
+                        <div id="${traitsContainerId}" class="rollconverter-field-input-wrapper"></div>
                     </div>
                 `;
 
             default:
-                return `<div id="${fieldId}-container" class="${rowClass}" style="${containerStyle}" data-field-id="${fieldId}">Unknown field type: ${type}</div>`;
+                return `<div id="${fieldId}-container" class="rollconverter-field-row" style="${containerStyle}" data-field-id="${fieldId}">Unknown field type: ${type}</div>`;
         }
     }
 
@@ -1403,6 +1399,440 @@ class ActionRenderer extends BaseRenderer {
     }
 }
 
+// ===================== CENTRALIZED CSS SYSTEM =====================
+
+/**
+ * CSS Manager - Handles injection and management of styles
+ */
+class CSSManager {
+    static STYLE_ID = 'rollconverter-styles';
+    static isInjected = false;
+
+    /**
+     * Inject the centralized CSS into the document head
+     */
+    static injectStyles() {
+        if (this.isInjected) return;
+
+        const existingStyle = document.getElementById(this.STYLE_ID);
+        if (existingStyle) {
+            existingStyle.remove();
+        }
+
+        const style = document.createElement('style');
+        style.id = this.STYLE_ID;
+        style.textContent = this.getCSS();
+        document.head.appendChild(style);
+        
+        this.isInjected = true;
+        console.log('[PF2e Converter] Centralized CSS injected');
+    }
+
+    /**
+     * Remove the injected CSS (for cleanup)
+     */
+    static removeStyles() {
+        const existingStyle = document.getElementById(this.STYLE_ID);
+        if (existingStyle) {
+            existingStyle.remove();
+            this.isInjected = false;
+        }
+    }
+
+    /**
+     * Get the complete CSS for the converter
+     */
+    static getCSS() {
+        return `
+            /* ===== CONVERTER DIALOG LAYOUT ===== */
+            .rollconverter-dialog {
+                display: flex;
+                flex-direction: row;
+                min-width: 900px;
+            }
+
+            .rollconverter-main {
+                flex: 2;
+                min-width: 0;
+            }
+
+            .rollconverter-sidebar {
+                flex: 1;
+                width: 300px;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            /* ===== FORM GROUPS ===== */
+            .rollconverter-form-group {
+                margin-bottom: 15px;
+            }
+
+            .rollconverter-form-group label {
+                display: block;
+            }
+
+            .rollconverter-input-textarea {
+                width: 100%;
+                resize: vertical;
+                font-family: monospace;
+                font-size: 12px;
+            }
+
+            /* ===== OUTPUT AREAS ===== */
+            .rollconverter-output-area {
+                width: 100%;
+                height: 150px;
+                max-height: 150px;
+                overflow-y: auto;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background-color: #fafafa;
+                padding: 8px;
+                font-family: 'Signika', sans-serif;
+                font-size: 13px;
+            }
+
+            .rollconverter-output-converted {
+                line-height: 1.7;
+            }
+
+            .rollconverter-output-placeholder {
+                color: #999;
+                font-style: italic;
+            }
+
+            .rollconverter-output-pre {
+                margin: 0;
+                white-space: pre-wrap;
+                font-family: monospace;
+                font-size: 12px;
+            }
+
+            /* ===== CONTROL BUTTONS ===== */
+            .rollconverter-controls {
+                display: flex;
+                gap: 10px;
+                margin-top: 15px;
+            }
+
+            .rollconverter-control-button {
+                flex: 1;
+                padding: 8px;
+            }
+
+            /* ===== MODIFIER PANEL ===== */
+            .rollconverter-modifier-panel-label {
+                font-weight: bold;
+                display: block;
+                margin: 0 0 4px 12px;
+            }
+
+            .rollconverter-modifier-panel-content {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 12px 10px;
+                margin: 0 12px 12px 12px;
+                min-height: 120px;
+                color: #444;
+                font-size: 14px;
+            }
+
+            .rollconverter-modifier-panel-placeholder {
+                font-style: italic;
+                color: #666;
+            }
+
+            /* ===== MODIFIER FIELDS ===== */
+            .rollconverter-modifier-form {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .rollconverter-field-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 0;
+            }
+
+            .rollconverter-field-row:last-child {
+                margin-bottom: 0;
+            }
+
+            .rollconverter-field-label {
+                width: 80px;
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                height: 100%;
+                margin-bottom: 0;
+            }
+
+            .rollconverter-field-label-title {
+                font-weight: bold;
+                width: 200px;
+            }
+
+            .rollconverter-field-input {
+                width: 100%;
+            }
+
+            .rollconverter-field-checkbox {
+                width: auto;
+                margin: 0;
+            }
+
+            .rollconverter-field-input-wrapper {
+                flex: 1;
+            }
+
+            /* ===== RESET BUTTON ===== */
+            .rollconverter-reset-button {
+                margin-left: auto;
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                font-size: 11px;
+                padding: 2px 7px;
+                height: 22px;
+                width: auto;
+                border-radius: 4px;
+                background: #f4f4f4;
+                border: 1px solid #bbb;
+                color: #1976d2;
+                cursor: pointer;
+                transition: background 0.2s, border 0.2s;
+                vertical-align: middle;
+            }
+
+            .rollconverter-reset-button:hover {
+                background: #e3eafc !important;
+                border-color: #1976d2 !important;
+            }
+
+            /* ===== DAMAGE COMPONENTS ===== */
+            .rollconverter-damage-component {
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                padding: 12px;
+                background: #f9f9f9;
+                position: relative;
+                transition: border-color 0.2s ease;
+            }
+
+            .rollconverter-damage-component-header {
+                font-weight: bold;
+                color: #555;
+                margin-bottom: 8px;
+                font-size: 13px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+
+            .rollconverter-damage-component-fields {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .rollconverter-damage-component .rollconverter-field-label {
+                width: 68px;
+            }
+
+            .rollconverter-damage-component .rollconverter-field-row {
+                gap: 6px;
+                margin-bottom: 0;
+            }
+
+            /* ===== INTERACTIVE ELEMENTS ===== */
+            .rollconverter-interactive {
+                cursor: pointer;
+                background: #dddddd;
+                padding: 1px 3px;
+                color: #191813;
+                border-radius: 1px;
+                outline: 1px solid #444;
+            }
+
+            .rollconverter-interactive:hover {
+                background: #bbbbbb;
+            }
+
+            .rollconverter-interactive.rollconverter-modified {
+                background: #c8f7c5;
+            }
+
+            .rollconverter-interactive.rollconverter-modified:hover {
+                background: #aee9a3;
+            }
+
+            .rollconverter-interactive.rollconverter-selected {
+                outline: 2px solid #1976d2;
+                box-shadow: 0 0 6px 1px #90caf9;
+            }
+
+            .rollconverter-interactive.rollconverter-selected:hover {
+                background: #bbbbbb !important;
+            }
+
+            .rollconverter-interactive.rollconverter-selected.rollconverter-modified:hover {
+                background: #aee9a3 !important;
+            }
+
+            .rollconverter-interactive.rollconverter-disabled {
+                background: none;
+            }
+
+            .rollconverter-interactive.rollconverter-disabled:hover {
+                background: #dddddd;
+            }
+
+            /* ===== LIVE PREVIEW ELEMENTS ===== */
+            .rollconverter-preview-content {
+                font-family: 'Signika', sans-serif;
+                font-size: 14px;
+                line-height: 1.4;
+                color: #191813;
+            }
+
+            .rollconverter-preview-content .inline-roll {
+                background: #1f5582;
+                color: white;
+                padding: 2px 4px;
+                border-radius: 2px;
+                font-weight: bold;
+                text-decoration: none;
+                border: 1px solid #0d4068;
+                transition: background-color 0.2s;
+            }
+
+            .rollconverter-preview-content .inline-roll:hover {
+                background: #2a6590;
+                text-decoration: none;
+            }
+
+            .rollconverter-preview-content .inline-roll.damage {
+                background: #8b0000;
+                border-color: #660000;
+            }
+
+            .rollconverter-preview-content .inline-roll.damage:hover {
+                background: #a50000;
+            }
+
+            .rollconverter-preview-content .inline-roll.healing {
+                background: #006400;
+                border-color: #004d00;
+            }
+
+            .rollconverter-preview-content .inline-roll.healing:hover {
+                background: #007800;
+            }
+
+            /* ===== TRAITS INPUT SYSTEM ===== */
+            .rollconverter-traits-wrapper {
+                position: relative;
+                width: 100%;
+            }
+
+            .rollconverter-traits-selected {
+                min-height: 32px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 4px;
+                background: white;
+                cursor: text;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+                align-items: center;
+            }
+
+            .rollconverter-traits-selected:focus-within {
+                border-color: #1976d2;
+                box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+            }
+
+            .rollconverter-traits-input {
+                border: none;
+                outline: none;
+                background: transparent;
+                flex: 1;
+                min-width: 120px;
+                font-size: 14px;
+            }
+
+            .rollconverter-traits-dropdown {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: white;
+                border: 1px solid #ccc;
+                border-top: none;
+                border-radius: 0 0 4px 4px;
+                max-height: 200px;
+                overflow-y: auto;
+                z-index: 1000;
+                display: none;
+            }
+
+            .rollconverter-trait-option {
+                padding: 6px 12px;
+                cursor: pointer;
+                border-bottom: 1px solid #eee;
+            }
+
+            .rollconverter-trait-option:hover {
+                background: #f5f5f5;
+            }
+
+            .rollconverter-trait-option.rollconverter-active {
+                background: #e3f2fd !important;
+            }
+
+            .rollconverter-trait-tag {
+                background: var(--color-bg-trait, #e3f2fd) !important;
+                color: var(--color-text-trait, #1976d2) !important;
+                border: solid 1px var(--color-border-trait, #bbdefb);
+                font-weight: 500;
+                text-transform: uppercase;
+                font-size: 10px;
+                letter-spacing: 0.05em;
+                padding: 2px 8px;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                white-space: nowrap;
+            }
+
+            .rollconverter-trait-remove {
+                cursor: pointer;
+                font-weight: bold;
+                color: #666;
+                margin-left: 4px;
+                color: inherit;
+                opacity: 0.7;
+            }
+
+            .rollconverter-trait-remove:hover {
+                opacity: 1;
+                color: #d32f2f;
+            }
+
+            .rollconverter-traits-dropdown-empty {
+                padding: 8px;
+                color: #666;
+                font-style: italic;
+            }
+        `;
+    }
+}
+
 /**
  * ModifierPanelManager - Handles the generation and management of modifier panels
  * for interactive replacement elements
@@ -1692,12 +2122,11 @@ class ModifierPanelManager {
         }
     }
 
-    // DRY: Render the panel header (title + reset button)
     renderPanelHeader(title) {
         return `
-            <div class="modifier-field-row">
-                <span class="modifier-panel-label bold panel-title">${title}</span>
-                <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" class="modifier-panel-input" style="margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 2px 7px; height: 22px; width: auto; border-radius: 4px; background: #f4f4f4; border: 1px solid #bbb; color: #1976d2; cursor: pointer; transition: background 0.2s, border 0.2s; vertical-align: middle;">
+            <div class="rollconverter-field-row">
+                <span class="rollconverter-field-label rollconverter-field-label-title">${title}</span>
+                <button type="button" id="modifier-reset-btn" title="Reset this roll to its original state" class="rollconverter-reset-button">
                     Reset
                 </button>
             </div>
@@ -1705,30 +2134,24 @@ class ModifierPanelManager {
     }
 
     generatePanelHTML(type, rep) {
-        // Get the appropriate renderer for this type
         const renderer = this.renderers[type];
         if (!renderer) {
             return this.generateJSONPanel(type, rep);
         }
-    
-        // Get title from renderer
+
         const title = renderer.getTitle(rep);
-        
-        // Get field configurations from renderer
         const fieldConfigs = renderer.getFieldConfigs(rep);
         
         let fields = '';
         
-        // Special handling for damage type to render component containers
         if (type === 'damage') {
             fields = this.renderDamageFields(fieldConfigs, rep);
         } else {
-            // Standard field rendering for other types
             fields = fieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
         }
-    
+
         return `
-            <form id="${type}-modifier-form" style="display: flex; flex-direction: column; gap: 10px;">
+            <form id="${type}-modifier-form" class="rollconverter-modifier-form">
                 ${this.renderPanelHeader(title)}
                 ${fields}
             </form>
@@ -1794,8 +2217,8 @@ class ModifierPanelManager {
         const fieldsHtml = componentFields.map(config => this.renderFieldFromConfig(config, rep)).join('');
 
         return `
-            <div class="damage-component-container">
-                <div class="damage-component-fields">
+            <div class="rollconverter-damage-component">
+                <div class="rollconverter-damage-component-fields">
                     ${fieldsHtml}
                 </div>
             </div>
@@ -2439,8 +2862,8 @@ class ModifierPanelManager {
             const containerSelectors = [
                 `#${config.id}-container`,
                 `[data-field-id="${config.id}"]`,
-                `.modifier-field-row:has(#${config.id})`,
-                `#${config.id}`.replace(/-/g, '\\-') + '-container' // Escape hyphens for CSS
+                `.rollconverter-field-row:has(#${config.id})`, // Updated class name
+                `#${config.id}`.replace(/-/g, '\\-') + '-container'
             ];
             
             let container = null;
@@ -2449,11 +2872,11 @@ class ModifierPanelManager {
                 if (container) break;
             }
             
-            // Fallback: find container by looking for parent with modifier-field-row class
+            // Fallback: find container by looking for parent with rollconverter-field-row class
             if (!container) {
                 const field = formElement.querySelector(`#${config.id}`);
                 if (field) {
-                    container = field.closest('.modifier-field-row') || field.parentElement;
+                    container = field.closest('.rollconverter-field-row') || field.parentElement; // Updated class name
                 }
             }
             
@@ -2461,12 +2884,10 @@ class ModifierPanelManager {
                 const isVisible = this.shouldFieldBeVisible(config, rep);
                 container.style.display = isVisible ? '' : 'none';
                 
-                // Debug logging for visibility updates
                 if (console.debug) {
                     console.debug(`[ModifierPanelManager] Field visibility update: ${config.id} -> ${isVisible ? 'visible' : 'hidden'}`);
                 }
             } else {
-                // Log warning for missing containers
                 console.warn(`[ModifierPanelManager] Could not find container for field: ${config.id}`);
             }
         });
@@ -2608,9 +3029,8 @@ class ConverterDialog {
         this.data.lastRawOutput = outputText;
         
         if (this.ui.outputHtmlDiv) {
-            this.ui.outputHtmlDiv.innerHTML = `<pre style="margin: 0; white-space: pre-wrap; font-family: monospace; font-size: 12px;">${outputText}</pre>`;
-            
-            // Setup interactive element handlers after rendering output
+            // Use semantic class for the pre element
+            this.ui.outputHtmlDiv.innerHTML = `<pre class="rollconverter-output-pre">${outputText}</pre>`;
             this.setupInteractiveElementHandlers();
         }
     }
@@ -2654,7 +3074,7 @@ class ConverterDialog {
             }
         } else {
             if (this.ui.modifierPanelContent) {
-                this.ui.modifierPanelContent.innerHTML = '<em>Select an element to modify.</em>';
+                this.ui.modifierPanelContent.innerHTML = '<em class="rollconverter-modifier-panel-placeholder">Select an element to modify.</em>';
             }
         }
     }
@@ -2694,7 +3114,7 @@ class ConverterDialog {
             return;
         }
         
-        const interactiveElements = this.ui.outputHtmlDiv.querySelectorAll('.pf2e-interactive');
+        const interactiveElements = this.ui.outputHtmlDiv.querySelectorAll('.rollconverter-interactive');
         console.log('[PF2e Converter] Found', interactiveElements.length, 'interactive elements');
         
         interactiveElements.forEach(element => {
@@ -2728,17 +3148,17 @@ class ConverterDialog {
     updateElementHighlighting() {
         if (!this.ui.outputHtmlDiv) return;
         
-        // Remove previous highlighting
-        const allElements = this.ui.outputHtmlDiv.querySelectorAll('.pf2e-interactive');
+        // Remove previous highlighting using class instead of style
+        const allElements = this.ui.outputHtmlDiv.querySelectorAll('.rollconverter-interactive');
         allElements.forEach(el => {
-            el.classList.remove('selected');
+            el.classList.remove('rollconverter-selected');
         });
         
         // Add highlighting to selected element
         if (this.data.selectedElementId) {
             const selectedElement = this.ui.outputHtmlDiv.querySelector(`[data-id="${this.data.selectedElementId}"]`);
             if (selectedElement) {
-                selectedElement.classList.add('selected');
+                selectedElement.classList.add('rollconverter-selected');
             }
         }
     }
@@ -4957,16 +5377,25 @@ class Replacement {
     renderInteractive(state = null) {
         const params = this.getInteractiveParams();
         
-        // Store the actual replacement object reference in state, not just params
         if (state && state.interactiveElements) {
-            state.interactiveElements[this.id] = this; // Store the actual object, not params
+            state.interactiveElements[this.id] = this;
         }
         
-        // Add 'modified' class if isModified() is true and enabled
-        const modifiedClass = (this.enabled && this.isModified && this.isModified()) ? ' modified' : '';
-        // Add 'disabled' class if not enabled
-        const disabledClass = !this.enabled ? ' disabled' : '';
-        return `<span class="pf2e-interactive${modifiedClass}${disabledClass}" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${this.enabled ? this.render() : this.originalText}</span>`;
+        // Build CSS classes array
+        const cssClasses = ['rollconverter-interactive'];
+        
+        if (this.enabled && this.isModified && this.isModified()) {
+            cssClasses.push('rollconverter-modified');
+        }
+        
+        if (!this.enabled) {
+            cssClasses.push('rollconverter-disabled');
+        }
+        
+        const classString = cssClasses.join(' ');
+        const content = this.enabled ? this.render() : this.originalText;
+        
+        return `<span class="${classString}" data-id="${this.id}" data-type="${params.type}" data-params='${JSON.stringify(params)}'>${content}</span>`;
     }
 
     validate() { 
@@ -5103,29 +5532,21 @@ class TextProcessor {
  */
 async function createLivePreview(text, container) {
     if (!text || text.trim() === '') {
-        container.innerHTML = '<em style="color: #999;">Live preview will appear here...</em>';
+        container.innerHTML = '<em class="rollconverter-output-placeholder">Live preview will appear here...</em>';
         return;
     }
 
     try {
-        // Replace newlines with <br> for HTML preview
         const htmlText = text.replace(/\n/g, '<br>');
 
-        // Use TextEditor to process the inline rolls
         const processedHTML = await TextEditor.enrichHTML(htmlText, {
             async: true,
             rollData: {},
             relativeTo: null
         });
 
-        // Create a styled container for the preview
         const previewContent = `
-            <div class="pf2e-preview-content" style="
-                font-family: 'Signika', sans-serif;
-                font-size: 14px;
-                line-height: 1.4;
-                color: #191813;
-            ">
+            <div class="rollconverter-preview-content">
                 ${processedHTML}
             </div>
         `;
@@ -5141,15 +5562,12 @@ async function createLivePreview(text, container) {
                 event.stopPropagation();
                 
                 try {
-                    // Execute the inline roll
                     const formula = roll.dataset.formula || roll.innerText;
                     const rollData = {};
                     
-                    // Create and evaluate the roll
                     const actualRoll = new Roll(formula, rollData);
                     await actualRoll.evaluate();
                     
-                    // Display the roll result
                     actualRoll.toMessage({
                         flavor: "PF2e Converter Preview Roll",
                         speaker: ChatMessage.getSpeaker()
@@ -5185,254 +5603,46 @@ async function copyToClipboard(text) {
 function showConverterDialog() {
     console.log('[PF2e Converter] showConverterDialog called');
     
+    // Inject CSS before creating dialog
+    CSSManager.injectStyles();
+    
     const dialogContent = `
-        <div class="pf2e-converter-dialog" style="display: flex; flex-direction: row; min-width: 900px;">
-            <div style="flex: 2; min-width: 0;">
-                <div class="form-group">
+        <div class="rollconverter-dialog">
+            <div class="rollconverter-main">
+                <div class="rollconverter-form-group">
                     <label for="input-text"><strong>Input Text</strong> <small>Changes here will clear any modifications made below.</small></label>
                     <textarea 
                         id="input-text" 
                         name="inputText" 
                         rows="6" 
                         placeholder="Paste your spell, ability, or feat description here..."
-                        style="width: 100%; resize: vertical; font-family: monospace; font-size: 12px;"
+                        class="rollconverter-input-textarea"
                         >${DEFAULT_TEST_INPUT}</textarea>
                 </div>
-                <div class="form-group">
+                <div class="rollconverter-form-group">
                     <label for="output-text"><strong>Converted Text</strong> <small>Click an inline roll to modify it.</small></label>
-                    <div id="output-html" style="
-                        width: 100%;
-                        height: 150px;
-                        max-height: 150px;
-                        overflow-y: auto;
-                        border: 1px solid #ddd; 
-                        border-radius: 4px; 
-                        background-color: #fafafa;
-                        padding: 8px;
-                        font-family: 'Signika', sans-serif;
-                        font-size: 13px;
-                        line-height: 1.7;
-                    ">
-                        <em style="color: #999;">Live preview will appear here...</em>
+                    <div id="output-html" class="rollconverter-output-area rollconverter-output-converted">
+                        <em class="rollconverter-output-placeholder">Live preview will appear here...</em>
                     </div>
                 </div>
-                <div class="form-group">
+                <div class="rollconverter-form-group">
                     <label for="live-preview"><strong>Live Preview</strong> <small>Click inline rolls to test them.</small></label>
-                    <div 
-                        id="live-preview" 
-                        style="
-                            width: 100%; 
-                            height: 150px;
-                            max-height: 150px;
-                            overflow-y: auto;
-                            border: 1px solid #ddd; 
-                            border-radius: 4px; 
-                            background-color: #fafafa;
-                            padding: 8px;
-                            font-family: 'Signika', sans-serif;
-                            font-size: 13px;
-                        "
-                    >
-                        <em style="color: #999;">Live preview will appear here...</em>
+                    <div id="live-preview" class="rollconverter-output-area">
+                        <em class="rollconverter-output-placeholder">Live preview will appear here...</em>
                     </div>
                 </div>
-                <div class="converter-controls" style="display: flex; gap: 10px; margin-top: 15px;">
-                    <button type="button" id="copy-output" style="flex: 1; padding: 8px;">Copy Output</button>
-                    <button type="button" id="clear-all" style="flex: 1; padding: 8px;">Clear All</button>
+                <div class="rollconverter-controls">
+                    <button type="button" id="copy-output" class="rollconverter-control-button">Copy Output</button>
+                    <button type="button" id="clear-all" class="rollconverter-control-button">Clear All</button>
                 </div>
             </div>
-            <div id="modifier-panel" style="flex: 1; width: 300px; padding: 0; box-sizing: border-box;">
-                <label style="font-weight: bold; display: block; margin: 0 0 4px 12px;">Modifier Panel</label>
-                <div id="modifier-panel-content" style="background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 12px 10px; margin: 0 12px 12px 12px; min-height: 120px; color: #444; font-size: 14px;">
-                    <em>Select an element to modify.</em>
+            <div class="rollconverter-sidebar">
+                <label class="rollconverter-modifier-panel-label">Modifier Panel</label>
+                <div id="modifier-panel-content" class="rollconverter-modifier-panel-content">
+                    <em class="rollconverter-modifier-panel-placeholder">Select an element to modify.</em>
                 </div>
             </div>
         </div>
-        
-        <style>
-            .pf2e-converter-dialog .form-group {
-                margin-bottom: 15px;
-            }
-            .pf2e-converter-dialog label {
-                display: block;
-            }
-            .pf2e-preview-content .inline-roll {
-                background: #1f5582;
-                color: white;
-                padding: 2px 4px;
-                border-radius: 2px;
-                font-weight: bold;
-                text-decoration: none;
-                border: 1px solid #0d4068;
-                transition: background-color 0.2s;
-            }
-            .pf2e-preview-content .inline-roll:hover {
-                background: #2a6590;
-                text-decoration: none;
-            }
-            .pf2e-preview-content .inline-roll.damage {
-                background: #8b0000;
-                border-color: #660000;
-            }
-            .pf2e-preview-content .inline-roll.damage:hover {
-                background: #a50000;
-            }
-            .pf2e-preview-content .inline-roll.healing {
-                background: #006400;
-                border-color: #004d00;
-            }
-            .pf2e-preview-content .inline-roll.healing:hover {
-                background: #007800;
-            }
-            /* Enhanced traits input styling */
-            .traits-input-wrapper .trait-option.active {
-                background: #e3f2fd !important;
-            }
-            .traits-input-wrapper .trait-option:hover {
-                background: #f5f5f5;
-            }
-            .traits-input-wrapper .trait-tag {
-                background: var(--color-bg-trait, #e3f2fd) !important;
-                color: var(--color-text-trait, #1976d2) !important;
-                border: solid 1px var(--color-border-trait, #bbdefb);
-                font-weight: 500;
-                text-transform: uppercase;
-                font-size: 10px;
-                letter-spacing: 0.05em;
-            }
-            .traits-input-wrapper .trait-tag .trait-remove {
-                color: inherit;
-                opacity: 0.7;
-            }
-            .traits-input-wrapper .trait-tag .trait-remove:hover {
-                opacity: 1;
-                color: #d32f2f;
-            }
-            .traits-input-wrapper .traits-selected:focus-within {
-                border-color: #1976d2;
-                box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
-            }
-            .pf2e-interactive.selected:hover {
-                background: #bbbbbb !important;
-            }
-            .pf2e-interactive.selected.modified:hover {
-                background: #aee9a3 !important;
-            }
-            .pf2e-interactive {
-                cursor: pointer;
-                background: #dddddd;
-                padding: 1px 3px;
-                color: #191813;
-                border-radius: 1px;
-                outline: 1px solid #444;
-            }
-            .pf2e-interactive:hover {
-                background: #bbbbbb;
-            }
-            .pf2e-interactive.modified {
-                background: #c8f7c5;
-            }
-            .pf2e-interactive.modified:hover {
-                background: #aee9a3;
-            }
-            .pf2e-interactive.selected {
-                outline: 2px solid #1976d2;
-                box-shadow: 0 0 6px 1px #90caf9;
-            }
-            .pf2e-interactive.selected.modified {
-                outline: 2px solid #1976d2;
-                box-shadow: 0 0 6px 1px #90caf9;
-            }
-            #modifier-reset-btn:hover {
-                background: #e3eafc !important;
-                border-color: #1976d2 !important;
-            }
-            .modifier-field-row {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .modifier-field-row:last-child {
-                margin-bottom: 0;
-            }
-            .modifier-panel-label {
-                width: 80px;
-                flex-shrink: 0;
-                display: flex;
-                align-items: center;
-                height: 100%;
-                margin-bottom: 0;
-            }
-            .modifier-panel-label.panel-title {
-                font-weight: bold;
-                width: 200px;
-            }
-            .modifier-panel-label.bold { font-weight: bold; }
-            .modifier-panel-input { width: 100%; }
-            input[type="checkbox"].modifier-panel-checkbox { width: auto; margin: 0; }
-            #damage-modifier-form,
-            #modifier-panel form,
-            .damage-component {
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-            .damage-component {
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                padding: 10px;
-                background: #f9f9f9;
-            }
-            .damage-component-label {
-                font-weight: bold;
-            }
-            .damage-component label {
-                width: 68px !important;
-            }
-            .pf2e-interactive.disabled {
-                background: none;
-            }
-            .pf2e-interactive.disabled:hover {
-                background: #dddddd;
-            }
-
-            /* Damage component container styling */
-            .damage-component-container {
-                border: 1px solid #ddd;
-                border-radius: 6px;
-                padding: 12px;
-                background: #f9f9f9;
-                position: relative;
-                transition: border-color 0.2s ease;
-            }
-
-            .damage-component-header {
-                font-weight: bold;
-                color: #555;
-                margin-bottom: 8px;
-                font-size: 13px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-
-            .damage-component-fields {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-            }
-
-            /* Component field labels should be smaller */
-            .damage-component-container .modifier-panel-label {
-                width: 68px;
-            }
-
-            /* Adjust field rows within components to be more compact */
-            .damage-component-container .modifier-field-row {
-                gap: 6px;
-                margin-bottom: 0;
-            }
-        </style>
     `;
 
     // Create the converter dialog instance
@@ -5447,18 +5657,19 @@ function showConverterDialog() {
         render: (html) => {
             console.log('[PF2e Converter] Dialog render callback called');
             try {
-                // Initialize UI references in the converter dialog
-                console.log('[PF2e Converter] Initializing UI');
                 converterDialog.initializeUI(html);
-                
-                // Setup event handlers
-                console.log('[PF2e Converter] Setting up event handlers');
                 converterDialog.setupEventHandlers();
-                
                 console.log('[PF2e Converter] Dialog render completed successfully');
             } catch (error) {
                 console.error('[PF2e Converter] Error in dialog render callback:', error);
                 console.error('[PF2e Converter] Error stack:', error.stack);
+            }
+        },
+        close: () => {
+            // Clean up CSS when dialog closes
+            CSSManager.removeStyles();
+            if (converterDialog) {
+                converterDialog.cleanup();
             }
         }
     }, {
@@ -5568,54 +5779,22 @@ class TraitsInput {
         if (!container) return;
         
         container.innerHTML = `
-            <div class="traits-input-wrapper" style="position: relative; width: 100%;">
-                <div class="traits-selected" style="
-                    min-height: 32px;
-                    border: 1px solid #ccc;
-                    border-radius: 4px;
-                    padding: 4px;
-                    background: white;
-                    cursor: text;
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 4px;
-                    align-items: center;
-                ">
+            <div class="rollconverter-traits-wrapper">
+                <div class="rollconverter-traits-selected">
                     <input 
                         type="text" 
-                        class="traits-search-input"
+                        class="rollconverter-traits-input"
                         placeholder="${this.options.placeholder}"
-                        style="
-                            border: none;
-                            outline: none;
-                            background: transparent;
-                            flex: 1;
-                            min-width: 120px;
-                            font-size: 14px;
-                        "
                     />
                 </div>
-                <div class="traits-dropdown" style="
-                    position: absolute;
-                    top: 100%;
-                    left: 0;
-                    right: 0;
-                    background: white;
-                    border: 1px solid #ccc;
-                    border-top: none;
-                    border-radius: 0 0 4px 4px;
-                    max-height: 200px;
-                    overflow-y: auto;
-                    z-index: 1000;
-                    display: none;
-                "></div>
+                <div class="rollconverter-traits-dropdown"></div>
             </div>
         `;
         
-        this.wrapper = container.querySelector('.traits-input-wrapper');
-        this.selectedContainer = container.querySelector('.traits-selected');
-        this.searchInput = container.querySelector('.traits-search-input');
-        this.dropdown = container.querySelector('.traits-dropdown');
+        this.wrapper = container.querySelector('.rollconverter-traits-wrapper');
+        this.selectedContainer = container.querySelector('.rollconverter-traits-selected');
+        this.searchInput = container.querySelector('.rollconverter-traits-input');
+        this.dropdown = container.querySelector('.rollconverter-traits-dropdown');
     }
     
     bindEvents() {
@@ -5714,12 +5893,11 @@ class TraitsInput {
     }
     
     updateActiveOption() {
-        const options = this.dropdown.querySelectorAll('.trait-option');
+        const options = this.dropdown.querySelectorAll('.rollconverter-trait-option');
         options.forEach((option, index) => {
-            option.classList.toggle('active', index === this.activeIndex);
+            option.classList.toggle('rollconverter-active', index === this.activeIndex);
         });
         
-        // Scroll active option into view
         if (this.activeIndex >= 0 && options[this.activeIndex]) {
             options[this.activeIndex].scrollIntoView({ block: 'nearest' });
         }
@@ -5788,7 +5966,7 @@ class TraitsInput {
             const query = this.searchInput.value.trim();
             if (query) {
                 this.dropdown.innerHTML = `
-                    <div style="padding: 8px; color: #666; font-style: italic;">
+                    <div class="rollconverter-traits-dropdown-empty">
                         No matching traits found. Press Enter to add "${query}" as custom trait.
                     </div>
                 `;
@@ -5799,18 +5977,13 @@ class TraitsInput {
         }
         
         this.dropdown.innerHTML = this.filteredOptions.map((trait, index) => `
-            <div class="trait-option" data-value="${trait.value}" style="
-                padding: 6px 12px;
-                cursor: pointer;
-                border-bottom: 1px solid #eee;
-                ${index === this.activeIndex ? 'background: #e3f2fd;' : ''}
-            ">
+            <div class="rollconverter-trait-option ${index === this.activeIndex ? 'rollconverter-active' : ''}" data-value="${trait.value}">
                 ${trait.label}
             </div>
         `).join('');
         
         // Add click handlers
-        this.dropdown.querySelectorAll('.trait-option').forEach((option, index) => {
+        this.dropdown.querySelectorAll('.rollconverter-trait-option').forEach((option, index) => {
             option.addEventListener('mouseenter', () => {
                 this.activeIndex = index;
                 this.updateActiveOption();
@@ -5846,38 +6019,19 @@ class TraitsInput {
     }
     
     renderSelected() {
-        // Remove existing trait tags, but keep the input
-        const existingTags = this.selectedContainer.querySelectorAll('.trait-tag');
+        const existingTags = this.selectedContainer.querySelectorAll('.rollconverter-trait-tag');
         existingTags.forEach(tag => tag.remove());
         
-        // Add trait tags before the input
         this.selectedTraits.forEach(trait => {
             const tag = document.createElement('div');
-            tag.className = 'trait-tag';
-            tag.style.cssText = `
-                background: #e3f2fd;
-                color: #1976d2;
-                padding: 2px 8px;
-                border-radius: 12px;
-                font-size: 12px;
-                font-weight: 500;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-                white-space: nowrap;
-            `;
+            tag.className = 'rollconverter-trait-tag';
             
             tag.innerHTML = `
                 ${trait.label}
-                <span class="trait-remove" style="
-                    cursor: pointer;
-                    font-weight: bold;
-                    color: #666;
-                    margin-left: 4px;
-                ">&times;</span>
+                <span class="rollconverter-trait-remove">&times;</span>
             `;
             
-            tag.querySelector('.trait-remove').addEventListener('click', (e) => {
+            tag.querySelector('.rollconverter-trait-remove').addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 this.removeTrait(trait.value);
