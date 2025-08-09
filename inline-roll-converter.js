@@ -60,10 +60,53 @@ class InlineAutomation {
         }
     }
 
+    // Return true if the trait is in the traits array
+    // @param {string} trait - The trait to check
+    // @returns {boolean} - True if the trait is in the traits array
+    hasTrait(trait) {
+        return this.traits.includes(trait);
+    }
+
+    // Add a trait if the trait is not already in the traits array
+    // @param {string} trait - The trait to add
+    // @returns {void}
+    addTrait(trait) {
+        if (!this.hasTrait(trait)) {
+            this.traits.push(trait);
+        }
+    }
+
+    // Remove a trait if the trait is in the traits array
+    // @param {string} trait - The trait to remove
+    // @returns {void}
+    removeTrait(trait) {
+        if (this.hasTrait(trait)) {
+            this.traits = this.traits.filter(t => t !== trait);
+        }
+    }
+
+    // Add or remove a trait based on a boolean value
+    // @param {string} trait - The trait to set
+    // @param {boolean} value - The value to set the trait to
+    // @returns {void}
+    setTrait(trait, value) {
+        if (value) {
+            this.addTrait(trait);
+        } else {
+            this.removeTrait(trait);
+        }
+    }
+
     // Render the options as a string for the inline roll syntax (in alphabetical order)
     // @returns {string} - The rendered options syntax
     renderOptions() {
         return this.options.length > 0 ? `|options:${this.options.sort().join(',')}` : '';
+    }
+
+    // Render the traits as a string for the inline roll syntax (in alphabetical order)
+    // @returns {string} - The rendered traits syntax
+    renderTraits() {
+        return this.traits.length > 0 ? `|traits:${this.traits.sort().join(',')}` : '';
     }
 
     // Generate the inline roll syntax
@@ -304,11 +347,13 @@ class InlineCheck extends InlineAutomation {
         if (this.basic && this.isSave()) { parts.push(`basic`); } // Add basic parameter syntax if it's a save and it's basic
         if (this.showDC !== 'owner') { parts.push(`showDC:${this.showDC}`); } // Add showDC syntax if it's not 'owner'
 
+        // Add traits syntax to parts, minus the leading '|'
+        const traitsSyntax = this.renderTraits().slice(1); // Remove the leading '|'
+        if (traitsSyntax !== '') { parts.push(traitsSyntax); } // Add traits syntax if traits is not empty
+
         // Add options syntax to parts, minus the leading '|'
         const optionsSyntax = this.renderOptions().slice(1); // Remove the leading '|'
         if (optionsSyntax !== '') { parts.push(optionsSyntax); }
-
-        if (this.traits.length > 0) { parts.push(`traits:${this.traits.join(',')}`); } // Add traits syntax if traits is not empty
 
         const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : ''; // Add display text syntax if it's not empty
 
@@ -2148,12 +2193,12 @@ class ModifierPanelManager {
     }
 
     /**
- * Enhanced setup special component listeners with better error handling
- * @param {HTMLElement} formElement - The form element
- * @param {string} type - The replacement type
- * @param {Object} replacement - The replacement object
- * @param {Function} onChangeCallback - The change callback
- */
+     * Enhanced setup special component listeners with better error handling
+     * @param {HTMLElement} formElement - The form element
+     * @param {string} type - The replacement type
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - The change callback
+     */
     setupSpecialComponentListeners(formElement, type, replacement, onChangeCallback) {
         // REMOVED: Special damage handling - now uses standard field configs
         
@@ -4000,6 +4045,53 @@ class AutomationPattern extends BasePattern {
         }
     ];
 
+    /**
+     * Centralized parameter list parser for both options and traits
+     * @param {string} paramContent - The parameter content to search
+     * @param {string} paramType - The parameter type ('options' or 'traits')
+     * @returns {Array} Array of parsed parameter values
+     */
+    static parseParameterListFromSegment(paramContent, paramType) {
+        if (!paramContent || typeof paramContent !== 'string') {
+            return [];
+        }
+        
+        // Create regex pattern for the parameter type (e.g., "options:" or "traits:")
+        const paramPattern = new RegExp(`${paramType}:\\s*([^|\\]]*?)(?:\\||$)`, 'i');
+        const paramMatch = paramContent.match(paramPattern);
+        
+        if (!paramMatch || paramMatch[1] === undefined) {
+            return [];
+        }
+        
+        // Split by comma, trim, convert to lowercase, and filter empty values
+        const raw = paramMatch[1]
+            .split(',')
+            .map((item) => item.trim().toLowerCase())
+            .filter((item) => item.length > 0);
+        
+        // Deduplicate while preserving order
+        return raw.filter((item, index) => raw.indexOf(item) === index);
+    }
+
+    /**
+     * Parse options from parameter content (backward compatibility)
+     * @param {string} paramContent - The parameter content to search
+     * @returns {Array} Array of option strings
+     */
+    static parseOptionsFromSegment(paramContent) {
+        return this.parseParameterListFromSegment(paramContent, 'options');
+    }
+
+    /**
+     * Parse traits from parameter content
+     * @param {string} paramContent - The parameter content to search
+     * @returns {Array} Array of trait strings
+     */
+    static parseTraitsFromSegment(paramContent) {
+        return this.parseParameterListFromSegment(paramContent, 'traits');
+    }
+
     // Extract condition parameters from @UUID links
     static extractConditionParameters(match) {
         const uuid = match[1] || '';
@@ -4057,23 +4149,6 @@ class AutomationPattern extends BasePattern {
         return null;
     }
 
-    // Centralized options parser used by automation extractors
-    static parseOptionsFromSegment(paramContent) {
-        if (!paramContent || typeof paramContent !== 'string') {
-            return [];
-        }
-        const optionsMatch = paramContent.match(/options:\s*([^|\]]*)/i);
-        if (!optionsMatch || optionsMatch[1] === undefined) {
-            return [];
-        }
-        const raw = optionsMatch[1]
-            .split(',')
-            .map((option) => option.trim().toLowerCase())
-            .filter((option) => option.length > 0);
-        // Deduplicate while preserving order
-        return raw.filter((option, index) => raw.indexOf(option) === index);
-    }
-
     static extractDamageParameters(paramContent, displayText) {
         const result = {
             components: [],
@@ -4125,42 +4200,48 @@ class AutomationPattern extends BasePattern {
     }
 
     /**
- * Find damage type in a component text using ConfigManager
- * @param {string} componentText - The component text to search
- * @returns {string} - The damage type, defaults to 'untyped'
- */
-static findDamageTypeInComponent(componentText) {
-    const lowerText = componentText.toLowerCase();
-    
-    // Search for damage types from ConfigManager
-    for (const damageType of ConfigManager.ALL_DAMAGE_TYPES.slugs) {
-        if (damageType && lowerText.includes(damageType)) {
-            // Convert legacy damage types if needed
-            return LegacyConversionManager.convertLegacyDamageType(damageType);
+     * Find damage type in a component text using ConfigManager
+     * @param {string} componentText - The component text to search
+     * @returns {string} - The damage type, defaults to 'untyped'
+     */
+    static findDamageTypeInComponent(componentText) {
+        const lowerText = componentText.toLowerCase();
+        
+        // Search for damage types from ConfigManager
+        for (const damageType of ConfigManager.ALL_DAMAGE_TYPES.slugs) {
+            if (damageType && lowerText.includes(damageType)) {
+                // Convert legacy damage types if needed
+                return LegacyConversionManager.convertLegacyDamageType(damageType);
+            }
         }
+        
+        return 'untyped';
     }
-    
-    return 'untyped';
-}
 
-/**
- * Find damage category in a component text using ConfigManager
- * @param {string} componentText - The component text to search
- * @returns {string} - The damage category, defaults to empty string
- */
-static findDamageCategoryInComponent(componentText) {
-    const lowerText = componentText.toLowerCase();
-    
-    // Search for damage categories from ConfigManager (excluding empty string)
-    for (const category of ConfigManager.DAMAGE_CATEGORIES.slugs) {
-        if (category && lowerText.includes(category)) {
-            return category;
+    /**
+     * Find damage category in a component text using ConfigManager
+     * @param {string} componentText - The component text to search
+     * @returns {string} - The damage category, defaults to empty string
+     */
+    static findDamageCategoryInComponent(componentText) {
+        const lowerText = componentText.toLowerCase();
+        
+        // Search for damage categories from ConfigManager (excluding empty string)
+        for (const category of ConfigManager.DAMAGE_CATEGORIES.slugs) {
+            if (category && lowerText.includes(category)) {
+                return category;
+            }
         }
+        
+        return '';
     }
-    
-    return '';
-}
 
+    /**
+     * Extract check parameters with enhanced traits support
+     * @param {string} paramContent - The parameter content
+     * @param {string} displayText - The display text
+     * @returns {Object} Check parameters including traits
+     */
     static extractCheckParameters(paramContent, displayText) {
         const result = {
             checkType: 'flat',
@@ -4169,6 +4250,7 @@ static findDamageCategoryInComponent(componentText) {
             statistic: '',
             basic: false,
             options: [],
+            traits: [], // Add traits array
             displayText: displayText || ''
         };
 
@@ -4190,8 +4272,9 @@ static findDamageCategoryInComponent(componentText) {
             }
         });
 
-        // Parse options using centralized method
+        // Parse options and traits using centralized methods
         result.options = this.parseOptionsFromSegment(paramContent);
+        result.traits = this.parseTraitsFromSegment(paramContent);
 
         return result;
     }
@@ -4246,7 +4329,7 @@ static findDamageCategoryInComponent(componentText) {
 
     static extractGenericParameters(match) {
         const dice = (match[1] || '').trim();
-        const label = (match[2] || '').trim() || 'Roll';
+        const label = (match[2] || '').trim() || '';
         const displayText = match[3] || '';
         const gmOnly = /\[\[\/gmr/i.test(match[0] || '');
         return {
@@ -4307,6 +4390,7 @@ static findDamageCategoryInComponent(componentText) {
                     dcMethod: 'none',
                     dc: null,
                     options: [],
+                    traits: [], // Add traits to fallback
                     displayText: ''
                 };
             case 'template':
