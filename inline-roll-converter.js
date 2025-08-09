@@ -5189,7 +5189,7 @@ function showConverterDialog() {
         <div class="pf2e-converter-dialog" style="display: flex; flex-direction: row; min-width: 900px;">
             <div style="flex: 2; min-width: 0;">
                 <div class="form-group">
-                    <label for="input-text"><strong>Input Text:</strong></label>
+                    <label for="input-text"><strong>Input Text</strong> <small>Changes here will clear any modifications made below.</small></label>
                     <textarea 
                         id="input-text" 
                         name="inputText" 
@@ -5199,9 +5199,9 @@ function showConverterDialog() {
                         >${DEFAULT_TEST_INPUT}</textarea>
                 </div>
                 <div class="form-group">
-                    <label for="output-text"><strong>Converted Text:</strong></label>
+                    <label for="output-text"><strong>Converted Text</strong> <small>Click an inline roll to modify it.</small></label>
                     <div id="output-html" style="
-                        width: 100%; 
+                        width: 100%;
                         height: 150px;
                         max-height: 150px;
                         overflow-y: auto;
@@ -5217,7 +5217,7 @@ function showConverterDialog() {
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="live-preview"><strong>Live Preview:</strong> <small>(Click inline rolls to test them)</small></label>
+                    <label for="live-preview"><strong>Live Preview</strong> <small>Click inline rolls to test them.</small></label>
                     <div 
                         id="live-preview" 
                         style="
