@@ -4590,7 +4590,8 @@ class CheckPattern extends BasePattern {
         return {
             checkType: checkType,
             dcMethod: 'static',
-            dc: dc
+            dc: dc,
+            basic: basic
         };
     }
 
