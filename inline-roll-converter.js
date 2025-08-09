@@ -318,6 +318,41 @@ class InlineCheck extends InlineAutomation {
     isSave() { // Return true if the check type is 'reflex', 'fortitude', or 'will'
         return this.checkType === 'reflex' || this.checkType === 'fortitude' || this.checkType === 'will';
     }
+
+    isSkillCheck() {
+        return ConfigManager.SKILLS.slugs.includes(this.checkType);
+    }
+
+    isPerceptionCheck() {
+        return this.checkType === 'perception';
+    }
+
+    isLoreCheck() {
+        return this.checkType === 'lore';
+    }
+
+    isFlatCheck() {
+        return this.checkType === 'flat';
+    }
+
+    isOptionRelevant(option) {
+        const relevanceRules = {
+            'area-effect': () => this.isSave(),
+            'damaging-effect': () => this.isSave()
+        }
+
+        const rule = relevanceRules[option];
+        return rule ? rule() : true; // Default to true for unrecognized options
+    }
+
+    getRelevantOptions() {
+        return this.options.filter(option => this.isOptionRelevant(option));
+    }
+
+    renderOptions() {
+        const relevantOptions = this.getRelevantOptions();
+        return relevantOptions.length > 0 ? `|options:${relevantOptions.join(',')}` : '';
+    }
 }
 
 class InlineLink extends InlineAutomation {
@@ -1124,7 +1159,7 @@ class CheckRenderer extends BaseRenderer {
             label: 'Damaging Effect',
             getValue: (r) => r.inlineAutomation.hasOption('damaging-effect') || false,
             setValue: (r, value) => r.inlineAutomation.setOption('damaging-effect', value),
-            showIf: (r) => r.inlineAutomation.isSave()
+            showIf: (r) => r.inlineAutomation.isOptionRelevant('damaging-effect')
         });
 
         configs.push({
@@ -1133,7 +1168,7 @@ class CheckRenderer extends BaseRenderer {
             label: 'Area Effect',
             getValue: (r) => r.inlineAutomation.hasOption('area-effect') || false,
             setValue: (r, value) => r.inlineAutomation.setOption('area-effect', value),
-            showIf: (r) => r.inlineAutomation.isSave()
+            showIf: (r) => r.inlineAutomation.isOptionRelevant('area-effect')
         });
 
         return configs;
