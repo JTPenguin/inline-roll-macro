@@ -48,6 +48,18 @@ class InlineAutomation {
         }
     }
 
+    // Add or remove an option based on a boolean value
+    // @param {string} option - The option to set
+    // @param {boolean} value - The value to set the option to
+    // @returns {void}
+    setOption(option, value) {
+        if (value) {
+            this.addOption(option);
+        } else {
+            this.removeOption(option);
+        }
+    }
+
     // Render the options as a string for the inline roll syntax (in alphabetical order)
     // @returns {string} - The rendered options syntax
     renderOptions() {
@@ -169,11 +181,6 @@ class DamageComponent {
 class InlineDamage extends InlineAutomation {
     constructor(params = {}) {
         super('damage', params);
-
-        // Migrate legacy areaDamage parameter to options
-        if (params.areaDamage) {
-            this.addOption('area-damage');
-        }
         
         // Set properties directly from parameters
         this.healing = params.healing || false;
@@ -182,16 +189,6 @@ class InlineDamage extends InlineAutomation {
         this.components = (params.components || []).map(comp => 
             new DamageComponent(comp.dice, comp.damageType, comp.category)
         );
-    }
-
-    // areaDamage getter/setter for backwards compatibility
-    get areaDamage() { return this.hasOption('area-damage'); }
-    set areaDamage(value) {
-        if (value) {
-            this.addOption('area-damage');
-        } else {
-            this.removeOption('area-damage');
-        }
     }
 
     render() {
@@ -214,12 +211,6 @@ class InlineDamage extends InlineAutomation {
 class InlineCheck extends InlineAutomation {
     constructor(params = {}) {
         super('check', params);
-
-        // Migrate legacy damagingEffect parameter to options
-        if (params.damagingEffect) {
-            this.addOption('damaging-effect');
-        }
-
         // Create internal properties
         this._checkType = 'flat';
         this._loreName = 'warfare';
@@ -1009,8 +1000,9 @@ class DamageRenderer extends BaseRenderer {
             id: 'area-damage',
             type: 'checkbox',
             label: 'Area Damage',
-            getValue: (r) => r.inlineAutomation.areaDamage || false,
-            setValue: (r, value) => { r.inlineAutomation.areaDamage = value; }
+            // Update to use options
+            getValue: (r) => r.inlineAutomation.hasOption('area-damage') || false,
+            setValue: (r, value) => r.inlineAutomation.setOption('area-damage', value)
         });
 
         configs.push({
@@ -1119,13 +1111,7 @@ class CheckRenderer extends BaseRenderer {
             type: 'checkbox',
             label: 'Damaging Effect',
             getValue: (r) => r.inlineAutomation.hasOption('damaging-effect') || false,
-            setValue: (r, value) => {
-                if (value) {
-                    r.inlineAutomation.addOption('damaging-effect');
-                } else {
-                    r.inlineAutomation.removeOption('damaging-effect');
-                }
-            },
+            setValue: (r, value) => r.inlineAutomation.setOption('damaging-effect', value),
             showIf: (r) => r.inlineAutomation.isSave()
         });
 
@@ -1134,13 +1120,7 @@ class CheckRenderer extends BaseRenderer {
             type: 'checkbox',
             label: 'Area Effect',
             getValue: (r) => r.inlineAutomation.hasOption('area-effect') || false,
-            setValue: (r, value) => {
-                if (value) {
-                    r.inlineAutomation.addOption('area-effect');
-                } else {
-                    r.inlineAutomation.removeOption('area-effect');
-                }
-            },
+            setValue: (r, value) => r.inlineAutomation.setOption('area-effect', value),
             showIf: (r) => r.inlineAutomation.isSave()
         });
 
@@ -2189,7 +2169,7 @@ class ModifierPanelManager {
             if (fieldId === 'enabled') {
                 rep.enabled = value;
             } else if (fieldId === 'area-damage') {
-                rep.areaDamage = value;
+                rep.inlineAutomation.setOption('area-damage', value);
             }
             
             console.log('[ModifierPanelManager] Updated main field:', fieldId, value);
@@ -3825,13 +3805,32 @@ class AutomationPattern extends BasePattern {
         return null;
     }
 
+    // Centralized options parser used by automation extractors
+    static parseOptionsFromSegment(paramContent) {
+        if (!paramContent || typeof paramContent !== 'string') {
+            return [];
+        }
+        const optionsMatch = paramContent.match(/options:\s*([^|\]]*)/i);
+        if (!optionsMatch || optionsMatch[1] === undefined) {
+            return [];
+        }
+        const raw = optionsMatch[1]
+            .split(',')
+            .map((option) => option.trim().toLowerCase())
+            .filter((option) => option.length > 0);
+        // Deduplicate while preserving order
+        return raw.filter((option, index) => raw.indexOf(option) === index);
+    }
+
     static extractDamageParameters(paramContent, displayText) {
         const result = {
             components: [],
-            areaDamage: /area-damage/.test(paramContent) || /options:\s*[^|]*area-damage/i.test(paramContent),
+            options: [],
             healing: /healing/.test(paramContent),
             displayText: displayText || ''
         };
+        // Parse options early so we capture them even if no dice are found
+        result.options = this.parseOptionsFromSegment(paramContent);
     
         // Find all dice expressions and their positions
         const dicePattern = /(\d+(?:d\d+)?(?:[+-]\d+)?)/g;
@@ -3917,7 +3916,7 @@ static findDamageCategoryInComponent(componentText) {
             dc: null,
             statistic: '',
             basic: false,
-            damagingEffect: false,
+            options: [],
             displayText: displayText || ''
         };
 
@@ -3936,10 +3935,11 @@ static findDamageCategoryInComponent(componentText) {
                 result.statistic = segment.substring(8);
             } else if (segment === 'basic') {
                 result.basic = true;
-            } else if (segment.includes('damaging-effect')) {
-                result.damagingEffect = true;
             }
         });
+
+        // Parse options using centralized method
+        result.options = this.parseOptionsFromSegment(paramContent);
 
         return result;
     }
@@ -4045,7 +4045,7 @@ static findDamageCategoryInComponent(componentText) {
             case 'damage':
                 return {
                     components: [{ dice: '1d1', damageType: 'untyped', category: '' }],
-                    areaDamage: false,
+                    options: [],
                     healing: false,
                     displayText: ''
                 };
@@ -4054,6 +4054,7 @@ static findDamageCategoryInComponent(componentText) {
                     checkType: 'flat',
                     dcMethod: 'none',
                     dc: null,
+                    options: [],
                     displayText: ''
                 };
             case 'template':
@@ -4136,7 +4137,7 @@ class DamagePattern extends BasePattern {
         
         return {
             components: components,
-            areaDamage: false,
+            options: [],
             healing: false
         };
     }
@@ -4145,7 +4146,7 @@ class DamagePattern extends BasePattern {
         const component = this.extractSingleDamageComponent(match);
         return {
             components: component ? [component] : [],
-            areaDamage: false,
+            options: [],
             healing: false
         };
     }
@@ -4393,7 +4394,7 @@ class HealingPattern extends BasePattern {
     static extractHealingParameters(match) {
         const dice = match[1] || '';
         const healingComponent = { dice: dice, damageType: 'untyped', category: '' };
-        return { components: [healingComponent], areaDamage: false, healing: true };
+        return { components: [healingComponent], options: [], healing: true };
     }
 }
 
