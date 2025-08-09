@@ -1601,33 +1601,6 @@ class CSSManager {
                 width: 100%;
             }
 
-            .rollconverter-traits-selected {
-                min-height: 32px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 4px;
-                background: white;
-                cursor: text;
-                display: flex;
-                flex-wrap: wrap;
-                gap: 4px;
-                align-items: center;
-            }
-
-            .rollconverter-traits-selected:focus-within {
-                border-color: #1976d2;
-                box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
-            }
-
-            .rollconverter-traits-input {
-                border: none;
-                outline: none;
-                background: transparent;
-                flex: 1;
-                min-width: 120px;
-                font-size: 14px;
-            }
-
             .rollconverter-traits-dropdown {
                 position: absolute;
                 top: 100%;
@@ -1657,34 +1630,31 @@ class CSSManager {
                 background: #e3f2fd !important;
             }
 
-            .rollconverter-trait-tag {
-                background: var(--color-bg-trait, #e3f2fd) !important;
-                color: var(--color-text-trait, #1976d2) !important;
-                border: solid 1px var(--color-border-trait, #bbdefb);
-                font-weight: 500;
-                text-transform: uppercase;
-                font-size: 10px;
-                letter-spacing: 0.05em;
-                padding: 2px 8px;
-                border-radius: 12px;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-                white-space: nowrap;
+            .rollconverter-trait-tag div {
+                margin: 0 1px 0 4px;
             }
 
-            .rollconverter-trait-remove {
+            .rollconverter-trait-tag .rollconverter-trait-remove {
                 cursor: pointer;
-                font-weight: bold;
-                color: #666;
-                margin-left: 4px;
                 color: inherit;
                 opacity: 0.7;
+                font-size: 12px;
+                line-height: 1;
+                padding: 0 2px;
+                border-radius: 2px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
             }
 
-            .rollconverter-trait-remove:hover {
+            .rollconverter-trait-tag .rollconverter-trait-remove:hover {
                 opacity: 1;
+                background: rgba(211, 47, 47, 0.1);
                 color: #d32f2f;
+            }
+
+            .rollconverter-trait-tag .rollconverter-trait-text {
+                display: inline;
             }
 
             .rollconverter-traits-dropdown-empty {
@@ -2259,7 +2229,7 @@ class ModifierPanelManager {
         if (!renderer || !renderer.supportsTraits(replacement)) return;
         
         const traitsInput = new TraitsInput(container.id, {
-            placeholder: 'Type trait name and press Enter...',
+            placeholder: '',
             onChange: (selectedTraits) => {
                 // Convert trait objects to simple string array
                 let enhancedTraits = selectedTraits.map(t => t.value);
@@ -5659,6 +5629,7 @@ function getTraitOptions() {
 /**
  * Enhanced traits input component that mimics pf2e system behavior
  * Supports typing, filtering, multiple selection, and tab completion
+ * FIXED: Proper handling of contenteditable span value access
  */
 class TraitsInput {
     constructor(containerId, options = {}) {
@@ -5685,35 +5656,66 @@ class TraitsInput {
         
         container.innerHTML = `
             <div class="rollconverter-traits-wrapper">
-                <div class="rollconverter-traits-selected">
-                    <input 
-                        type="text" 
-                        class="rollconverter-traits-input"
-                        placeholder="${this.options.placeholder}"
-                    />
-                </div>
+                <tags class="tagify tags paizo-style" tabindex="-1">
+                    <span 
+                        contenteditable="true" 
+                        tabindex="0" 
+                        data-placeholder="${this.options.placeholder}" 
+                        aria-placeholder="${this.options.placeholder}" 
+                        class="tagify__input" 
+                        role="textbox" 
+                        aria-autocomplete="both" 
+                        aria-multiline="false"
+                    ></span>
+                </tags>
                 <div class="rollconverter-traits-dropdown"></div>
             </div>
         `;
         
         this.wrapper = container.querySelector('.rollconverter-traits-wrapper');
-        this.selectedContainer = container.querySelector('.rollconverter-traits-selected');
-        this.searchInput = container.querySelector('.rollconverter-traits-input');
+        this.selectedContainer = container.querySelector('tags.tagify');
+        this.searchInput = container.querySelector('span.tagify__input');
         this.dropdown = container.querySelector('.rollconverter-traits-dropdown');
+    }
+    
+    /**
+     * FIXED: Safe method to get the current input value from contenteditable span
+     * @returns {string} Current input value
+     */
+    getCurrentInputValue() {
+        if (!this.searchInput) return '';
+        
+        // For contenteditable spans, use textContent, fallback to innerText, then empty string
+        const value = this.searchInput.textContent || this.searchInput.innerText || '';
+        return value.trim();
+    }
+    
+    /**
+     * FIXED: Safe method to set the input value
+     * @param {string} value - Value to set
+     */
+    setCurrentInputValue(value) {
+        if (!this.searchInput) return;
+        
+        // For contenteditable spans, set textContent
+        this.searchInput.textContent = value || '';
     }
     
     bindEvents() {
         if (!this.searchInput || !this.dropdown) return;
         
-        // Input events
+        // Input events - note that we're now working with a contenteditable span
         this.searchInput.addEventListener('input', (e) => {
             e.stopPropagation();
-            this.handleInput(e);
+            const query = this.getCurrentInputValue(); // FIXED: Use safe method
+            this.handleInput({ target: { value: query } });
         });
+        
         this.searchInput.addEventListener('focus', (e) => {
             e.stopPropagation();
             this.openDropdown();
         });
+        
         this.searchInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
         this.searchInput.addEventListener('blur', (e) => setTimeout(() => this.closeDropdown(), 150));
         
@@ -5732,7 +5734,7 @@ class TraitsInput {
     }
     
     handleInput(e) {
-        const query = e.target.value.toLowerCase();
+        const query = (e.target.value || '').toLowerCase();
         this.filterOptions(query);
         this.openDropdown();
     }
@@ -5761,7 +5763,8 @@ class TraitsInput {
                 this.closeDropdown();
                 break;
             case 'Backspace':
-                if (e.target.value === '' && this.selectedTraits.length > 0) {
+                const inputText = this.getCurrentInputValue(); // FIXED: Use safe method
+                if (inputText === '' && this.selectedTraits.length > 0) {
                     e.preventDefault();
                     e.stopPropagation();
                     this.removeTrait(this.selectedTraits[this.selectedTraits.length - 1].value);
@@ -5771,17 +5774,29 @@ class TraitsInput {
     }
     
     filterOptions(query) {
-        const normalizedQuery = query.toLowerCase().trim();
-        this.filteredOptions = this.traitOptions.filter(trait => 
-            trait.label.toLowerCase().includes(normalizedQuery) &&
-            !this.selectedTraits.some(selected => selected.value === trait.value)
-        );
+        const normalizedQuery = (query || '').toLowerCase().trim(); // FIXED: Handle undefined query
         
-        // Auto-select first option if we have results and query is not empty
-        if (this.filteredOptions.length > 0 && normalizedQuery) {
-            this.activeIndex = 0;
+        if (normalizedQuery === '') {
+            // When no query, show all available traits (not already selected)
+            this.filteredOptions = this.traitOptions.filter(trait => 
+                trait && trait.label && // FIXED: Check trait and trait.label exist
+                !this.selectedTraits.some(selected => selected && selected.value === trait.value)
+            );
+            this.activeIndex = -1; // No auto-selection when showing all options
         } else {
-            this.activeIndex = -1;
+            // When there's a query, filter by the search term
+            this.filteredOptions = this.traitOptions.filter(trait => 
+                trait && trait.label && // FIXED: Check trait and trait.label exist
+                trait.label.toLowerCase().includes(normalizedQuery) &&
+                !this.selectedTraits.some(selected => selected && selected.value === trait.value)
+            );
+            
+            // Auto-select first option if we have results and query is not empty
+            if (this.filteredOptions.length > 0) {
+                this.activeIndex = 0;
+            } else {
+                this.activeIndex = -1;
+            }
         }
         
         this.renderDropdown();
@@ -5812,24 +5827,29 @@ class TraitsInput {
         if (this.activeIndex >= 0 && this.filteredOptions[this.activeIndex]) {
             // Use selected option from dropdown
             this.addTrait(this.filteredOptions[this.activeIndex]);
-        } else if (this.searchInput.value.trim()) {
-            // Try to add based on typed text
-            this.addTraitFromText(this.searchInput.value.trim());
+        } else {
+            const inputText = this.getCurrentInputValue(); // FIXED: Use safe method
+            if (inputText.trim()) {
+                // Try to add based on typed text
+                this.addTraitFromText(inputText.trim());
+            }
         }
     }
     
     addTraitFromText(text) {
-        const normalizedText = text.toLowerCase().trim();
+        const normalizedText = (text || '').toLowerCase().trim(); // FIXED: Handle undefined text
+        
+        if (!normalizedText) return; // FIXED: Exit early if no text
         
         // First, try to find exact match by label
         let matchedTrait = this.traitOptions.find(trait => 
-            trait.label.toLowerCase() === normalizedText
+            trait && trait.label && trait.label.toLowerCase() === normalizedText
         );
         
         // If no exact match, try partial match
         if (!matchedTrait) {
             matchedTrait = this.traitOptions.find(trait => 
-                trait.label.toLowerCase().includes(normalizedText)
+                trait && trait.label && trait.label.toLowerCase().includes(normalizedText)
             );
         }
         
@@ -5849,15 +5869,10 @@ class TraitsInput {
     openDropdown() {
         this.isOpen = true;
         this.dropdown.style.display = 'block';
-        const query = this.searchInput.value;
+        const query = this.getCurrentInputValue(); // FIXED: Use safe method
         
-        // Only show options if user has typed something or if there are no selected traits
-        if (query.trim() || this.selectedTraits.length === 0) {
-            this.filterOptions(query);
-        } else {
-            this.filteredOptions = [];
-            this.renderDropdown();
-        }
+        // Always filter and show available options when dropdown opens
+        this.filterOptions(query);
     }
     
     closeDropdown() {
@@ -5868,7 +5883,7 @@ class TraitsInput {
     
     renderDropdown() {
         if (this.filteredOptions.length === 0) {
-            const query = this.searchInput.value.trim();
+            const query = this.getCurrentInputValue(); // FIXED: Use safe method
             if (query) {
                 this.dropdown.innerHTML = `
                     <div class="rollconverter-traits-dropdown-empty">
@@ -5902,56 +5917,95 @@ class TraitsInput {
     }
     
     addTrait(trait) {
-        if (!this.selectedTraits.some(selected => selected.value === trait.value)) {
+        if (!trait || !trait.value) return; // FIXED: Check trait exists
+        
+        if (!this.selectedTraits.some(selected => selected && selected.value === trait.value)) {
             this.selectedTraits.push(trait);
             this.renderSelected();
-            this.searchInput.value = '';
+            this.setCurrentInputValue(''); // FIXED: Use safe method to clear contenteditable
             this.filterOptions('');
+            this.closeDropdown(); // Close dropdown when trait is added
+            this.searchInput.blur(); // Remove focus to align with PF2e system behavior
             if (this.options.onChange) {
                 this.options.onChange(this.selectedTraits);
             }
         }
-        this.searchInput.focus();
     }
     
     removeTrait(value) {
-        this.selectedTraits = this.selectedTraits.filter(trait => trait.value !== value);
+        if (!value) return; // FIXED: Check value exists
+        
+        this.selectedTraits = this.selectedTraits.filter(trait => trait && trait.value !== value);
         this.renderSelected();
-        this.filterOptions(this.searchInput.value);
+        
+        // FIXED: Use safe method to get current input value
+        const currentQuery = this.getCurrentInputValue();
+        this.filterOptions(currentQuery);
+        
         if (this.options.onChange) {
             this.options.onChange(this.selectedTraits);
         }
     }
     
     renderSelected() {
-        const existingTags = this.selectedContainer.querySelectorAll('.rollconverter-trait-tag');
+        // Remove existing trait tags (but keep the input span)
+        const existingTags = this.selectedContainer.querySelectorAll('tag.tagify__tag');
         existingTags.forEach(tag => tag.remove());
         
-        this.selectedTraits.forEach(trait => {
-            const tag = document.createElement('div');
-            tag.className = 'rollconverter-trait-tag';
+        this.selectedTraits.forEach((trait, index) => {
+            if (!trait || !trait.value || !trait.label) return; // FIXED: Check trait properties exist
+            
+            const tag = document.createElement('tag');
+            
+            // Use exact PF2e Tagify structure and attributes
+            tag.className = 'tagify__tag tagify--noAnim';
+            tag.setAttribute('contenteditable', 'false');
+            tag.setAttribute('spellcheck', 'false');
+            tag.setAttribute('tabindex', '-1');
+            tag.setAttribute('id', trait.value);
+            tag.setAttribute('value', trait.label);
+            tag.setAttribute('data-tooltip', `PF2E.TraitDescription${trait.label}`); // PF2e tooltip pattern
+            tag.setAttribute('isvalid', 'true');
+            tag.setAttribute('tagid', this.generateTagId()); // Generate unique tag ID
             
             tag.innerHTML = `
-                ${trait.label}
-                <span class="rollconverter-trait-remove">&times;</span>
+                <x class="tagify__tag__removeBtn" role="button" aria-label="remove tag"></x>
+                <div><span class="tagify__tag-text">${trait.label}</span></div>
             `;
             
-            tag.querySelector('.rollconverter-trait-remove').addEventListener('click', (e) => {
+            // Add remove functionality
+            tag.querySelector('x.tagify__tag__removeBtn').addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 this.removeTrait(trait.value);
             });
             
+            // Insert before the input span
             this.selectedContainer.insertBefore(tag, this.searchInput);
+        });
+    }
+
+    generateTagId() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
         });
     }
     
     setValue(traits, triggerChange = false) {
+        if (!Array.isArray(traits)) {
+            console.warn('[TraitsInput] setValue called with non-array:', traits);
+            return;
+        }
+        
         // Convert string array to trait objects
         this.selectedTraits = traits.map(value => {
-            const traitOption = this.traitOptions.find(option => option.value === value);
+            if (!value) return null; // FIXED: Handle undefined/null values
+            const traitOption = this.traitOptions.find(option => option && option.value === value);
             return traitOption || { label: value, value: value };
-        });
+        }).filter(trait => trait !== null); // FIXED: Remove null entries
+        
         this.renderSelected();
         this.filterOptions('');
         
@@ -5962,7 +6016,9 @@ class TraitsInput {
     }
     
     getValue() {
-        return this.selectedTraits.map(trait => trait.value);
+        return this.selectedTraits
+            .filter(trait => trait && trait.value) // FIXED: Filter out invalid traits
+            .map(trait => trait.value);
     }
 }
 
