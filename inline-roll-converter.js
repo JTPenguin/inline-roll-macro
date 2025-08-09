@@ -3629,9 +3629,9 @@ class ConfigManager {
     }
 
     static get ACTION_DC_METHODS() {
-        if (!this._cache.has('DC_METHODS')) {
-            this._cache.set('DC_METHODS', new ConfigCategory(
-                ['none', 'static', 'target', 'origin'],
+        if (!this._cache.has('ACTION_DC_METHODS')) {
+            this._cache.set('ACTION_DC_METHODS', new ConfigCategory(
+                ['none', 'static', 'target'],
                 {
                     none: 'No DC',
                     static: 'Static DC',
@@ -3639,7 +3639,7 @@ class ConfigManager {
                 }
             ));
         }
-        return this._cache.get('DC_METHODS');
+        return this._cache.get('ACTION_DC_METHODS');
     }
 
     static get SHOW_DCS() {
