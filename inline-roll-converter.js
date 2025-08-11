@@ -225,25 +225,143 @@ class InlineDamage extends InlineAutomation {
     constructor(params = {}) {
         super('damage', params);
         
-        // Set properties directly from parameters
         this.healing = params.healing || false;
         
         // Convert component parameter objects to DamageComponent instances
         this.components = (params.components || []).map(comp => 
             new DamageComponent(comp.dice, comp.damageType, comp.category)
         );
+        
+        // Ensure we always have at least one component
+        if (this.components.length === 0) {
+            this.components.push(new DamageComponent('1d6', 'untyped', ''));
+        }
+    }
+
+    /**
+     * Add a new damage component
+     * @param {string} dice - Dice expression (default: '1d6')
+     * @param {string} damageType - Damage type (default: 'untyped')
+     * @param {string} category - Damage category (default: '')
+     * @returns {DamageComponent} The newly added component
+     */
+    addComponent(dice = '1d6', damageType = 'untyped', category = '') {
+        const newComponent = new DamageComponent(dice, damageType, category);
+        this.components.push(newComponent);
+        console.log('[InlineDamage] Added component:', newComponent.toJSON());
+        return newComponent;
+    }
+
+    /**
+     * Remove a damage component by index
+     * @param {number} index - Index of component to remove
+     * @returns {boolean} True if component was removed, false otherwise
+     */
+    removeComponent(index) {
+        if (index < 0 || index >= this.components.length) {
+            console.warn(`[InlineDamage] Cannot remove component at index ${index}: out of bounds`);
+            return false;
+        }
+
+        // Prevent removing the last component
+        if (this.components.length <= 1) {
+            console.warn('[InlineDamage] Cannot remove last damage component');
+            return false;
+        }
+
+        const removedComponent = this.components.splice(index, 1)[0];
+        console.log('[InlineDamage] Removed component:', removedComponent.toJSON());
+        return true;
+    }
+
+    /**
+     * Get a component by index
+     * @param {number} index - Index of component to get
+     * @returns {DamageComponent|null} The component or null if not found
+     */
+    getComponent(index) {
+        if (index < 0 || index >= this.components.length) {
+            return null;
+        }
+        return this.components[index];
+    }
+
+    /**
+     * Update a component at a specific index
+     * @param {number} index - Index of component to update
+     * @param {Object} updates - Object with properties to update
+     * @returns {boolean} True if component was updated, false otherwise
+     */
+    updateComponent(index, updates) {
+        const component = this.getComponent(index);
+        if (!component) {
+            console.warn(`[InlineDamage] Cannot update component at index ${index}: not found`);
+            return false;
+        }
+
+        if (updates.dice !== undefined) component.dice = updates.dice;
+        if (updates.damageType !== undefined) component.damageType = updates.damageType;
+        if (updates.category !== undefined) component.category = updates.category;
+
+        console.log(`[InlineDamage] Updated component ${index}:`, component.toJSON());
+        return true;
+    }
+
+    /**
+     * Get the number of components
+     * @returns {number} Number of damage components
+     */
+    getComponentCount() {
+        return this.components.length;
+    }
+
+    /**
+     * Ensure we always have at least one valid component
+     */
+    ensureMinimumComponents() {
+        if (this.components.length === 0) {
+            this.addComponent();
+            console.log('[InlineDamage] Added default component to ensure minimum');
+        }
+    }
+
+    /**
+     * Check if all components are valid
+     * @returns {boolean} True if all components are valid
+     */
+    validate() {
+        if (this.components.length === 0) {
+            console.warn('[InlineDamage] No damage components found');
+            return false;
+        }
+
+        const validComponents = this.components.filter(component => component.validate());
+        
+        if (validComponents.length === 0) {
+            console.warn('[InlineDamage] No valid damage components found');
+            return false;
+        }
+
+        if (validComponents.length !== this.components.length) {
+            console.warn(`[InlineDamage] ${this.components.length - validComponents.length} invalid components found`);
+        }
+
+        return true;
     }
 
     render() {
+        // Ensure we have at least one component before rendering
+        this.ensureMinimumComponents();
+    
         // Render the syntax for each damage component
         const componentSyntax = [];
         this.components.forEach((component, index) => {
             componentSyntax.push(component.render(this.healing));
         });
-
+    
         const optionsSyntax = this.renderOptions();
-        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : ''; // Add display text syntax if it's not empty
-
+        const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : '';
+    
         // Return the complete syntax
         return `@Damage[${componentSyntax.join(',')}${optionsSyntax}]${displayTextSyntax}`;
     }
@@ -976,6 +1094,22 @@ class FieldRenderer {
                     </div>
                 `;
 
+            case 'button':
+                const action = options.action || '';
+                const componentIndex = options.componentIndex !== undefined ? 
+                    `data-component-index="${options.componentIndex}"` : '';
+                return `
+                    <div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">
+                        <div class="form-fields">
+                            <button type="button" id="${fieldId}" class="rollconverter-action-button" 
+                                    data-action="${action}" ${componentIndex}>
+                                ${label}
+                            </button>
+                        </div>
+                        ${options.notes ? `<p class="notes">${options.notes}</p>` : ''}
+                    </div>
+                `;
+
             default:
                 return `<div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">Unknown field type: ${type}</div>`;
         }
@@ -1031,29 +1165,43 @@ class DamageRenderer extends BaseRenderer {
     getTypeSpecificFieldConfigs(replacement) {
         const configs = [];
     
-        // Ensure components array exists
-        if (!replacement.inlineAutomation.components || !Array.isArray(replacement.inlineAutomation.components)) {
-            replacement.inlineAutomation.components = [];
-        }
+        // Ensure components array exists and has minimum components
+        replacement.inlineAutomation.ensureMinimumComponents();
         
-        // Generate field configs for each component using the standard system
-        replacement.inlineAutomation.components.forEach((component, index) => {
+        // Generate field configs for each existing component
+        const componentCount = replacement.inlineAutomation.getComponentCount();
+        
+        for (let index = 0; index < componentCount; index++) {
+            // Component removal button - triggers config refresh because it changes structure
+            if (componentCount > 1) {
+                configs.push({
+                    id: `remove-component-${index}`,
+                    type: 'button',
+                    label: 'Remove',
+                    action: 'remove-component',
+                    componentIndex: index,
+                    triggersUpdate: 'config-refresh',  // ← Declarative: this action needs fresh configs
+                    isComponentField: true
+                });
+            }
+            
+            // Component data fields - these work fine with current configs
             configs.push({
                 id: `component-${index}-dice`,
                 type: 'text',
                 label: `Dice`,
-                getValue: (r) => r.inlineAutomation.components[index]?.dice || '',
+                getValue: (r) => {
+                    const component = r.inlineAutomation.getComponent(index);
+                    return component ? component.dice : '';
+                },
                 setValue: (r, value) => {
-                    if (!r.inlineAutomation.components[index]) {
-                        r.inlineAutomation.components[index] = new DamageComponent();
-                    }
-                    r.inlineAutomation.components[index].dice = value;
+                    r.inlineAutomation.updateComponent(index, { dice: value });
                 },
                 placeholder: 'e.g., 2d6+3',
-                // ADD these new properties:
                 isComponentField: true,
                 componentIndex: index,
                 componentField: 'dice'
+                // No triggersUpdate specified = defaults to 'field-only'
             });
             
             configs.push({
@@ -1061,17 +1209,17 @@ class DamageRenderer extends BaseRenderer {
                 type: 'select',
                 label: `Type`,
                 options: ConfigManager.DAMAGE_TYPES.options,
-                getValue: (r) => r.inlineAutomation.components[index]?.damageType || '',
-                setValue: (r, value) => {
-                    if (!r.inlineAutomation.components[index]) {
-                        r.inlineAutomation.components[index] = new DamageComponent();
-                    }
-                    r.inlineAutomation.components[index].damageType = value;
+                getValue: (r) => {
+                    const component = r.inlineAutomation.getComponent(index);
+                    return component ? component.damageType : '';
                 },
-                // ADD these new properties:
+                setValue: (r, value) => {
+                    r.inlineAutomation.updateComponent(index, { damageType: value });
+                },
                 isComponentField: true,
                 componentIndex: index,
                 componentField: 'damageType'
+                // No triggersUpdate specified = defaults to 'field-only'
             });
             
             configs.push({
@@ -1079,29 +1227,39 @@ class DamageRenderer extends BaseRenderer {
                 type: 'select',
                 label: `Category`,
                 options: ConfigManager.DAMAGE_CATEGORIES.options,
-                getValue: (r) => r.inlineAutomation.components[index]?.category || '',
-                setValue: (r, value) => {
-                    if (!r.inlineAutomation.components[index]) {
-                        r.inlineAutomation.components[index] = new DamageComponent();
-                    }
-                    r.inlineAutomation.components[index].category = value;
+                getValue: (r) => {
+                    const component = r.inlineAutomation.getComponent(index);
+                    return component ? component.category : '';
                 },
-                // ADD these new properties:
+                setValue: (r, value) => {
+                    r.inlineAutomation.updateComponent(index, { category: value });
+                },
                 isComponentField: true,
                 componentIndex: index,
                 componentField: 'category'
+                // No triggersUpdate specified = defaults to 'field-only'
             });
+        }
+
+        // Add component button - triggers config refresh because it changes structure
+        configs.push({
+            id: 'add-component',
+            type: 'button',
+            label: 'Add Damage Partial',
+            action: 'add-component',
+            triggersUpdate: 'config-refresh'  // ← Declarative: this action needs fresh configs
         });
-    
-        // Area damage field (no changes needed)
+
+        // Global fields that don't affect component structure
         configs.push({
             id: 'area-damage',
             type: 'checkbox',
             label: 'Area Damage',
             getValue: (r) => r.inlineAutomation.hasOption('area-damage') || false,
             setValue: (r, value) => r.inlineAutomation.setOption('area-damage', value)
+            // No triggersUpdate specified = defaults to 'field-only'
         });
-    
+
         configs.push({
             id: 'healing',
             type: 'checkbox',
@@ -1110,7 +1268,7 @@ class DamageRenderer extends BaseRenderer {
             setValue: (r, value) => { r.inlineAutomation.healing = value; },
             showIf: (r) => r.inlineAutomation.components.length === 1
         });
-    
+
         return configs;
     }
 
@@ -1697,6 +1855,51 @@ class CSSManager {
                 color: #666;
                 font-style: italic;
             }
+
+            /* ===== DAMAGE COMPONENT LAYOUT ===== */
+            .rollconverter-damage-component {
+                background: var(--color-bg-option);
+                border: 1px solid var(--color-border-light-secondary);
+                border-radius: 4px;
+                margin: 8px 0;
+                padding: 8px 10px;
+            }
+
+            .rollconverter-damage-component legend {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                width: 100%;
+                font-weight: bold;
+                padding: 0 4px;
+            }
+
+            .rollconverter-damage-component legend span {
+                flex-grow: 1;
+            }
+
+            /* ===== COMPONENT MANAGEMENT CONTROLS ===== */
+
+            #add-component-container .form-fields {
+                display: flex;
+                justify-content: right;
+            }
+
+            .rollconverter-action-button[data-action="add-component"] {
+                min-width: 140px;
+                white-space: nowrap;
+            }
+
+            .rollconverter-action-button[data-action="remove-component"] {
+                background: var(--color-warning);
+                color: white;
+                font-size: 10px;
+                padding: 2px 6px;
+            }
+
+            .rollconverter-action-button[data-action="remove-component"]:hover {
+                background: var(--color-danger);
+            }
         `;
     }
 }
@@ -1712,10 +1915,11 @@ class ModifierPanelManager {
     
     // Update scope constants for targeted updates
     static UpdateScope = {
-        FIELD_ONLY: 'field-only',      // No additional updates needed
-        VISIBILITY: 'visibility',      // Update field visibility only
-        PANEL_PARTIAL: 'panel-partial', // Update dependent fields
-        PANEL_FULL: 'panel-full'       // Complete panel regeneration
+        FIELD_ONLY: 'field-only',           // No additional updates needed
+        VISIBILITY: 'visibility',           // Update field visibility only
+        PANEL_PARTIAL: 'panel-partial',     // Update dependent fields
+        PANEL_FULL: 'panel-full',          // Complete panel regeneration (preserves configs)
+        CONFIG_REFRESH: 'config-refresh'    // Regenerate configs and full panel (no preservation)
     };
     
     constructor() {
@@ -1885,9 +2089,14 @@ class ModifierPanelManager {
      */
     handleFieldUpdate(replacement, fieldConfig, updateScope, onChangeCallback) {
         try {
-            // Debug logging
-            const oldValue = fieldConfig.getValue(replacement);
-            this.debugFieldUpdate(fieldConfig.id, oldValue, fieldConfig.getValue(replacement), updateScope);
+            // Debug logging - only if getValue exists (not for synthetic field configs)
+            if (fieldConfig.getValue) {
+                const oldValue = fieldConfig.getValue(replacement);
+                this.debugFieldUpdate(fieldConfig.id, oldValue, fieldConfig.getValue(replacement), updateScope);
+            } else {
+                // For synthetic field configs (like component actions), just log the action
+                this.debugFieldUpdate(fieldConfig.id, 'synthetic', 'synthetic', updateScope);
+            }
             
             // Validate new value if validation function is provided
             if (fieldConfig.validate) {
@@ -1917,6 +2126,11 @@ class ModifierPanelManager {
                 case ModifierPanelManager.UpdateScope.PANEL_FULL:
                     this.regeneratePanel(this.currentForm, replacement, onChangeCallback);
                     break;
+                    
+                case ModifierPanelManager.UpdateScope.CONFIG_REFRESH:
+                    // Clean refresh: regenerate configs and panel without preservation
+                    this.refreshConfigsAndRegeneratePanel(this.currentForm, replacement, onChangeCallback);
+                    break;
             }
             
             // Always call the change callback
@@ -1928,6 +2142,116 @@ class ModifierPanelManager {
             console.error(`[ModifierPanelManager] Error updating field ${fieldConfig.id}:`, error);
             this.showFieldError(fieldConfig.id, 'Update failed');
         }
+    }
+
+    /**
+     * Clean config refresh without state preservation complexity
+     * When field configurations need to be regenerated (e.g., after structural changes),
+     * we start fresh rather than trying to preserve potentially stale state.
+     * 
+     * @param {HTMLElement} formElement - The form element
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - Callback function
+     */
+    refreshConfigsAndRegeneratePanel(formElement, replacement, onChangeCallback) {
+        console.log('[ModifierPanelManager] Refreshing configs and regenerating panel (preserving header controls)');
+        
+        const renderer = this.renderers[replacement.type];
+        if (!renderer) return;
+        
+        // Find the existing fieldset and header controls
+        const existingFieldset = formElement.querySelector('fieldset.rollconverter-modifier-fieldset');
+        const existingHeaderControls = existingFieldset?.querySelector('.form-group'); // First form-group contains header controls
+        
+        if (!existingFieldset) {
+            console.warn('[ModifierPanelManager] Could not find existing fieldset, falling back to full regeneration');
+            return this.regeneratePanel(formElement, replacement, onChangeCallback);
+        }
+        
+        // Clean up existing non-header listeners
+        this.cleanupNonHeaderEventListeners();
+        
+        // Generate completely fresh field configurations
+        const freshFieldConfigs = renderer.getEnhancedFieldConfigs(replacement);
+        
+        // Generate fresh panel HTML and extract just the content we need
+        const panelHTML = this.generatePanelHTML(replacement.type, replacement);
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = panelHTML;
+        const newFieldset = tempDiv.querySelector('fieldset.rollconverter-modifier-fieldset');
+        
+        if (newFieldset) {
+            // Get all form groups except the first one (which contains header controls)
+            const newContentGroups = Array.from(newFieldset.children).slice(2); // Skip legend and header controls
+            
+            // Remove old content (everything after header controls)
+            const childrenToRemove = Array.from(existingFieldset.children).slice(2);
+            childrenToRemove.forEach(child => child.remove());
+            
+            // Add new content
+            newContentGroups.forEach(group => existingFieldset.appendChild(group));
+            
+            // Update stored configurations with fresh ones
+            this.currentFieldConfigs = freshFieldConfigs;
+            
+            // Re-setup event listeners for the new content only
+            this.addFormListenersForContent(formElement, replacement.type, replacement, onChangeCallback);
+        }
+        
+        console.log('[ModifierPanelManager] Config refresh complete - panel content refreshed, header preserved');
+    }
+
+    /**
+     * Clean up event listeners except for header controls (enabled checkbox and reset button)
+     */
+    cleanupNonHeaderEventListeners() {
+        const headerListenerKeys = ['enabled-change', 'modifier-reset-btn-click'];
+        
+        // Clean up all listeners except header ones
+        const listenersToRemove = [];
+        this.attachedListeners.forEach((listenerInfo, key) => {
+            if (!headerListenerKeys.includes(key)) {
+                if (listenerInfo.element && listenerInfo.element.removeEventListener) {
+                    listenerInfo.element.removeEventListener(listenerInfo.type, listenerInfo.listener);
+                }
+                listenersToRemove.push(key);
+            }
+        });
+        
+        // Remove the cleaned up listeners from the map
+        listenersToRemove.forEach(key => this.attachedListeners.delete(key));
+        
+        console.log(`[ModifierPanelManager] Cleaned up ${listenersToRemove.length} non-header listeners, preserved ${headerListenerKeys.length} header listeners`);
+    }
+
+    /**
+     * Add form listeners for content only (excluding header controls)
+     * Used when refreshing panel content while preserving header controls
+     */
+    addFormListenersForContent(formElement, type, rep, onChangeCallback) {
+        const renderer = this.renderers[type];
+        if (!renderer) return;
+        
+        // Update stored form state
+        this.currentForm = formElement;
+        this.currentReplacement = rep;
+        this.currentOnChangeCallback = onChangeCallback;
+        
+        // Get enhanced field configurations from renderer
+        const fieldConfigs = renderer.getEnhancedFieldConfigs(rep);
+        this.currentFieldConfigs = fieldConfigs;
+        
+        // Filter out header control fields (enabled field is handled separately)
+        const contentFieldConfigs = fieldConfigs.filter(config => config.id !== 'enabled');
+        
+        // Setup standard field listeners for content fields only
+        this.setupStandardFieldListeners(formElement, contentFieldConfigs, rep, onChangeCallback);
+        
+        // Setup special component listeners
+        this.setupSpecialComponentListeners(formElement, type, rep, onChangeCallback);
+        
+        // Initial state sync for content fields only
+        this.updateAllFieldVisibility(formElement, contentFieldConfigs, rep);
     }
 
     /**
@@ -2049,71 +2373,94 @@ class ModifierPanelManager {
      * Special field rendering for damage components with containers
      */
     renderDamageFields(fieldConfigs, rep) {
-        // Group fields by component index
-        const componentGroups = new Map();
-        const fieldOrder = [];
-        
-        // First pass: group component fields and track field order
-        fieldConfigs.forEach((config, index) => {
-            if (config.isComponentField && config.componentIndex !== undefined) {
-                if (!componentGroups.has(config.componentIndex)) {
-                    componentGroups.set(config.componentIndex, []);
-                    fieldOrder.push({ type: 'component', index: config.componentIndex, originalIndex: index });
-                }
-                componentGroups.get(config.componentIndex).push(config);
-            } else {
-                fieldOrder.push({ type: 'field', config: config, originalIndex: index });
-            }
-        });
-
-        // Remove duplicate component entries (keep only the first occurrence)
-        const uniqueFieldOrder = [];
-        const seenComponents = new Set();
-        fieldOrder.forEach(item => {
-            if (item.type === 'component') {
-                if (!seenComponents.has(item.index)) {
-                    seenComponents.add(item.index);
-                    uniqueFieldOrder.push(item);
-                }
-            } else {
-                uniqueFieldOrder.push(item);
-            }
-        });
-
-        // Sort by original index to maintain field config order
-        uniqueFieldOrder.sort((a, b) => a.originalIndex - b.originalIndex);
-
-        // Render fields in the correct order
         let html = '';
-        uniqueFieldOrder.forEach(item => {
-            if (item.type === 'component') {
-                const componentFields = componentGroups.get(item.index);
-                html += this.renderDamageComponentContainer(componentFields, rep, item.index);
+        const processedComponents = new Set();
+        
+        // Filter out any undefined or invalid configs first
+        const validConfigs = fieldConfigs.filter(config => 
+            config && typeof config === 'object' && config.id
+        );
+        
+        console.log('[ModifierPanelManager] Processing', validConfigs.length, 'valid field configs');
+        
+        // Process each field config in order
+        validConfigs.forEach(config => {
+            if (config.isComponentField && config.componentIndex !== undefined) {
+                const componentIndex = config.componentIndex;
+                
+                // If we haven't processed this component yet, render its container
+                if (!processedComponents.has(componentIndex)) {
+                    processedComponents.add(componentIndex);
+                    
+                    // Get all fields for this component
+                    const componentFields = validConfigs.filter(cfg => 
+                        cfg.isComponentField && cfg.componentIndex === componentIndex
+                    );
+                    
+                    console.log(`[ModifierPanelManager] Rendering component ${componentIndex} with ${componentFields.length} fields`);
+                    html += this.renderDamageComponentContainer(componentFields, rep, componentIndex);
+                }
             } else {
-                html += this.renderFieldFromConfig(item.config, rep);
+                // Regular field (not part of a component)
+                console.log(`[ModifierPanelManager] Rendering regular field: ${config.id}`);
+                html += this.renderFieldFromConfig(config, rep);
             }
         });
-
+        
         return html;
     }
 
     /**
      * Render a damage component container with its fields
      */
-    renderDamageComponentContainer(componentFields, rep, componentIndex) {        
-        const fieldsHtml = componentFields
-            .filter(cfg => cfg.id !== 'enabled')
+    renderDamageComponentContainer(componentFields, rep, componentIndex) {
+        // Separate data fields from action buttons for this specific component
+        const dataFields = componentFields.filter(cfg => 
+            cfg.isComponentField && 
+            cfg.componentIndex === componentIndex && 
+            cfg.componentField !== undefined  // Make sure it's actually a data field
+        );
+        
+        const removeButton = componentFields.find(cfg => 
+            cfg.action === 'remove-component' && 
+            cfg.componentIndex === componentIndex
+        );
+        
+        const fieldsHtml = dataFields
             .map(config => this.renderFieldFromConfig(config, rep)).join('');
-
+        
+        const removeButtonHtml = removeButton ? 
+            this.renderFieldFromConfig(removeButton, rep) : '';
+        
         return `
             <fieldset class="rollconverter-damage-component">
-                <legend>Damage Partial ${componentIndex + 1}</legend>
+                <legend>
+                    <span>Damage Partial ${componentIndex + 1}</span>
+                    ${removeButtonHtml}
+                </legend>
                 ${fieldsHtml}
             </fieldset>
         `;
     }
     
     renderFieldFromConfig(config, rep) {
+        // Handle button fields that don't have getValue functions
+        if (config.type === 'button') {
+            const options = {
+                hidden: config.hideIf && config.hideIf(rep),
+                action: config.action,
+                componentIndex: config.componentIndex,
+                notes: config.notes
+            };
+            return FieldRenderer.render(config.type, config.id, config.label, null, options);
+        }
+        
+        // Handle regular fields with getValue functions
+        if (!config.getValue) {
+            console.error(`[ModifierPanelManager] Field config missing getValue function: ${config.id}`);
+            return '';
+        }
+        
         const value = config.getValue(rep);
         const shouldShow = !config.hideIf || !config.hideIf(rep);
         const shouldShowConditional = !config.showIf || config.showIf(rep);
@@ -2190,9 +2537,7 @@ class ModifierPanelManager {
      * @param {Function} onChangeCallback - The change callback
      */
     setupSpecialComponentListeners(formElement, type, replacement, onChangeCallback) {
-        // REMOVED: Special damage handling - now uses standard field configs
-        
-        // Setup traits inputs - look for traits containers that were created by FieldRenderer  
+        // Setup traits inputs
         const traitsContainers = formElement.querySelectorAll('[id$="-input-container"]');
         traitsContainers.forEach(container => {
             const parentContainer = container.closest('[data-field-id="traits"]');
@@ -2211,6 +2556,81 @@ class ModifierPanelManager {
                     this.setupCommonTraitCheckbox(traitCheckbox, trait, replacement, onChangeCallback);
                 }
             });
+        }
+        
+        // Setup action button listeners for component management
+        if (type === 'damage') {
+            const actionButtons = formElement.querySelectorAll('.rollconverter-action-button');
+            actionButtons.forEach(button => {
+                const action = button.dataset.action;
+                const componentIndex = button.dataset.componentIndex;
+                
+                const listenerKey = `${button.id}-click`;
+                if (!this.attachedListeners.has(listenerKey)) {
+                    const listener = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.handleComponentAction(action, componentIndex, replacement, onChangeCallback);
+                    };
+                    
+                    button.addEventListener('click', listener);
+                    this.attachedListeners.set(listenerKey, { 
+                        element: button, 
+                        type: 'click', 
+                        listener 
+                    });
+                }
+            });
+        }
+    }
+
+    /**
+     * Handle component management actions (add/remove)
+     * @param {string} action - The action to perform ('add-component' or 'remove-component')
+     * @param {string} componentIndex - Index of component (for removal)
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - Change callback function
+     */
+    handleComponentAction(action, componentIndex, replacement, onChangeCallback) {
+        let success = false;
+        
+        switch (action) {
+            case 'add-component':
+                replacement.inlineAutomation.addComponent();
+                success = true;
+                console.log('[ModifierPanelManager] Added damage component');
+                break;
+                
+            case 'remove-component':
+                success = replacement.inlineAutomation.removeComponent(parseInt(componentIndex));
+                if (!success) {
+                    ui.notifications.warn("Cannot remove the last damage component");
+                    return;
+                }
+                console.log(`[ModifierPanelManager] Removed damage component at index ${componentIndex}`);
+                break;
+                
+            default:
+                console.warn(`[ModifierPanelManager] Unknown component action: ${action}`);
+                return;
+        }
+        
+        if (success) {
+            // Mark the replacement as modified
+            if (replacement.markModified) {
+                replacement.markModified();
+            }
+            
+            // Use the triggersUpdate system - clean and simple
+            this.handleFieldUpdate(
+                replacement, 
+                { 
+                    id: action, 
+                    triggersUpdate: ModifierPanelManager.UpdateScope.CONFIG_REFRESH 
+                }, 
+                ModifierPanelManager.UpdateScope.CONFIG_REFRESH, 
+                onChangeCallback
+            );
         }
     }
 
@@ -2393,7 +2813,7 @@ class ModifierPanelManager {
             // Re-setup event listeners on the updated form
             this.addFormListeners(formElement, rep.type, rep, onChangeCallback);
             
-            // Restore form state
+            // Restore form state (this works because configs are preserved)
             this.restoreFormState(formElement, currentValues, focusedElement);
         }
     }
