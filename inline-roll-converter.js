@@ -5775,12 +5775,12 @@ class Replacement {
         this.endPos = match.index + match[0].length;
         this.originalText = match[0];
         this.trimTrailingSpaces();
-        this.enabled = true;
+        this.enabled = true; // This will be set by business rules before storing original state
         this.priority = 0;
         this.displayText = '';
         this.type = type;
         
-        // Store original parameters directly - much cleaner!
+        // Store original parameters directly
         this._originalParameters = JSON.parse(JSON.stringify(parameters));
         
         // Create InlineAutomation instance with parameters
@@ -5789,10 +5789,34 @@ class Replacement {
         // Create renderer instance
         this.renderer = this.getRenderer(type);
         
-        // Store original render
-        this.originalRender = this.render();
+        // NOTE: We DON'T store original state here anymore!
+        // The TextProcessor will call finalizeOriginalState() after business rules
+        this._originalStateFinalized = false;
+        this._originalEnabledState = true; // Will be overwritten
+        this._originalRender = null; // Will be set later
         
         console.log(`[Replacement] Created ${type} replacement with parameters:`, parameters);
+    }
+
+    /**
+     * Called by TextProcessor after business rules have been applied
+     * This finalizes what we consider the "original" state for reset purposes
+     */
+    finalizeOriginalState() {
+        if (this._originalStateFinalized) {
+            console.warn('[Replacement] Original state already finalized');
+            return;
+        }
+        
+        // Store the enabled state AFTER business rules have run
+        this._originalEnabledState = this.enabled;
+        
+        // Store the original render AFTER business rules have run
+        this._originalRender = this.render();
+        
+        this._originalStateFinalized = true;
+        
+        console.log(`[Replacement] Finalized original state: enabled=${this._originalEnabledState}, type=${this.type}`);
     }
 
     createInlineAutomation(type, parameters) {
@@ -5833,10 +5857,18 @@ class Replacement {
         }
     }
 
-    // Much simpler reset method!
+    /**
+     * Reset to the original state (including business-rules-determined enabled state)
+     */
     resetToOriginal() {
         console.log('[Replacement] Resetting to original state');
         console.log('[Replacement] Original parameters:', this._originalParameters);
+        console.log('[Replacement] Original enabled state:', this._originalEnabledState);
+        
+        if (!this._originalStateFinalized) {
+            console.warn('[Replacement] Cannot reset - original state not finalized yet');
+            return;
+        }
         
         // Recreate the InlineAutomation object with original parameters
         this.inlineAutomation = this.createInlineAutomation(
@@ -5844,8 +5876,8 @@ class Replacement {
             this._originalParameters
         );
         
-        // Reset enabled state
-        this.enabled = true;
+        // Reset enabled state to what it was AFTER business rules
+        this.enabled = this._originalEnabledState;
         
         // Clear any custom display text
         this.displayText = this.inlineAutomation.displayText || '';
@@ -5905,8 +5937,22 @@ class Replacement {
     getText() { return this.originalText; }
     getLength() { return this.endPos - this.startPos; }
 
+    /**
+     * Check if the replacement has been modified from its original state
+     */
     isModified() {
-        return this.render() !== this.originalRender;
+        if (!this._originalStateFinalized) {
+            return false; // Can't determine if not finalized
+        }
+        
+        // Check if current render differs from original render
+        const currentRender = this.render();
+        const renderChanged = currentRender !== this._originalRender;
+        
+        // Check if enabled state differs from original enabled state
+        const enabledChanged = this.enabled !== this._originalEnabledState;
+        
+        return renderChanged || enabledChanged;
     }
 
     // Method to mark the replacement as modified (called by modifier panel)
@@ -6172,13 +6218,8 @@ class BusinessRulesEngine {
 class TextProcessor {
     constructor() {
         console.log('[PF2e Converter] Creating TextProcessor instance');
-        this.linkedConditions = new Set(); // Only needed for condition linking
-        
-        // Initialize business rules engine
+        this.linkedConditions = new Set();
         this.businessRules = new BusinessRulesEngine();
-        
-        // Optional: Allow disabling business rules via configuration
-        // this.businessRules.setEnabled(false); // Uncomment to disable rules
     }
 
     process(inputText, state = null) {
@@ -6192,7 +6233,7 @@ class TextProcessor {
         try {
             this.linkedConditions = new Set();
             
-            // Direct call to static detector - no registry needed
+            // Step 1: Pattern detection and replacement creation
             console.log('[PF2e Converter] Detecting patterns in text');
             const matches = PatternDetector.detectAll(inputText);
             console.log('[PF2e Converter] Found', matches.length, 'pattern matches');
@@ -6204,7 +6245,6 @@ class TextProcessor {
                     let replacement;
                     
                     if (matchResult.type === 'condition') {
-                        // Special handling for condition linking with state
                         replacement = PatternDetector.createReplacement({
                             ...matchResult,
                             config: { 
@@ -6227,11 +6267,17 @@ class TextProcessor {
 
             console.log('[PF2e Converter] Created', replacements.length, 'replacement objects');
             
-            // Sort by priority first
+            // Step 2: Sort by priority
             const sortedReplacements = this.sortByPriority(replacements);
             
-            // NEW: Apply business rules to determine which replacements should be enabled
+            // Step 3: Apply business rules to set enabled state
             const processedReplacements = this.applyBusinessRules(sortedReplacements, inputText, state);
+            
+            // Step 4: IMPORTANT - Finalize original state after business rules
+            console.log('[PF2e Converter] Finalizing original state for all replacements');
+            processedReplacements.forEach(replacement => {
+                replacement.finalizeOriginalState();
+            });
             
             return processedReplacements;
         } catch (error) {
@@ -6243,27 +6289,20 @@ class TextProcessor {
 
     /**
      * Apply business rules to determine replacement enabled state
-     * @param {Array} replacements - Array of replacement objects
-     * @param {string} originalText - The original input text
-     * @param {Object} state - Processing state object
-     * @returns {Array} Processed replacements with business rules applied
      */
     applyBusinessRules(replacements, originalText, state = null) {
         console.log('[PF2e Converter] Applying business rules to replacements');
         
-        // Create context object for rules
         const context = {
             state: state,
             timestamp: Date.now(),
-            // Add any other context that rules might need
-            enableLowDamageRule: false, // Example configuration flag
+            enableLowDamageRule: false,
         };
         
         try {
             return this.businessRules.applyRules(replacements, originalText, context);
         } catch (error) {
             console.error('[PF2e Converter] Error applying business rules:', error);
-            // Return original replacements if business rules fail
             return replacements;
         }
     }
@@ -6335,8 +6374,6 @@ class TextProcessor {
         return result;
     }
 }
-
-// ===================== END OOP PIPELINE ARCHITECTURE =====================
 
 /**
  * Create a live preview with active inline rolls
