@@ -5210,6 +5210,18 @@ class DamagePattern extends BasePattern {
             regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+(?:persistent|splash|precision))|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+(splash|precision))|(?:(splash|precision)\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})))(?:\\s+damage)?`, 'gi'),
             priority: 100,
             extractor: 'single'
+        },
+        // Untyped damage with categories or "damage" keyword
+        {
+            regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(persistent|splash|precision)\\s+)?damage`, 'gi'),
+            priority: 95,
+            extractor: 'single'
+        },
+        // Category-only damage (without "damage" keyword)
+        {
+            regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(persistent|splash|precision)(?!\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))`, 'gi'),
+            priority: 90,
+            extractor: 'single'
         }
     ];
 
@@ -5359,6 +5371,7 @@ class DamagePattern extends BasePattern {
         return match;
     }
 }
+
 /**
  * Check pattern class extending BasePattern
  */
@@ -5378,7 +5391,7 @@ class CheckPattern extends BasePattern {
     static PATTERNS = [
         // Comprehensive save pattern (highest priority)
         {
-            regex: /(?:\(?)((?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:\(\)]?\s*)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:\(\)]?\s*(?:basic\s+)?(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b(?:\s+(?:save|saving\s+throw))?\s*(?:basic)?(?:\s*[,;:\(\)]?\s*(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?(?:DC\s*(\d{1,2})\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b|(?:DC\s*(\d{1,2})\s+)?(?:basic\s+)?\b(fort(?:itude)?|ref(?:lex)?|will)\b)(?:\)?)/gi,
+            regex: /\b(?:(?:basic\s+)?(?:DC\s*(\d{1,2})\s*[,;:]?\s*)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?(?:\s*[,;:]?\s*(?:basic\s+)?(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will)(?:\s+(?:save|saving\s+throw))?\s*(?:basic)?(?:\s*[,;:]?\s*(?:DC\s*(\d{1,2}))?)?|(?:basic\s+)?(?:DC\s*(\d{1,2})\s+)?(fort(?:itude)?|ref(?:lex)?|will)|(?:DC\s*(\d{1,2})\s+)?(?:basic\s+)?(fort(?:itude)?|ref(?:lex)?|will))\b/gi,
             priority: 95,
             extractor: 'save'
         },
