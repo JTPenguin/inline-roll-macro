@@ -8,6 +8,32 @@
 // Define a test input for demonstration and testing
 const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
 
+// Comprehensive test cases
+const COMPREHENSIVE_TEST_CASES = [
+    // Single pattern tests
+    { input: '2d6 fire damage', expected: { matchCount: 1, patterns: ['damage'] } },
+    { input: '1d4 persistent acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
+    { input: 'DC 15 Reflex save', expected: { matchCount: 1, patterns: ['check'] } },
+    { input: 'heal 3d8 hit points', expected: { matchCount: 1, patterns: ['healing'] } },
+    { input: 'becomes frightened 2', expected: { matchCount: 1, patterns: ['condition'] } },
+    { input: '30-foot cone', expected: { matchCount: 1, patterns: ['template'] } },
+    { input: '1d4 rounds', expected: { matchCount: 1, patterns: ['duration'] } },
+    { input: 'Use the Shove action', expected: { matchCount: 1, patterns: ['action'] } },
+    
+    // Multi-damage tests
+    { input: '2d6 fire damage and 1d4 acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
+    
+    // Complex combinations
+    { 
+        input: 'Deal 2d6 fire damage. DC 15 Reflex save. Target becomes frightened 1.',
+        expected: { matchCount: 3, patterns: ['damage', 'check', 'condition'] }
+    },
+    
+    // Edge cases
+    { input: '', expected: { matchCount: 0, patterns: [] } },
+    { input: 'No patterns here', expected: { matchCount: 0, patterns: [] } },
+];
+
 // ==================== INLINE ROLL SYSTEM ====================
 
 // Base class for all inline rolls
@@ -5943,6 +5969,8 @@ class PatternDetector {
     }
 }
 
+// // ===================== PATTERN TESTING SUITE =====================
+
 // class PatternTester {
 //     // Test a specific pattern against text
 //     static testPattern(patternType, text) {
@@ -6046,34 +6074,6 @@ class PatternDetector {
 //         return true;
 //     }
 // }
-
-// // ===================== PATTERN TESTING SUITE =====================
-
-// // Comprehensive test cases
-// const COMPREHENSIVE_TEST_CASES = [
-//     // Single pattern tests
-//     { input: '2d6 fire damage', expected: { matchCount: 1, patterns: ['damage'] } },
-//     { input: '1d4 persistent acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
-//     { input: 'DC 15 Reflex save', expected: { matchCount: 1, patterns: ['check'] } },
-//     { input: 'heal 3d8 hit points', expected: { matchCount: 1, patterns: ['healing'] } },
-//     { input: 'becomes frightened 2', expected: { matchCount: 1, patterns: ['condition'] } },
-//     { input: '30-foot cone', expected: { matchCount: 1, patterns: ['template'] } },
-//     { input: '1d4 rounds', expected: { matchCount: 1, patterns: ['duration'] } },
-//     { input: 'Use the Shove action', expected: { matchCount: 1, patterns: ['action'] } },
-    
-//     // Multi-damage tests
-//     { input: '2d6 fire damage and 1d4 acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
-    
-//     // Complex combinations
-//     { 
-//         input: 'Deal 2d6 fire damage. DC 15 Reflex save. Target becomes frightened 1.',
-//         expected: { matchCount: 3, patterns: ['damage', 'check', 'condition'] }
-//     },
-    
-//     // Edge cases
-//     { input: '', expected: { matchCount: 0, patterns: [] } },
-//     { input: 'No patterns here', expected: { matchCount: 0, patterns: [] } },
-// ];
 
 // function runComprehensiveTestSuite() {
 //     console.log('=== Comprehensive Test Suite ===');
