@@ -2267,9 +2267,6 @@ class ModifierPanelManager {
         const renderer = this.renderers[replacement.type];
         if (!renderer) return;
         
-        // For structural changes (like removing components), do a complete regeneration
-        // This ensures component indices are correct and all references are fresh
-        
         // Clean up ALL existing listeners
         this.cleanupEventListeners();
         
@@ -2282,7 +2279,68 @@ class ModifierPanelManager {
         // Re-setup all event listeners with fresh configurations
         this.addFormListeners(formElement, replacement.type, replacement, onChangeCallback);
         
-        console.log('[ModifierPanelManager] Config refresh complete - full panel regenerated with correct indices');
+        // CRITICAL FIX: Also setup the header controls (including reset button)
+        // This was missing and caused the reset button to stop working
+        this.setupHeaderControlListeners(formElement, replacement, onChangeCallback);
+        
+        console.log('[ModifierPanelManager] Config refresh complete - full panel regenerated with correct indices and header controls');
+    }
+
+    /**
+     * Setup header control listeners (enabled checkbox and reset button)
+     * This method should be called whenever the panel is regenerated
+     * @param {HTMLElement} formElement - The form element
+     * @param {Object} replacement - The replacement object
+     * @param {Function} onChangeCallback - Change callback function
+     */
+    setupHeaderControlListeners(formElement, replacement, onChangeCallback) {
+        // Setup enabled checkbox
+        const enabledCheckbox = formElement.querySelector('#enabled');
+        if (enabledCheckbox) {
+            const listenerKey = `${enabledCheckbox.id}-change`;
+            
+            // Prevent duplicate listeners
+            if (!this.attachedListeners.has(listenerKey)) {
+                const listener = (e) => {
+                    console.log('[ModifierPanelManager] Enabled checkbox changed:', e.target.checked);
+                    replacement.enabled = e.target.checked;
+                    if (onChangeCallback) {
+                        onChangeCallback(replacement, 'enabled');
+                    }
+                };
+                
+                enabledCheckbox.addEventListener('change', listener);
+                this.attachedListeners.set(listenerKey, { 
+                    element: enabledCheckbox, 
+                    type: 'change', 
+                    listener 
+                });
+            }
+        }
+        
+        // Setup reset button
+        const resetButton = formElement.querySelector('#modifier-reset-btn');
+        if (resetButton) {
+            const listenerKey = `${resetButton.id}-click`;
+            
+            // Prevent duplicate listeners
+            if (!this.attachedListeners.has(listenerKey)) {
+                const listener = () => {
+                    console.log('[ModifierPanelManager] Reset button clicked');
+                    replacement.resetToOriginal();
+                    if (onChangeCallback) {
+                        onChangeCallback(replacement, 'reset');
+                    }
+                };
+                
+                resetButton.addEventListener('click', listener);
+                this.attachedListeners.set(listenerKey, { 
+                    element: resetButton, 
+                    type: 'click', 
+                    listener 
+                });
+            }
+        }
     }
 
     /**
@@ -2539,6 +2597,9 @@ class ModifierPanelManager {
         
         // Setup special component listeners
         this.setupSpecialComponentListeners(formElement, type, rep, onChangeCallback);
+        
+        // CRITICAL FIX: Setup header controls (enabled checkbox and reset button)
+        this.setupHeaderControlListeners(formElement, rep, onChangeCallback);
         
         // Initial state sync
         this.updateAllFieldVisibility(formElement, fieldConfigs, rep);
@@ -3452,42 +3513,13 @@ class ConverterDialog {
         
         const formElement = this.ui.modifierPanelContent.querySelector('form');
         if (formElement) {
-            // Setup form listeners
+            // Setup form listeners - this now includes header controls
             this.modifierManager.addFormListeners(
                 formElement, 
                 rep.type, 
                 rep, 
                 (modifiedRep, changedFieldId) => this.handleModifierChange(modifiedRep, changedFieldId)
             );
-            
-            // Setup enabled checkbox handler (within the form)
-            this.attachEnabledCheckboxHandler(rep);
-            
-            // Setup reset button handler (within the form)
-            this.attachResetButtonHandler(rep, rep.type);
-        }
-    }
-
-    attachEnabledCheckboxHandler(rep) {
-        const enabledCheckbox = this.ui.modifierPanelContent.querySelector('#enabled');
-        if (enabledCheckbox) {
-            // Remove any existing listeners
-            const existingHandler = enabledCheckbox._rollconverterHandler;
-            if (existingHandler) {
-                enabledCheckbox.removeEventListener('change', existingHandler);
-            }
-            
-            // Add new handler
-            const handler = (e) => {
-                console.log('[PF2e Converter] Enabled checkbox changed:', e.target.checked);
-                rep.enabled = e.target.checked;
-                this.handleModifierChange(rep, 'enabled');
-            };
-            
-            enabledCheckbox.addEventListener('change', handler);
-            enabledCheckbox._rollconverterHandler = handler; // Store reference for cleanup
-        } else {
-            console.warn('[PF2e Converter] Could not find enabled checkbox in modifier panel');
         }
     }
     
@@ -3557,42 +3589,20 @@ class ConverterDialog {
      */
     handleModifierChange(rep, changedFieldId) {
         console.log('[PF2e Converter] Handling modifier change:', changedFieldId);
+        
         if (rep.markModified) {
             rep.markModified();
         }
+        
+        // Re-render everything to reflect changes
         this.renderOutput();
         this.renderLivePreview();
         this.updateElementHighlighting();
-    }
-    
-    /**
-     * Attach reset button handler to a replacement
-     * @param {Object} rep - The replacement object
-     * @param {string} type - The replacement type
-     */
-    attachResetButtonHandler(rep, type) {
-        const resetBtn = this.ui.modifierPanelContent.querySelector('#modifier-reset-btn');
-        if (resetBtn) {
-            // Remove any existing listeners
-            const existingHandler = resetBtn._rollconverterHandler;
-            if (existingHandler) {
-                resetBtn.removeEventListener('click', existingHandler);
-            }
-            
-            // Add new handler
-            const handler = () => {
-                console.log('[PF2e Converter] Resetting replacement to original');
-                rep.resetToOriginal();
-                this.renderOutput();
-                this.renderLivePreview();
-                this.renderModifierPanel();
-                this.updateElementHighlighting();
-            };
-            
-            resetBtn.addEventListener('click', handler);
-            resetBtn._rollconverterHandler = handler; // Store reference for cleanup
-        } else {
-            console.warn('[PF2e Converter] Could not find reset button in modifier panel');
+        
+        // Special handling for reset - regenerate the modifier panel
+        if (changedFieldId === 'reset') {
+            console.log('[PF2e Converter] Reset triggered - regenerating modifier panel');
+            this.renderModifierPanel();
         }
     }
     
