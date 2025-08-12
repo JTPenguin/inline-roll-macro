@@ -2262,104 +2262,27 @@ class ModifierPanelManager {
      * @param {Function} onChangeCallback - Callback function
      */
     refreshConfigsAndRegeneratePanel(formElement, replacement, onChangeCallback) {
-        console.log('[ModifierPanelManager] Refreshing configs and regenerating panel (preserving header controls)');
+        console.log('[ModifierPanelManager] Refreshing configs and regenerating panel - full regeneration for structural changes');
         
         const renderer = this.renderers[replacement.type];
         if (!renderer) return;
         
-        // Find the existing fieldset and header controls
-        const existingFieldset = formElement.querySelector('fieldset.rollconverter-fieldset');
-        const existingHeaderControls = existingFieldset?.querySelector('.form-group'); // First form-group contains header controls
+        // For structural changes (like removing components), do a complete regeneration
+        // This ensures component indices are correct and all references are fresh
         
-        if (!existingFieldset) {
-            console.warn('[ModifierPanelManager] Could not find existing fieldset, falling back to full regeneration');
-            return this.regeneratePanel(formElement, replacement, onChangeCallback);
-        }
+        // Clean up ALL existing listeners
+        this.cleanupEventListeners();
         
-        // Clean up existing non-header listeners
-        this.cleanupNonHeaderEventListeners();
-        
-        // Generate completely fresh field configurations
-        const freshFieldConfigs = renderer.getEnhancedFieldConfigs(replacement);
-        
-        // Generate fresh panel HTML and extract just the content we need
+        // Generate completely fresh panel HTML
         const panelHTML = this.generatePanelHTML(replacement.type, replacement);
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = panelHTML;
-        const newFieldset = tempDiv.querySelector('fieldset.rollconverter-fieldset');
         
-        if (newFieldset) {
-            // Get all form groups except the first one (which contains header controls)
-            const newContentGroups = Array.from(newFieldset.children).slice(2); // Skip legend and header controls
-            
-            // Remove old content (everything after header controls)
-            const childrenToRemove = Array.from(existingFieldset.children).slice(2);
-            childrenToRemove.forEach(child => child.remove());
-            
-            // Add new content
-            newContentGroups.forEach(group => existingFieldset.appendChild(group));
-            
-            // Update stored configurations with fresh ones
-            this.currentFieldConfigs = freshFieldConfigs;
-            
-            // Re-setup event listeners for the new content only
-            this.addFormListenersForContent(formElement, replacement.type, replacement, onChangeCallback);
-        }
+        // Replace the entire form content
+        formElement.innerHTML = panelHTML;
         
-        console.log('[ModifierPanelManager] Config refresh complete - panel content refreshed, header preserved');
-    }
-
-    /**
-     * Clean up event listeners except for header controls (enabled checkbox and reset button)
-     */
-    cleanupNonHeaderEventListeners() {
-        const headerListenerKeys = ['enabled-change', 'modifier-reset-btn-click'];
+        // Re-setup all event listeners with fresh configurations
+        this.addFormListeners(formElement, replacement.type, replacement, onChangeCallback);
         
-        // Clean up all listeners except header ones
-        const listenersToRemove = [];
-        this.attachedListeners.forEach((listenerInfo, key) => {
-            if (!headerListenerKeys.includes(key)) {
-                if (listenerInfo.element && listenerInfo.element.removeEventListener) {
-                    listenerInfo.element.removeEventListener(listenerInfo.type, listenerInfo.listener);
-                }
-                listenersToRemove.push(key);
-            }
-        });
-        
-        // Remove the cleaned up listeners from the map
-        listenersToRemove.forEach(key => this.attachedListeners.delete(key));
-        
-        console.log(`[ModifierPanelManager] Cleaned up ${listenersToRemove.length} non-header listeners, preserved ${headerListenerKeys.length} header listeners`);
-    }
-
-    /**
-     * Add form listeners for content only (excluding header controls)
-     * Used when refreshing panel content while preserving header controls
-     */
-    addFormListenersForContent(formElement, type, rep, onChangeCallback) {
-        const renderer = this.renderers[type];
-        if (!renderer) return;
-        
-        // Update stored form state
-        this.currentForm = formElement;
-        this.currentReplacement = rep;
-        this.currentOnChangeCallback = onChangeCallback;
-        
-        // Get enhanced field configurations from renderer
-        const fieldConfigs = renderer.getEnhancedFieldConfigs(rep);
-        this.currentFieldConfigs = fieldConfigs;
-        
-        // Filter out header control fields (enabled field is handled separately)
-        const contentFieldConfigs = fieldConfigs.filter(config => config.id !== 'enabled');
-        
-        // Setup standard field listeners for content fields only
-        this.setupStandardFieldListeners(formElement, contentFieldConfigs, rep, onChangeCallback);
-        
-        // Setup special component listeners
-        this.setupSpecialComponentListeners(formElement, type, rep, onChangeCallback);
-        
-        // Initial state sync for content fields only
-        this.updateAllFieldVisibility(formElement, contentFieldConfigs, rep);
+        console.log('[ModifierPanelManager] Config refresh complete - full panel regenerated with correct indices');
     }
 
     /**
@@ -2710,12 +2633,17 @@ class ModifierPanelManager {
                 break;
                 
             case 'remove-component':
-                success = replacement.inlineAutomation.removeComponent(parseInt(componentIndex));
+                const indexToRemove = parseInt(componentIndex);
+                console.log(`[ModifierPanelManager] Attempting to remove component at index ${indexToRemove}`);
+                console.log(`[ModifierPanelManager] Current component count: ${replacement.inlineAutomation.getComponentCount()}`);
+                
+                success = replacement.inlineAutomation.removeComponent(indexToRemove);
                 if (!success) {
                     ui.notifications.warn("Cannot remove the last damage component");
                     return;
                 }
-                console.log(`[ModifierPanelManager] Removed damage component at index ${componentIndex}`);
+                console.log(`[ModifierPanelManager] Successfully removed damage component at index ${indexToRemove}`);
+                console.log(`[ModifierPanelManager] New component count: ${replacement.inlineAutomation.getComponentCount()}`);
                 break;
                 
             default:
@@ -2729,7 +2657,9 @@ class ModifierPanelManager {
                 replacement.markModified();
             }
             
-            // Use the triggersUpdate system - clean and simple
+            // For structural changes like add/remove, we need a full config refresh
+            // This ensures component indices are recalculated correctly
+            console.log('[ModifierPanelManager] Triggering CONFIG_REFRESH for structural change');
             this.handleFieldUpdate(
                 replacement, 
                 { 
@@ -3530,10 +3460,10 @@ class ConverterDialog {
                 (modifiedRep, changedFieldId) => this.handleModifierChange(modifiedRep, changedFieldId)
             );
             
-            // Setup enabled checkbox handler (now in the content area)
+            // Setup enabled checkbox handler (within the form)
             this.attachEnabledCheckboxHandler(rep);
             
-            // Setup reset button handler (now in the content area)
+            // Setup reset button handler (within the form)
             this.attachResetButtonHandler(rep, rep.type);
         }
     }
@@ -3556,6 +3486,8 @@ class ConverterDialog {
             
             enabledCheckbox.addEventListener('change', handler);
             enabledCheckbox._rollconverterHandler = handler; // Store reference for cleanup
+        } else {
+            console.warn('[PF2e Converter] Could not find enabled checkbox in modifier panel');
         }
     }
     
@@ -3659,6 +3591,8 @@ class ConverterDialog {
             
             resetBtn.addEventListener('click', handler);
             resetBtn._rollconverterHandler = handler; // Store reference for cleanup
+        } else {
+            console.warn('[PF2e Converter] Could not find reset button in modifier panel');
         }
     }
     
