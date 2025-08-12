@@ -3688,13 +3688,15 @@ class ConverterDialog {
 // It is used to store the items in the category, the options for the items,
 // the pattern for the items, and the set of items.
 class ConfigCategory {
-    constructor(items, customLabels = {}, metadata = {}) {
-        this.slugs = items;
+    constructor(items, customLabels = {}, metadata = {}, alternates = {}) {
+        this.slugs = items; // Only canonical forms - used for UI
         this.metadata = metadata;
+        this.alternates = alternates; // Alternates for pattern matching only
         
-        // Lazy initialization - only compute when first accessed
+        // Lazy initialization
         this._options = null;
         this._pattern = null;
+        this._patternWithAlternates = null; // New: enhanced pattern for matching
         this._set = null;
         this._customLabels = customLabels;
     }
@@ -3710,16 +3712,76 @@ class ConfigCategory {
         return this._options;
     }
 
-    // Memoized getter for regex pattern
+    // Original pattern - only canonical forms
     get pattern() {
         if (this._pattern === null) {
             this._pattern = this.slugs
                 .map(item => this._unslug(item))
                 .filter(item => item !== '')
-                .sort((a, b) => b.length - a.length) // Longest first for better matching
+                .sort((a, b) => b.length - a.length)
+                .map(item => this.escapeRegex(item))
                 .join('|');
         }
         return this._pattern;
+    }
+
+    // Enhanced pattern - includes alternates for matching
+    get patternWithAlternates() {
+        if (this._patternWithAlternates === null) {
+            const allForms = [];
+            
+            // Add canonical forms
+            this.slugs.forEach(item => {
+                const unsluggedBase = this._unslug(item);
+                allForms.push(unsluggedBase);
+            });
+            
+            // Add alternates for pattern matching
+            Object.entries(this.alternates).forEach(([baseItem, alternateList]) => {
+                if (this.slugs.includes(baseItem)) {
+                    alternateList.forEach(alternate => {
+                        allForms.push(alternate);
+                    });
+                }
+            });
+            
+            this._patternWithAlternates = allForms
+                .filter(form => form !== '')
+                .sort((a, b) => b.length - a.length) // Longest first
+                .map(form => this.escapeRegex(form))
+                .join('|');
+        }
+        return this._patternWithAlternates;
+    }
+
+    escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // Method to find canonical form from an alternate
+    findCanonicalForm(text) {
+        const normalizedText = text.toLowerCase().trim();
+        
+        // First check if it's already a canonical form
+        for (const item of this.slugs) {
+            const canonical = this._unslug(item).toLowerCase();
+            if (normalizedText === canonical) {
+                return item;
+            }
+        }
+        
+        // Then check alternates
+        for (const [baseItem, alternateList] of Object.entries(this.alternates)) {
+            if (this.slugs.includes(baseItem)) {
+                for (const alternate of alternateList) {
+                    if (normalizedText === alternate.toLowerCase()) {
+                        return baseItem;
+                    }
+                }
+            }
+        }
+        
+        return null; // Not found
     }
 
     // Memoized getter for Set (fast lookups)
@@ -4223,39 +4285,219 @@ class ConfigManager {
     }
 
     // ===== ACTIONS =====
+    static get ACTION_DEFINITIONS() {
+        if (!this._cache.has('ACTION_DEFINITIONS')) {
+            const definitions = {
+                'administer-first-aid': {
+                    alternates: [ 'administer first aid', 'administers first aid', 'administered first aid', 'administering first aid' ],
+                    variants: ['stabilize', 'stop-bleeding'] },
+                'affix-a-talisman': {
+                    alternates: [ 'affix a talisman', 'affixes a talisman', 'affixed a talisman', 'affixing a talisman' ] },
+                'aid': {
+                    alternates: [ 'aid', 'aids', 'aided', 'aiding' ] },
+                'arrest-a-fall': {
+                    alternates: [ 'arrest a fall', 'arrests a fall', 'arrested a fall', 'arresting a fall' ] },
+                'avert-gaze': {
+                    alternates: [
+                        'avert gaze', 'averts gaze', 'averted gaze', 'averting gaze',
+                        'avert its gaze', 'averts its gaze', 'averted its gaze', 'averting its gaze',
+                        'avert their gaze', 'averts their gaze', 'averted their gaze', 'averting their gaze' ] },
+                'avoid-notice': {
+                    alternates: [ 'avoid notice', 'avoids notice', 'avoided notice', 'avoiding notice' ] },
+                'balance': {
+                    alternates: [ 'balance', 'balances', 'balanced', 'balancing' ] },
+                'burrow': {
+                    alternates: [ 'burrow', 'burrows', 'burrowed', 'burrowing' ] },
+                'climb': {
+                    alternates: [ 'climb', 'climbs', 'climbed', 'climbing' ] },
+                'coerce': {
+                    alternates: [ 'coerce', 'coerces', 'coerced', 'coercing' ] },
+                'command-an-animal': {
+                    alternates: [ 'command an animal', 'commands an animal', 'commanded an animal', 'commanding an animal' ] },
+                'conceal-an-object': {
+                    alternates: [ 'conceal an object', 'conceals an object', 'concealed an object', 'concealing an object' ] },
+                'crawl': {
+                    alternates: [ 'crawl', 'crawls', 'crawled', 'crawling' ] },
+                'create-a-diversion': {
+                    alternates: [ 'create a diversion', 'creates a diversion', 'created a diversion', 'creating a diversion' ],
+                    variants: ['distracting-words', 'gesture', 'trick'] },
+                'create-forgery': {
+                    alternates: [
+                        'create forgery', 'creates forgery', 'created forgery', 'creating forgery',
+                        'create a forgery', 'creates a forgery', 'created a forgery', 'creating a forgery'
+                    ] },
+                'decipher-writing': {
+                    alternates: [ 'decipher writing', 'deciphers writing', 'deciphered writing', 'deciphering writing' ] },
+                'delay': {
+                    alternates: [ 'delay', 'delays', 'delayed', 'delaying' ] },
+                'demoralize': {
+                    alternates: [ 'demoralize', 'demoralizes', 'demoralized', 'demoralizing' ] },
+                'disable-device': {
+                    alternates: [
+                        'disable device', 'disables device', 'disabled device', 'disabling device',
+                        'disable a device', 'disables a device', 'disabled a device', 'disabling a device'
+                    ] },
+                'disarm': {
+                    alternates: [ 'disarm', 'disarms', 'disarmed', 'disarming' ] },
+                'dismiss': {
+                    alternates: [ 'dismiss', 'dismisses', 'dismissed', 'dismissing' ] },
+                'drop-prone': {
+                    alternates: [ 'drop prone', 'drops prone', 'dropped prone', 'dropping prone' ] },
+                'escape': {
+                    alternates: [ 'escape', 'escapes', 'escaped', 'escaping' ] },
+                'feint': { 
+                    alternates: [ 'feint', 'feints', 'feinted', 'feinting' ] },
+                'fly': {
+                    alternates: [ 'fly', 'flies', 'flew', 'flying' ] },
+                'force-open': {
+                    alternates: [ 'force open', 'forces open', 'forced open', 'forcing open' ] },
+                'gather-information': { 
+                    alternates: [ 'gather information', 'gathers information', 'gathered information', 'gathering information' ] },
+                'grab-an-edge': {
+                    alternates: [ 'grab an edge', 'grabs an edge', 'grabbed an edge', 'grabbing an edge' ] },
+                'grapple': {
+                    alternates: [ 'grapple', 'grapples', 'grappled', 'grappling' ] },
+                'hide': {
+                    alternates: [ 'hide', 'hides', 'hid', 'hiding' ] },
+                'high-jump': {
+                    alternates: [ 'high jump', 'high jumps', 'high jumped', 'high jumping' ] },
+                'identify-alchemy': {
+                    alternates: [ 'identify alchemy', 'identifies alchemy', 'identified alchemy', 'identifying alchemy' ] },
+                'identify-magic': {
+                    alternates: [ 'identify magic', 'identifies magic', 'identified magic', 'identifying magic' ] },
+                'impersonate': {
+                    alternates: [ 'impersonate', 'impersonates', 'impersonated', 'impersonating' ] },
+                'interact': {
+                    alternates: [ 'interact', 'interacts', 'interacted', 'interacting' ] },
+                'leap': { 
+                    alternates: [ 'leap', 'leaps', 'leaped', 'leaping' ] },
+                'learn-a-spell': {
+                    alternates: [ 'learn a spell', 'learns a spell', 'learned a spell', 'learning a spell' ] },
+                'lie': {
+                    alternates: [ 'lie', 'lies', 'lied', 'lying' ] },
+                'long-jump': {
+                    alternates: [ 'long jump', 'long jumps', 'long jumped', 'long jumping' ] },
+                'make-an-impression': {
+                    alternates: [ 'make an impression', 'makes an impression', 'made an impression', 'making an impression' ] },
+                'maneuver-in-flight': {
+                    alternates: [ 'maneuver in flight', 'maneuvers in flight', 'maneuvered in flight', 'maneuvering in flight' ] },
+                'mount': {
+                    alternates: [ 'mount', 'mounts', 'mounted', 'mounting' ] },
+                'palm-an-object': {
+                    alternates: [ 'palm an object', 'palms an object', 'palmed an object', 'palming an object' ] },
+                'perform': {
+                    alternates: [ 'perform', 'performs', 'performed', 'performing' ],
+                    variants: ['acting', 'comedy', 'dance', 'keyboards', 'oratory', 'percussion', 'singing', 'strings', 'winds'] },
+                'pick-a-lock': {
+                    alternates: [ 'pick a lock', 'picks a lock', 'picked a lock', 'picking a lock' ] },
+                'point-out': {
+                    alternates: [ 'point out', 'points out', 'pointed out', 'pointing out' ] },
+                'ready': {
+                    alternates: [ 'ready', 'readies', 'readied', 'readying' ] },
+                'recall-knowledge': { 
+                    alternates: [ 'recall knowledge', 'recalls knowledge', 'recalled knowledge', 'recalling knowledge' ] },
+                'release': {
+                    alternates: [ 'release', 'releases', 'released', 'releasing' ] },
+                'reposition': {
+                    alternates: [ 'reposition', 'repositions', 'repositioned', 'repositioning' ] },
+                'request': {
+                    alternates: [ 'request', 'requests', 'requested', 'requesting' ] },
+                'seek': {
+                    alternates: [ 'seek', 'seeks', 'sought', 'seeking' ] },
+                'sense-direction': {
+                    alternates: [ 'sense direction', 'senses direction', 'sensed direction', 'sensing direction' ] },
+                'sense-motive': {
+                    alternates: [ 'sense motive', 'senses motive', 'sensed motive', 'sensing motive' ] },
+                'shove': {
+                    alternates: [ 'shove', 'shoves', 'shoved', 'shoving' ] },
+                'sneak': {
+                    alternates: [ 'sneak', 'sneaks', 'sneaked', 'sneaking' ] },
+                'squeeze': {
+                    alternates: [ 'squeeze', 'squeezes', 'squeezed', 'squeezing' ] },
+                'stand': {
+                    alternates: [ 'stand', 'stands', 'stood', 'standing' ] },
+                'steal': {
+                    alternates: [ 'steal', 'steals', 'stole', 'stealing' ] },
+                'step': {
+                    alternates: [ 'step', 'steps', 'stepped', 'stepping' ] },
+                'stride': {
+                    alternates: [ 'stride', 'strides', 'strided', 'strode', 'striding' ] },
+                'subsist': {
+                    alternates: [ 'subsist', 'subsists', 'subsisted', 'subsisting' ] },
+                'sustain': {
+                    alternates: [ 'sustain', 'sustains', 'sustained', 'sustaining' ] },
+                'swim': {
+                    alternates: [ 'swim', 'swims', 'swam', 'swimming' ] },
+                'take-cover': {
+                    alternates: [ 'take cover', 'takes cover', 'took cover', 'taken cover', 'taking cover' ] },
+                'track': {
+                    alternates: [ 'track', 'tracks', 'tracked', 'tracking' ] },
+                'treat-disease': {
+                    alternates: [
+                        'treat disease', 'treats disease', 'treated disease', 'treating disease',
+                        'treat a disease', 'treats a disease', 'treated a disease', 'treating a disease'
+                    ] },
+                'treat-poison': {
+                    alternates: [
+                        'treat poison', 'treats poison', 'treated poison', 'treating poison',
+                        'treat a poison', 'treats a poison', 'treated a poison', 'treating a poison'
+                    ] },
+                'trip': {
+                    alternates: [ 'trip', 'trips', 'tripped', 'tripping' ] },
+                'tumble-through': {
+                    alternates: [ 'tumble through', 'tumbles through', 'tumbled through', 'tumbling through' ] },
+                'exploit-vulnerability': {
+                    alternates: [ 'exploit vulnerability', 'exploits vulnerability', 'exploited vulnerability', 'exploiting vulnerability' ] },
+                'daring-swing': {
+                    alternates: [ 'daring swing', 'daring swings', 'daring swung', 'daring swinging' ] },
+                'haughty-correction': {
+                    alternates: [ 'haughty correction', 'haughty corrections', 'haughty corrected', 'haughty correcting' ] },
+                'entrap-confession': {
+                    alternates: [ 'entrap confession', 'entraps confession', 'entraped confession', 'entrapping confession' ] }
+            };
+
+            this._cache.set('ACTION_DEFINITIONS', definitions);
+        }
+        return this._cache.get('ACTION_DEFINITIONS');
+    }
+
     static get ACTIONS() {
         if (!this._cache.has('ACTIONS')) {
-            this._cache.set('ACTIONS', new ConfigCategory([
-                'administer-first-aid', 'affix-a-talisman', 'aid', 'arrest-a-fall',
-                'avert-gaze', 'avoid-notice', 'balance', 'burrow', 'climb', 'coerce',
-                'command-an-animal', 'conceal-an-object', 'crawl', 'create-a-diversion',
-                'create-forgery', 'decipher-writing', 'delay', 'demoralize',
-                'disable-device', 'disarm', 'dismiss', 'drop-prone', 'escape',
-                'feint', 'fly', 'force-open', 'gather-information', 'gran-an-edge',
-                'grapple', 'hide', 'high-jump', 'identify-alchemy', 'identify-magic',
-                'impersonate', 'interact', 'leap', 'learn-a-spell', 'lie', 'long-jump',
-                'make-an-impression', 'maneuver-in-flight', 'mount', 'palm-an-object',
-                'perform', 'pick-a-lock', 'point-out', 'ready', 'recall-knowledge',
-                'release', 'reposition', 'request', 'seek', 'sense-direction',
-                'sense-motive', 'shove', 'sneak', 'squeeze', 'stand', 'steal',
-                'step', 'stride', 'subsist', 'sustain', 'swim', 'take-cover',
-                'track', 'treat-disease', 'treat-poison', 'trip', 'tumble-through',
-                'exploit-vulnerability', 'daring-swing', 'haughty-correction', 'entrap-confession'
-            ]));
+            const definitions = this.ACTION_DEFINITIONS;
+            
+            // Extract canonical action names
+            const canonicalActions = Object.keys(definitions);
+            
+            // Extract alternates for pattern matching
+            const actionAlternates = {};
+            Object.entries(definitions).forEach(([action, config]) => {
+                if (config.alternates) {
+                    actionAlternates[action] = config.alternates;
+                }
+            });
+
+            this._cache.set('ACTIONS', new ConfigCategory(
+                canonicalActions,
+                {}, // custom labels
+                {}, // metadata  
+                actionAlternates // alternates for pattern matching
+            ));
         }
         return this._cache.get('ACTIONS');
     }
 
     static get ACTION_VARIANTS() {
         if (!this._cache.has('ACTION_VARIANTS')) {
-            this._cache.set('ACTION_VARIANTS', {
-                'administer-first-aid': new ConfigCategory(['stabilize', 'stop-bleeding']),
-                'create-a-diversion': new ConfigCategory(['distracting-words', 'gesture', 'trick']),
-                'perform': new ConfigCategory([
-                    'acting', 'comedy', 'dance', 'keyboards', 'oratory', 
-                    'percussion', 'singing', 'strings', 'winds'
-                ])
+            const definitions = this.ACTION_DEFINITIONS;
+            const variants = {};
+            
+            Object.entries(definitions).forEach(([action, config]) => {
+                if (config.variants) {
+                    variants[action] = new ConfigCategory(config.variants);
+                }
             });
+
+            this._cache.set('ACTION_VARIANTS', variants);
         }
         return this._cache.get('ACTION_VARIANTS');
     }
@@ -5460,7 +5702,8 @@ class ActionPattern extends BasePattern {
 
     static PATTERNS = [
         {
-            regex: new RegExp(`\\b(${ConfigManager.ACTIONS.pattern})\\b`, 'gi'),
+            // Use patternWithAlternates for enhanced matching
+            regex: new RegExp(`\\b(${ConfigManager.ACTIONS.patternWithAlternates})\\b`, 'gi'),
             priority: 40,
             extractor: 'action'
         }
@@ -5468,7 +5711,11 @@ class ActionPattern extends BasePattern {
 
     static extractActionParameters(match) {
         const actionText = match[1] || '';
-        const actionSlug = this.actionToSlug(actionText);
+        
+        // Find the canonical action form using the new method
+        const canonicalAction = ConfigManager.ACTIONS.findCanonicalForm(actionText);
+        const actionSlug = canonicalAction || this.actionToSlug(actionText);
+        
         let variant = '';
         if (ConfigManager.actionHasVariants(actionSlug)) {
             const variants = ConfigManager.ACTION_VARIANTS[actionSlug];
@@ -5476,9 +5723,46 @@ class ActionPattern extends BasePattern {
                 variant = variants.slugs[0];
             }
         }
-        return { action: actionSlug, variant: variant, dcMethod: 'none', dc: null, statistic: '', alternateRollStatistic: '' };
+        
+        // Determine display text - preserve original phrasing if it's an alternate
+        let displayText = '';
+        if (canonicalAction) {
+            const canonicalForm = ConfigManager.ACTIONS._unslug(canonicalAction);
+            const originalText = actionText.trim();
+            
+            // If the original text differs from canonical form, use it as display text
+            if (originalText.toLowerCase() !== canonicalForm.toLowerCase()) {
+                displayText = this.toTitleCase(originalText);
+            }
+        }
+        
+        return { 
+            action: actionSlug, 
+            variant: variant, 
+            dcMethod: 'none', 
+            dc: null, 
+            statistic: '', 
+            alternateRollStatistic: '',
+            displayText: displayText // Add display text to preserve original phrasing
+        };
     }
 
+    // Helper method to convert text to title case
+    static toTitleCase(text) {
+        return text.replace(/\w\S*/g, (word) => {
+            // Handle common articles and prepositions that should stay lowercase
+            const lowercaseWords = ['a', 'an', 'the', 'and', 'or', 'but', 'for', 'nor', 'on', 'at', 'to', 'from', 'by', 'of', 'in'];
+            const lowerWord = word.toLowerCase();
+            
+            // Always capitalize first word, otherwise check if it should be lowercase
+            if (text.indexOf(word) === 0 || !lowercaseWords.includes(lowerWord)) {
+                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            }
+            return lowerWord;
+        });
+    }
+
+    // Keep existing actionToSlug method as fallback
     static actionToSlug(actionText) {
         const text = actionText.toLowerCase().trim();
         return text.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
