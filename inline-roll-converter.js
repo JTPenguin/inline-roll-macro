@@ -1656,48 +1656,187 @@ class CSSManager {
      */
     static getCSS() {
         return `
+            /* ===== FOUNDRY DIALOG OVERRIDES ===== */
+            .rollconverter-dialog-window .window-content {
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                padding: 10px;
+            }
+
             /* ===== CONVERTER DIALOG LAYOUT ===== */
             .rollconverter-dialog {
                 display: flex;
                 flex-direction: row;
-                min-width: 900px;
+                height: 100%;
+                min-height: 500px;
+                max-height: 700px;
+                min-width: 800px;
+                gap: 10px;
             }
 
             .rollconverter-main {
-                flex: 2;
-                min-width: 0;
+                flex: 1;
+                min-width: 0; /* Allows flex item to shrink below content size */
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                gap: 0;
             }
 
             .rollconverter-sidebar {
-                flex: 1;
                 width: 300px;
-                padding: 0;
-                box-sizing: border-box;
+                flex-shrink: 0;
+                display: flex;
+                flex-direction: column;
+                height: 550px;
+                gap: 10px;
             }
 
-            /* ===== FORM GROUPS ===== */
+            /* ===== MAIN CONTENT SECTIONS ===== */
+            .rollconverter-input-section,
+            .rollconverter-output-section,
+            .rollconverter-preview-section {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-height: 0; /* Allows flex item to shrink */
+                max-height: 33.33%; /* Ensures sections don't exceed 1/3 of available height */
+                max-width: 100%;
+                margin: 0;
+            }
+
+            .rollconverter-section-content {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+                max-height: 200px;
+                overflow: hidden; /* Prevents section from expanding beyond flex bounds */
+            }
+
+            .rollconverter-section-content .form-fields {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+                overflow: hidden; /* Ensures form fields respect flex bounds */
+            }
 
             .rollconverter-input-textarea {
-                width: 100%;
-                resize: vertical;
-                /* font-family: monospace; */
+                flex: 1;
+                min-height: 100px;
+                max-height: 100%; /* Prevents textarea from exceeding container */
+                resize: none;
+                font-family: 'Signika', sans-serif;
+                overflow-y: auto; /* Allow scrolling within textarea */
             }
 
-            .rollconverter-modifier-fieldset p.notes {
+            .rollconverter-output-area {
+                flex: 1;
+                min-height: 100px; /* Minimum height for usability */
+                max-height: 100%; /* Prevents exceeding container bounds */
+                max-width: 100%;
+                overflow-y: auto;
+                overflow-x: hidden; /* Prevent horizontal scrolling */
+                font-family: 'Signika', sans-serif;
+                padding: 2px;
+                word-wrap: break-word; /* Handle long content gracefully */
+            }
+
+            /* ===== MODIFIER PANEL ===== */
+            .rollconverter-modifier-panel {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+                margin: 0;
+                height: 100%;
+            }
+
+            .rollconverter-modifier-content {
+                flex: 1;
+                min-height: 0;
+                max-height: 100%;
+                overflow-y: auto;
+                padding-left: 5px;
+                padding-right: 5px;
+                padding-bottom: 10px;
+            }
+
+            /* ===== SIDEBAR CONTROLS ===== */
+            .rollconverter-sidebar-controls {
+                display: flex;
+                gap: 8px;
+                flex-shrink: 0;
+            }
+
+            .rollconverter-control-button {
+                flex: 1;
+                padding: 8px;
+                background: var(--color-button-primary);
+                color: var(--color-text-light-primary);
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            }
+
+            .rollconverter-control-button:hover {
+                background: var(--color-button-primary-hover);
+            }
+
+            /* ===== MODIFIER PANEL HEADER CONTROLS ===== */
+            /* .rollconverter-header-controls {
+                border-bottom: 1px solid var(--color-border-light-secondary);
+                margin-bottom: 8px;
+                padding-bottom: 8px;
+            } */
+
+            .rollconverter-header-controls .form-fields {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .rollconverter-enabled-label {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                /* font-size: 12px; */
+                margin: 0;
+            }
+
+            /* .rollconverter-reset-button {
+                background: var(--color-warning);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 8px;
                 font-size: 12px;
-                margin: 3px 0;
+                cursor: pointer;
+            } */
+
+            /* .rollconverter-reset-button:hover {
+                background: var(--color-danger);
+            } */
+
+            /* ===== FORM GROUPS ===== */
+            .rollconverter-fieldset.rollconverter-modifier-panel {
+                padding-left: 5px;
+                padding-right: 5px;
+                padding-bottom: 0;
+            }
+
+            .rollconverter-fieldset p.notes {
+                font-size: 12px;
+                margin: 4px 0 0 0;
+                color: var(--color-text-dark-secondary);
+                flex-shrink: 0;
             }
 
             /* ===== OUTPUT AREAS ===== */
-            .rollconverter-output-area {
-                width: 100%;
-                height: 150px;
-                max-height: 150px;
-                overflow-y: auto;
-                font-family: 'Signika', sans-serif;
-                padding: 0 4px 0 4px;
-            }
-
             .rollconverter-output-converted {
                 line-height: 1.5;
             }
@@ -1705,36 +1844,6 @@ class CSSManager {
             .rollconverter-output-placeholder {
                 color: #999;
                 font-style: italic;
-            }
-
-            .rollconverter-output-pre {
-                margin: 0;
-                white-space: pre-wrap;
-                /* font-family: monospace; */
-                font-size: 12px;
-            }
-
-            /* ===== CONTROL BUTTONS ===== */
-            .rollconverter-controls {
-                display: flex;
-                gap: 10px;
-                margin-top: 15px;
-            }
-
-            .rollconverter-control-button {
-                flex: 1;
-                padding: 8px;
-            }
-
-            /* ===== MODIFIER PANEL ===== */
-
-            /* ===== DAMAGE COMPONENTS ===== */
-            .rollconverter-damage-component {
-                background: var(--color-bg-option);
-                border: 1px solid var(--color-border-light-secondary);
-                border-radius: 4px;
-                margin: 8px 0;
-                padding: 8px 10px;
             }
 
             /* ===== INTERACTIVE ELEMENTS ===== */
@@ -1879,7 +1988,6 @@ class CSSManager {
             }
 
             /* ===== COMPONENT MANAGEMENT CONTROLS ===== */
-
             #add-component-container .form-fields {
                 display: flex;
                 justify-content: right;
@@ -2160,7 +2268,7 @@ class ModifierPanelManager {
         if (!renderer) return;
         
         // Find the existing fieldset and header controls
-        const existingFieldset = formElement.querySelector('fieldset.rollconverter-modifier-fieldset');
+        const existingFieldset = formElement.querySelector('fieldset.rollconverter-fieldset');
         const existingHeaderControls = existingFieldset?.querySelector('.form-group'); // First form-group contains header controls
         
         if (!existingFieldset) {
@@ -2178,7 +2286,7 @@ class ModifierPanelManager {
         const panelHTML = this.generatePanelHTML(replacement.type, replacement);
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = panelHTML;
-        const newFieldset = tempDiv.querySelector('fieldset.rollconverter-modifier-fieldset');
+        const newFieldset = tempDiv.querySelector('fieldset.rollconverter-fieldset');
         
         if (newFieldset) {
             // Get all form groups except the first one (which contains header controls)
@@ -2332,7 +2440,7 @@ class ModifierPanelManager {
         if (!renderer) {
             return this.generateJSONPanel(type, rep);
         }
-
+    
         const title = renderer.getTitle(rep);
         const fieldConfigs = renderer.getFieldConfigs(rep);
         
@@ -2345,24 +2453,24 @@ class ModifierPanelManager {
         } else {
             fields = renderableFieldConfigs.map(config => this.renderFieldFromConfig(config, rep)).join('');
         }
-
+    
+        // Return the form content with header controls
         return `
             <form id="${type}-modifier-form" class="rollconverter-modifier-form">
-                <fieldset class="rollconverter-modifier-fieldset">
-                    <legend>${title}</legend>
-                    ${this.renderHeaderControls(rep)}
-                    ${fields}
-                </fieldset>
+                ${this.renderHeaderControls(rep)}
+                ${fields}
             </form>
         `;
     }
 
     renderHeaderControls(rep) {
         return `
-            <div class="form-group">
+            <div class="form-group rollconverter-header-controls">
                 <div class="form-fields">
-                    <label>Enabled</label>
-                    <input type="checkbox" id="enabled" class="rollconverter-field-checkbox" ${rep.enabled !== false ? 'checked' : ''}>
+                    <label class="rollconverter-enabled-label">
+                        Enabled
+                        <input type="checkbox" id="enabled" class="rollconverter-field-checkbox" ${rep.enabled !== false ? 'checked' : ''}>
+                    </label>
                     <button type="button" id="modifier-reset-btn" class="rollconverter-reset-button">Reset</button>
                 </div>
             </div>
@@ -3373,8 +3481,18 @@ class ConverterDialog {
         console.log('[PF2e Converter] Rendering modifier panel');
         const selectedElementId = this.data.selectedElementId;
         
+        // Update the title in the legend
+        const titleElement = document.querySelector('.rollconverter-modifier-title');
+        
         if (selectedElementId && this.data.interactiveElements[selectedElementId]) {
             const rep = this.data.interactiveElements[selectedElementId];
+            const renderer = this.modifierManager.renderers[rep.type];
+            const title = renderer ? renderer.getTitle(rep) : 'Unknown Type';
+            
+            if (titleElement) {
+                titleElement.textContent = title;
+            }
+            
             const panelHTML = this.modifierManager.generatePanelHTML(rep.type, rep);
             
             if (this.ui.modifierPanelContent) {
@@ -3382,15 +3500,12 @@ class ConverterDialog {
                 this.setupModifierPanelHandlers(rep);
             }
         } else {
+            if (titleElement) {
+                titleElement.textContent = 'Modifier Panel';
+            }
+            
             if (this.ui.modifierPanelContent) {
-                this.ui.modifierPanelContent.innerHTML = `
-                    <form id="placeholder-modifier-form" class="rollconverter-modifier-form">
-                        <fieldset class="rollconverter-modifier-fieldset">
-                            <legend>Modifier Panel</legend>
-                            <p>Select an element to modify.</p>
-                        </fieldset>
-                    </form>
-                `;
+                this.ui.modifierPanelContent.innerHTML = '<p>Select an element to modify.</p>';
             }
         }
     }
@@ -3415,8 +3530,32 @@ class ConverterDialog {
                 (modifiedRep, changedFieldId) => this.handleModifierChange(modifiedRep, changedFieldId)
             );
             
-            // Setup reset button handler
+            // Setup enabled checkbox handler (now in the content area)
+            this.attachEnabledCheckboxHandler(rep);
+            
+            // Setup reset button handler (now in the content area)
             this.attachResetButtonHandler(rep, rep.type);
+        }
+    }
+
+    attachEnabledCheckboxHandler(rep) {
+        const enabledCheckbox = this.ui.modifierPanelContent.querySelector('#enabled');
+        if (enabledCheckbox) {
+            // Remove any existing listeners
+            const existingHandler = enabledCheckbox._rollconverterHandler;
+            if (existingHandler) {
+                enabledCheckbox.removeEventListener('change', existingHandler);
+            }
+            
+            // Add new handler
+            const handler = (e) => {
+                console.log('[PF2e Converter] Enabled checkbox changed:', e.target.checked);
+                rep.enabled = e.target.checked;
+                this.handleModifierChange(rep, 'enabled');
+            };
+            
+            enabledCheckbox.addEventListener('change', handler);
+            enabledCheckbox._rollconverterHandler = handler; // Store reference for cleanup
         }
     }
     
@@ -3500,9 +3639,16 @@ class ConverterDialog {
      * @param {string} type - The replacement type
      */
     attachResetButtonHandler(rep, type) {
-        const resetBtn = document.getElementById('modifier-reset-btn');
+        const resetBtn = this.ui.modifierPanelContent.querySelector('#modifier-reset-btn');
         if (resetBtn) {
-            resetBtn.onclick = () => {
+            // Remove any existing listeners
+            const existingHandler = resetBtn._rollconverterHandler;
+            if (existingHandler) {
+                resetBtn.removeEventListener('click', existingHandler);
+            }
+            
+            // Add new handler
+            const handler = () => {
                 console.log('[PF2e Converter] Resetting replacement to original');
                 rep.resetToOriginal();
                 this.renderOutput();
@@ -3510,6 +3656,9 @@ class ConverterDialog {
                 this.renderModifierPanel();
                 this.updateElementHighlighting();
             };
+            
+            resetBtn.addEventListener('click', handler);
+            resetBtn._rollconverterHandler = handler; // Store reference for cleanup
         }
     }
     
@@ -6014,16 +6163,15 @@ function showConverterDialog() {
     CSSManager.injectStyles();
     
     const dialogContent = `
-            <div class="rollconverter-dialog">
+        <div class="rollconverter-dialog">
             <div class="rollconverter-main">
-                <fieldset class="rollconverter-modifier-fieldset">
+                <fieldset class="rollconverter-fieldset rollconverter-input-section">
                     <legend>Input Text</legend>
-                    <div class="form-group">
+                    <div class="form-group rollconverter-section-content">
                         <div class="form-fields">
                             <textarea 
                                 id="input-text" 
                                 name="inputText" 
-                                rows="6" 
                                 placeholder="Paste your spell, ability, or feat description here..."
                                 class="rollconverter-input-textarea"
                                 >${DEFAULT_TEST_INPUT}</textarea>
@@ -6031,9 +6179,10 @@ function showConverterDialog() {
                         <p class="notes">Making changes here will clear any modifications made below.</p>
                     </div>
                 </fieldset>
-                <fieldset class="rollconverter-modifier-fieldset">
+                
+                <fieldset class="rollconverter-fieldset rollconverter-output-section">
                     <legend>Converted Text</legend>
-                    <div class="form-group">
+                    <div class="form-group rollconverter-section-content">
                         <div class="form-fields">
                             <div id="output-html" class="rollconverter-output-area rollconverter-output-converted">
                             </div>
@@ -6041,9 +6190,10 @@ function showConverterDialog() {
                         <p class="notes">Click an inline roll to modify it.</p>
                     </div>
                 </fieldset>
-                <fieldset class="rollconverter-modifier-fieldset">
+                
+                <fieldset class="rollconverter-fieldset rollconverter-preview-section">
                     <legend>Live Preview</legend>
-                    <div class="form-group">
+                    <div class="form-group rollconverter-section-content">
                         <div class="form-fields">
                             <div id="live-preview" class="rollconverter-output-area">
                                 <em class="rollconverter-output-placeholder">Live preview will appear here...</em>
@@ -6052,14 +6202,20 @@ function showConverterDialog() {
                         <p class="notes">Click inline rolls to test them.</p>
                     </div>
                 </fieldset>
-                <div class="rollconverter-controls">
-                    <button type="button" id="copy-output" class="rollconverter-control-button">Copy Output</button>
-                    <button type="button" id="clear-all" class="rollconverter-control-button">Clear All</button>
-                </div>
             </div>
+            
             <div class="rollconverter-sidebar">
-                <div id="modifier-panel-content" class="rollconverter-modifier-panel-content">
-                    <em class="rollconverter-modifier-panel-placeholder">Select an element to modify.</em>
+                <fieldset class="rollconverter-fieldset rollconverter-modifier-panel">
+                    <legend class="rollconverter-modifier-legend">
+                        <span class="rollconverter-modifier-title">Modifier Panel</span>
+                    </legend>
+                    <div class="rollconverter-modifier-content" id="modifier-panel-content">
+                        <p>Select an element to modify.</p>
+                    </div>
+                </fieldset>
+                
+                <div class="rollconverter-sidebar-controls">
+                    <button type="button" id="copy-output" class="rollconverter-control-button">Copy Output</button>
                 </div>
             </div>
         </div>
@@ -6095,7 +6251,8 @@ function showConverterDialog() {
     }, {
         width: 1000,
         height: 700,
-        resizable: true
+        resizable: true,
+        classes: ["rollconverter-dialog-window"] // Add custom class for additional styling if needed
     });
     
     console.log('[PF2e Converter] Rendering dialog');
