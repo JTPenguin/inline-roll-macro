@@ -5493,7 +5493,7 @@ class CheckPattern extends BasePattern {
         
         return {
             checkType: checkType,
-            dcMethod: 'static',
+            dcMethod: dc !== null ? 'static' : 'none',
             dc: dc,
             basic: basic
         };
@@ -5504,7 +5504,7 @@ class CheckPattern extends BasePattern {
         
         return {
             checkType: 'perception',
-            dcMethod: 'static',
+            dcMethod: dc !== null ? 'static' : 'none',
             dc: dc
         };
     }
@@ -5529,7 +5529,7 @@ class CheckPattern extends BasePattern {
         return {
             checkType: 'lore',
             loreName: loreName.toLowerCase().trim(),
-            dcMethod: 'static',
+            dcMethod: dc !== null ? 'static' : 'none',
             dc: dc
         };
     }
@@ -5539,7 +5539,7 @@ class CheckPattern extends BasePattern {
         
         return {
             checkType: 'flat',
-            dcMethod: 'static',
+            dcMethod: dc !== null ? 'static' : 'none',
             dc: dc
         };
     }
@@ -5559,7 +5559,7 @@ class CheckPattern extends BasePattern {
         
         return {
             checkType: skill.toLowerCase().trim(),
-            dcMethod: 'static',
+            dcMethod: dc !== null ? 'static' : 'none',
             dc: dc
         };
     }
