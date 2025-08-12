@@ -5140,20 +5140,22 @@ class CheckPattern extends BasePattern {
      * @returns {Replacement} Replacement instance
      */
     static createReplacement(match, parameters) {
-        const trimmedMatch = this.trimTrailingCheck(match);
+        const trimmedMatch = this.trimTrailingWord(match);
         return new Replacement(trimmedMatch, this.type, parameters);
     }
 
     /**
-     * Trim trailing "check" from a match to prevent it from being replaced
+     * Trim trailing word from a match to prevent it from being replaced
      * @param {Array} match - Regex match array
-     * @returns {Array} - Modified match array with "check" trimmed
+     * @returns {Array} - Modified match array with word trimmed
      */
-    static trimTrailingCheck(match) {
+    static trimTrailingWord(match) {
         if (!match || !match[0]) return match;
         
         const originalText = match[0];
-        const trimmedText = originalText.replace(/\s+check\s*$/i, '');
+        let trimmedText = originalText.replace(/\s+check\s*$/i, '');
+        trimmedText = trimmedText.replace(/\s+save\s*$/i, '');
+        trimmedText = trimmedText.replace(/\s+saving\s+throw\s*$/i, '');
         
         // If we trimmed something, create a new match object with the shorter text
         if (trimmedText.length !== originalText.length) {
