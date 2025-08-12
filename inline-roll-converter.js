@@ -5927,11 +5927,258 @@ class Replacement {
     }
 }
 
+/**
+ * Business Rules System for Replacement Processing
+ * 
+ * This system handles post-processing business logic that determines
+ * which replacements should be enabled/disabled based on context.
+ */
+
+/**
+ * Base class for business rules
+ * Each rule can examine the full context and modify replacements
+ */
+class BusinessRule {
+    /**
+     * Apply this rule to the replacements
+     * @param {Array} replacements - Array of replacement objects
+     * @param {string} originalText - The original input text
+     * @param {Object} context - Additional context for rule processing
+     * @returns {Array} - Modified array of replacements
+     */
+    apply(replacements, originalText, context = {}) {
+        throw new Error('BusinessRule subclasses must implement apply() method');
+    }
+
+    /**
+     * Get a description of what this rule does
+     * @returns {string} Rule description
+     */
+    getDescription() {
+        return 'Base business rule';
+    }
+
+    /**
+     * Get the priority of this rule (higher numbers run first)
+     * @returns {number} Rule priority
+     */
+    getPriority() {
+        return 0;
+    }
+}
+
+/**
+ * Rule: Only enable the first occurrence of duplicate conditions
+ * Conditions with different values are considered separate
+ */
+class DuplicateConditionRule extends BusinessRule {
+    apply(replacements, originalText, context = {}) {
+        const seenConditions = new Map(); // condition -> { value: firstOccurrenceIndex }
+        
+        replacements.forEach((replacement, index) => {
+            if (replacement.type !== 'condition') return;
+            
+            const conditionName = replacement.inlineAutomation?.condition;
+            const conditionValue = replacement.inlineAutomation?.value || null;
+            
+            if (!conditionName) return;
+            
+            // Create a unique key for condition + value combination
+            const conditionKey = `${conditionName}:${conditionValue}`;
+            
+            if (seenConditions.has(conditionKey)) {
+                // This is a duplicate - disable it
+                replacement.enabled = false;
+                console.log(`[DuplicateConditionRule] Disabled duplicate condition: ${conditionKey} at position ${replacement.startPos}`);
+            } else {
+                // First occurrence - keep it enabled and record it
+                seenConditions.set(conditionKey, index);
+                console.log(`[DuplicateConditionRule] First occurrence of condition: ${conditionKey} at position ${replacement.startPos}`);
+            }
+        });
+        
+        return replacements;
+    }
+
+    getDescription() {
+        return 'Disables duplicate conditions (same condition with same value)';
+    }
+
+    getPriority() {
+        return 100;
+    }
+}
+
+/**
+ * Rule: Disable generic rolls that are just numbers (no dice)
+ */
+class NumberOnlyGenericRollRule extends BusinessRule {
+    apply(replacements, originalText, context = {}) {
+        replacements.forEach((replacement) => {
+            if (replacement.type !== 'generic') return;
+            
+            const dice = replacement.inlineAutomation?.dice;
+            if (!dice) return;
+            
+            // Check if it's just a number (no 'd' for dice)
+            if (this.isNumberOnlyDice(dice)) {
+                replacement.enabled = false;
+                console.log(`[NumberOnlyGenericRollRule] Disabled number-only generic roll: "${dice}" at position ${replacement.startPos}`);
+            }
+        });
+        
+        return replacements;
+    }
+
+    /**
+     * Check if a dice expression is just a number (no 'd' present)
+     * @param {string} dice - The dice expression to check
+     * @returns {boolean} True if it's just a number
+     */
+    isNumberOnlyDice(dice) {
+        if (!dice || typeof dice !== 'string') return false;
+        return /^\s*\d+\s*$/.test(dice.trim());
+    }
+
+    getDescription() {
+        return 'Disables generic rolls that are just numbers (no dice)';
+    }
+
+    getPriority() {
+        return 50;
+    }
+}
+
+/**
+ * Business Rules Engine
+ * Manages and applies all business rules to replacements
+ */
+class BusinessRulesEngine {
+    constructor() {
+        this.rules = [];
+        this.enabled = true;
+        
+        // Register default rules
+        this.registerRule(new DuplicateConditionRule());
+        this.registerRule(new NumberOnlyGenericRollRule());
+        
+        // Example of conditionally registering rules
+        // this.registerRule(new LowDamageRule(1));
+    }
+
+    /**
+     * Register a new business rule
+     * @param {BusinessRule} rule - The rule to register
+     */
+    registerRule(rule) {
+        if (!(rule instanceof BusinessRule)) {
+            throw new Error('Rule must be an instance of BusinessRule');
+        }
+        
+        this.rules.push(rule);
+        this.rules.sort((a, b) => b.getPriority() - a.getPriority());
+        
+        console.log(`[BusinessRulesEngine] Registered rule: ${rule.getDescription()} (priority: ${rule.getPriority()})`);
+    }
+
+    /**
+     * Remove a rule by class
+     * @param {Function} RuleClass - The rule class to remove
+     */
+    unregisterRule(RuleClass) {
+        const initialLength = this.rules.length;
+        this.rules = this.rules.filter(rule => !(rule instanceof RuleClass));
+        
+        if (this.rules.length < initialLength) {
+            console.log(`[BusinessRulesEngine] Unregistered rule: ${RuleClass.name}`);
+        }
+    }
+
+    /**
+     * Apply all registered rules to the replacements
+     * @param {Array} replacements - Array of replacement objects
+     * @param {string} originalText - The original input text
+     * @param {Object} context - Additional context for rule processing
+     * @returns {Array} - Modified array of replacements
+     */
+    applyRules(replacements, originalText, context = {}) {
+        if (!this.enabled) {
+            console.log('[BusinessRulesEngine] Rules engine is disabled, skipping rule application');
+            return replacements;
+        }
+
+        if (!Array.isArray(replacements)) {
+            console.warn('[BusinessRulesEngine] Expected array of replacements, got:', typeof replacements);
+            return replacements;
+        }
+
+        console.log(`[BusinessRulesEngine] Applying ${this.rules.length} business rules to ${replacements.length} replacements`);
+        
+        let processedReplacements = [...replacements]; // Create a copy
+        
+        for (const rule of this.rules) {
+            try {
+                console.log(`[BusinessRulesEngine] Applying rule: ${rule.getDescription()}`);
+                processedReplacements = rule.apply(processedReplacements, originalText, context);
+                
+                if (!Array.isArray(processedReplacements)) {
+                    console.error(`[BusinessRulesEngine] Rule ${rule.constructor.name} returned non-array result`);
+                    processedReplacements = replacements; // Fallback to original
+                    break;
+                }
+            } catch (error) {
+                console.error(`[BusinessRulesEngine] Error applying rule ${rule.constructor.name}:`, error);
+                // Continue with other rules rather than failing completely
+            }
+        }
+        
+        const disabledCount = processedReplacements.filter(r => !r.enabled).length;
+        console.log(`[BusinessRulesEngine] Rules application complete. ${disabledCount} replacements disabled.`);
+        
+        return processedReplacements;
+    }
+
+    /**
+     * Enable or disable the rules engine
+     * @param {boolean} enabled - Whether to enable the rules engine
+     */
+    setEnabled(enabled) {
+        this.enabled = Boolean(enabled);
+        console.log(`[BusinessRulesEngine] Rules engine ${this.enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /**
+     * Get information about all registered rules
+     * @returns {Array} Array of rule information objects
+     */
+    getRulesInfo() {
+        return this.rules.map(rule => ({
+            name: rule.constructor.name,
+            description: rule.getDescription(),
+            priority: rule.getPriority()
+        }));
+    }
+
+    /**
+     * Clear all registered rules
+     */
+    clearRules() {
+        this.rules = [];
+        console.log('[BusinessRulesEngine] All rules cleared');
+    }
+}
+
 // -------------------- Text Processor --------------------
 class TextProcessor {
     constructor() {
         console.log('[PF2e Converter] Creating TextProcessor instance');
         this.linkedConditions = new Set(); // Only needed for condition linking
+        
+        // Initialize business rules engine
+        this.businessRules = new BusinessRulesEngine();
+        
+        // Optional: Allow disabling business rules via configuration
+        // this.businessRules.setEnabled(false); // Uncomment to disable rules
     }
 
     process(inputText, state = null) {
@@ -5979,12 +6226,78 @@ class TextProcessor {
             }
 
             console.log('[PF2e Converter] Created', replacements.length, 'replacement objects');
-            return this.sortByPriority(replacements);
+            
+            // Sort by priority first
+            const sortedReplacements = this.sortByPriority(replacements);
+            
+            // NEW: Apply business rules to determine which replacements should be enabled
+            const processedReplacements = this.applyBusinessRules(sortedReplacements, inputText, state);
+            
+            return processedReplacements;
         } catch (error) {
             console.error('[PF2e Converter] Error in TextProcessor.process:', error);
             console.error('[PF2e Converter] Error stack:', error.stack);
             return [];
         }
+    }
+
+    /**
+     * Apply business rules to determine replacement enabled state
+     * @param {Array} replacements - Array of replacement objects
+     * @param {string} originalText - The original input text
+     * @param {Object} state - Processing state object
+     * @returns {Array} Processed replacements with business rules applied
+     */
+    applyBusinessRules(replacements, originalText, state = null) {
+        console.log('[PF2e Converter] Applying business rules to replacements');
+        
+        // Create context object for rules
+        const context = {
+            state: state,
+            timestamp: Date.now(),
+            // Add any other context that rules might need
+            enableLowDamageRule: false, // Example configuration flag
+        };
+        
+        try {
+            return this.businessRules.applyRules(replacements, originalText, context);
+        } catch (error) {
+            console.error('[PF2e Converter] Error applying business rules:', error);
+            // Return original replacements if business rules fail
+            return replacements;
+        }
+    }
+
+    /**
+     * Add a custom business rule
+     * @param {BusinessRule} rule - The rule to add
+     */
+    addBusinessRule(rule) {
+        this.businessRules.registerRule(rule);
+    }
+
+    /**
+     * Remove a business rule by class
+     * @param {Function} RuleClass - The rule class to remove
+     */
+    removeBusinessRule(RuleClass) {
+        this.businessRules.unregisterRule(RuleClass);
+    }
+
+    /**
+     * Enable or disable business rules processing
+     * @param {boolean} enabled - Whether to enable business rules
+     */
+    setBusinessRulesEnabled(enabled) {
+        this.businessRules.setEnabled(enabled);
+    }
+
+    /**
+     * Get information about active business rules
+     * @returns {Array} Array of rule information
+     */
+    getBusinessRulesInfo() {
+        return this.businessRules.getRulesInfo();
     }
 
     sortByPriority(replacements) {
@@ -6696,9 +7009,4 @@ class TraitsInput {
             .filter(trait => trait && trait.value)
             .map(trait => trait.value);
     }
-}
-
-// Utility: Check if a dice expression is just a number (no 'd' present)
-function isNumberOnlyDice(dice) {
-    return /^\s*\d+\s*$/.test(dice);
 }
