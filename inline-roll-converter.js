@@ -5201,13 +5201,13 @@ class DamagePattern extends BasePattern {
     static PATTERNS = [
         // Multi-damage pattern (highest priority)
         {
-            regex: new RegExp(`((?:\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+persistent)?|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+splash|splash\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+precision|precision\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|precision|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s*,\\s*plus\\s*|\\s+and\\s+|\\s+plus\\s+))*\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+persistent)?|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+splash|splash\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+precision|precision\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|precision|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?)`, 'gi'),
+            regex: new RegExp(`((?:\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+(?:persistent|splash|precision))?|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+(?:splash|precision)|(?:splash|precision)\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?(?:\\s*,\\s*|\\s*,\\s*and\\s*|\\s*,\\s*plus\\s*|\\s+and\\s+|\\s+plus\\s+))*\\d+(?:d\\d+)?(?:[+-]\\d+)?\\s+(?:(?:persistent\\s+)?(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})(?:\\s+(?:persistent|splash|precision))?|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+(?:splash|precision)|(?:splash|precision)\\s+(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+damage)?)`, 'gi'),
             priority: 110,
             extractor: 'multi'
         },
-        // Persistent damage
+        // Single damage pattern (handles persistent, splash, precision)
         {
-            regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:persistent\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+persistent)(?:\\s+damage)?`, 'gi'),
+            regex: new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+(?:persistent|splash|precision))|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern})\\s+(splash|precision))|(?:(splash|precision)\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})))(?:\\s+damage)?`, 'gi'),
             priority: 100,
             extractor: 'single'
         }
@@ -5215,7 +5215,7 @@ class DamagePattern extends BasePattern {
 
     static extractMultiDamageParameters(match) {
         // Parse multiple damage components from the match
-        const singlePattern = new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+persistent)?|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))\\s+splash|splash\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))\\s+precision|precision\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|precision|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern})))(?:\\s+damage)?`, 'gi');
+        const singlePattern = new RegExp(`(\\d+(?:d\\d+)?(?:[+-]\\d+)?)\\s+(?:(?:persistent\\s+)?(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))(?:\\s+(persistent|splash|precision))?|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern}))\\s+(splash|precision)|(?:(splash|precision))\\s+(${ConfigManager.ALL_DAMAGE_TYPES.pattern})|(?:(${ConfigManager.ALL_DAMAGE_TYPES.pattern})))(?:\\s+damage)?`, 'gi');
         
         const components = [];
         let m;
@@ -5242,33 +5242,80 @@ class DamagePattern extends BasePattern {
         };
     }
 
+    // ROBUST: Extract damage type and category by scanning the entire match text
     static extractSingleDamageComponent(match) {
         const dice = match[1] || '';
         const originalText = match[0].toLowerCase();
         
-        // Extract damage type from various capture groups
-        const type = match[2] || match[3] || match[4] || match[5] || match[6] || match[7] || match[8] || '';
+        // ROBUST: Find damage type by scanning the entire match text for known damage types
+        let damageType = this.findDamageTypeInText(originalText);
         
-        const isPersistent = this.containsWord(originalText, 'persistent');
-        const isPrecision = this.containsWord(originalText, 'precision');
-        const isSplash = this.containsWord(originalText, 'splash');
+        // ROBUST: Find category by scanning for category keywords
+        let category = this.findDamageCategoryInText(originalText);
         
         // Convert legacy types
-        let remasterType = type;
-        if (type && LegacyConversionManager.isLegacyDamageType(type)) {
-            remasterType = LegacyConversionManager.convertLegacyDamageType(type);
+        if (damageType && LegacyConversionManager.isLegacyDamageType(damageType)) {
+            damageType = LegacyConversionManager.convertLegacyDamageType(damageType);
         }
-        
-        let category = '';
-        if (isPersistent) category = 'persistent';
-        else if (isPrecision) category = 'precision';
-        else if (isSplash) category = 'splash';
         
         return {
             dice: dice,
-            damageType: remasterType.toLowerCase().trim(),
-            category: category
+            damageType: damageType || 'untyped',
+            category: category || ''
         };
+    }
+
+    /**
+     * ROBUST: Find damage type by scanning text for any known damage type
+     * @param {string} text - Text to scan
+     * @returns {string} Found damage type or empty string
+     */
+    static findDamageTypeInText(text) {
+        const normalizedText = text.toLowerCase().trim();
+        
+        // Check all damage types (including legacy) - longest first to avoid partial matches
+        const allDamageTypes = [...ConfigManager.ALL_DAMAGE_TYPES.slugs]
+            .filter(type => type && type.length > 0)
+            .sort((a, b) => b.length - a.length);
+        
+        for (const damageType of allDamageTypes) {
+            // Use word boundaries to avoid partial matches
+            const regex = new RegExp(`\\b${this.escapeRegex(damageType)}\\b`, 'i');
+            if (regex.test(normalizedText)) {
+                return damageType;
+            }
+        }
+        
+        return '';
+    }
+
+    /**
+     * ROBUST: Find damage category by scanning text for category keywords  
+     * @param {string} text - Text to scan
+     * @returns {string} Found category or empty string
+     */
+    static findDamageCategoryInText(text) {
+        const normalizedText = text.toLowerCase().trim();
+        
+        // Check for categories in priority order (persistent first, then precision, then splash)
+        const categories = ['persistent', 'precision', 'splash'];
+        
+        for (const category of categories) {
+            if (this.containsWord(normalizedText, category)) {
+                return category;
+            }
+        }
+        
+        return '';
+    }
+
+    /**
+     * Helper method to escape regex special characters
+     * @param {string} string - String to escape
+     * @returns {string} Escaped string
+     */
+    static escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     /**
@@ -5312,7 +5359,6 @@ class DamagePattern extends BasePattern {
         return match;
     }
 }
-
 /**
  * Check pattern class extending BasePattern
  */
