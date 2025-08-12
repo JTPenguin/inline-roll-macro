@@ -6881,11 +6881,15 @@ function showConverterDialog() {
             }
         },
         close: () => {
-            // Clean up CSS when dialog closes
-            CSSManager.removeStyles();
+            // Clean up converter dialog data
             if (converterDialog) {
                 converterDialog.cleanup();
             }
+            
+            // Schedule CSS cleanup after dialog window fully closes
+            setTimeout(() => {
+                CSSManager.removeStyles();
+            }, 500); // Small delay to ensure window has closed
         }
     }, {
         width: 1000,
