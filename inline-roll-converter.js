@@ -576,7 +576,7 @@ class InlineCondition extends InlineLink {
 
     get value() { return this._value; }
     set value(newValue) {
-        if (typeof newValue === 'number') {
+        if (typeof newValue === 'number' || newValue === '') {
             this._value = newValue;
         } else {
             console.warn(`Invalid value: ${newValue}`);
