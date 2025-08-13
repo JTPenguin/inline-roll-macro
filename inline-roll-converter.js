@@ -5850,7 +5850,19 @@ class ActionPattern extends BasePattern {
 
     static PATTERNS = [
         {
-            // Use patternWithAlternates for enhanced matching
+            // Action with DC in parentheses: "Escape (DC 34)"
+            regex: new RegExp(`\\b(${ConfigManager.ACTIONS.patternWithAlternates})\\s*\\(\\s*DC\\s*(\\d{1,2})\\s*\\)`, 'gi'),
+            priority: 45,
+            extractor: 'action'
+        },
+        {
+            // Action with DC after: "Treat Poison DC 28"
+            regex: new RegExp(`\\b(${ConfigManager.ACTIONS.patternWithAlternates})\\s+DC\\s*(\\d{1,2})\\b`, 'gi'),
+            priority: 45,
+            extractor: 'action'
+        },
+        {
+            // Use patternWithAlternates for enhanced matching (plain actions without DC)
             regex: new RegExp(`\\b(${ConfigManager.ACTIONS.patternWithAlternates})\\b`, 'gi'),
             priority: 40,
             extractor: 'action'
@@ -5859,6 +5871,7 @@ class ActionPattern extends BasePattern {
 
     static extractActionParameters(match) {
         const actionText = match[1] || '';
+        const dc = match[2] ? parseInt(match[2]) : null;
         
         // Find the canonical action form using the new method
         const canonicalAction = ConfigManager.ACTIONS.findCanonicalForm(actionText);
@@ -5887,33 +5900,12 @@ class ActionPattern extends BasePattern {
         return { 
             action: actionSlug, 
             variant: variant, 
-            dcMethod: 'none', 
-            dc: null, 
+            dcMethod: dc !== null ? 'static' : 'none', 
+            dc: dc, 
             statistic: '', 
             alternateRollStatistic: '',
-            displayText: displayText // Add display text to preserve original phrasing
+            displayText: displayText
         };
-    }
-
-    // Helper method to convert text to title case
-    static toTitleCase(text) {
-        return text.replace(/\w\S*/g, (word) => {
-            // Handle common articles and prepositions that should stay lowercase
-            const lowercaseWords = ['a', 'an', 'the', 'and', 'or', 'but', 'for', 'nor', 'on', 'at', 'to', 'from', 'by', 'of', 'in'];
-            const lowerWord = word.toLowerCase();
-            
-            // Always capitalize first word, otherwise check if it should be lowercase
-            if (text.indexOf(word) === 0 || !lowercaseWords.includes(lowerWord)) {
-                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-            }
-            return lowerWord;
-        });
-    }
-
-    // Keep existing actionToSlug method as fallback
-    static actionToSlug(actionText) {
-        const text = actionText.toLowerCase().trim();
-        return text.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     }
 }
 
