@@ -1281,6 +1281,7 @@ class DamageRenderer extends BaseRenderer {
             id: 'area-damage',
             type: 'checkbox',
             label: 'Area Damage',
+            tooltip: 'Treat this as area damage for the purpose of automating features like a swarm\'s weakness to area damage.',
             getValue: (r) => r.inlineAutomation.hasOption('area-damage') || false,
             setValue: (r, value) => r.inlineAutomation.setOption('area-damage', value)
             // No triggersUpdate specified = defaults to 'field-only'
@@ -1290,6 +1291,7 @@ class DamageRenderer extends BaseRenderer {
             id: 'healing',
             type: 'checkbox',
             label: 'Healing',
+            tooltip: 'Only compatible with Vitality, Void, and Untyped types. Not compatible with Persistent category.',
             getValue: (r) => r.inlineAutomation.healing || false,
             setValue: (r, value) => { r.inlineAutomation.healing = value; },
             showIf: (r) => r.inlineAutomation.components.length === 1
@@ -1329,9 +1331,10 @@ class CheckRenderer extends BaseRenderer {
             id: 'lore-name',
             type: 'text',
             label: 'Lore Name',
+            tooltip: 'The name of the lore skill. Don\'t include the word "Lore".',
             getValue: (r) => r.inlineAutomation.loreName || '',
             setValue: (r, value) => { r.inlineAutomation.loreName = value; },
-            placeholder: 'e.g., Sailing Lore',
+            placeholder: 'e.g., Sailing',
             dependsOn: ['check-type'],
             showIf: (r) => r.inlineAutomation.checkType === 'lore'
         });
@@ -1340,6 +1343,7 @@ class CheckRenderer extends BaseRenderer {
             id: 'dc-method',
             type: 'select',
             label: 'DC Method',
+            tooltip: 'For the purpose of statistic based DCs, the Origin is the creature that has this ability, and the Target is the creature whose token is targeted when the roll is made.',
             getValue: (r) => r.inlineAutomation.dcMethod || 'static',
             setValue: (r, value) => { r.inlineAutomation.dcMethod = value; },
             options: ConfigManager.DC_METHODS.options,
@@ -1391,6 +1395,7 @@ class CheckRenderer extends BaseRenderer {
             id: 'damaging-effect',
             type: 'checkbox',
             label: 'Damaging Effect',
+            tooltip: 'Treat this as a save against a damaging effect for the purpose of automating Bulwark and other similar features.',
             getValue: (r) => r.inlineAutomation.hasOption('damaging-effect') || false,
             setValue: (r, value) => r.inlineAutomation.setOption('damaging-effect', value),
             showIf: (r) => r.inlineAutomation.isOptionRelevant('damaging-effect')
@@ -1400,6 +1405,7 @@ class CheckRenderer extends BaseRenderer {
             id: 'area-effect',
             type: 'checkbox',
             label: 'Area Effect',
+            tooltip: 'Treat this as a save against an area effect for the purpose of automating certain features.',
             getValue: (r) => r.inlineAutomation.hasOption('area-effect') || false,
             setValue: (r, value) => r.inlineAutomation.setOption('area-effect', value),
             showIf: (r) => r.inlineAutomation.isOptionRelevant('area-effect')
@@ -1532,7 +1538,8 @@ class GenericRollRenderer extends BaseRenderer {
             id: 'roll-label',
             type: 'text',
             label: 'Label',
-            getValue: (r) => r.inlineAutomation.label || 'Duration',
+            tooltip: 'Label that will appear at the top of the roll in chat. Leave blank to use Display Text as label.',
+            getValue: (r) => r.inlineAutomation.label || '',
             setValue: (r, value) => { r.inlineAutomation.label = value; },
             placeholder: 'e.g., Duration'
         });
@@ -1541,6 +1548,7 @@ class GenericRollRenderer extends BaseRenderer {
             id: 'gm-only',
             type: 'checkbox',
             label: 'GM Only',
+            tooltip: 'Only show the roll to the GM.',
             getValue: (r) => r.inlineAutomation.gmOnly || false,
             setValue: (r, value) => { r.inlineAutomation.gmOnly = value; }
         });
@@ -1591,6 +1599,7 @@ class ActionRenderer extends BaseRenderer {
             id: 'alternate-roll-statistic',
             type: 'select',
             label: 'Statistic',
+            tooltip: 'Use an alternate statistic for the roll. Only applicable for actions that involve a check.',
             getValue: (r) => r.inlineAutomation.alternateRollStatistic || 'none',
             setValue: (r, value) => { r.inlineAutomation.alternateRollStatistic = value; },
             options: ConfigManager.ALTERNATE_ROLL_STATISTICS.options
@@ -1600,6 +1609,7 @@ class ActionRenderer extends BaseRenderer {
             id: 'dc-method',
             type: 'select',
             label: 'DC Method',
+            tooltip: 'For the purpose of statistic based DCs, the Target is the creature whose token is targeted when the roll is made.',
             getValue: (r) => r.inlineAutomation.dcMethod || 'none',
             setValue: (r, value) => { r.inlineAutomation.dcMethod = value; },
             options: ConfigManager.ACTION_DC_METHODS.options,
