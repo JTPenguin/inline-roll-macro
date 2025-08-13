@@ -5893,7 +5893,7 @@ class ActionPattern extends BasePattern {
             
             // If the original text differs from canonical form, use it as display text
             if (originalText.toLowerCase() !== canonicalForm.toLowerCase()) {
-                displayText = this.toTitleCase(originalText);
+                displayText = ConfigManager.ACTIONS._toTitleCase(originalText);
             }
         }
         
