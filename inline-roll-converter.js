@@ -42,8 +42,8 @@ class InlineAutomation {
     constructor(type, params = {}) {
         this.type = type;
         this.params = {...params};
-        this.traits = params.traits || [];
-        this.options = params.options || [];
+        this.traits = params.traits ? [...params.traits] : [];
+        this.options = params.options ? [...params.options] : [];
         this.displayText = params.displayText || '';
     }
 
@@ -254,7 +254,7 @@ class InlineDamage extends InlineAutomation {
         this.healing = params.healing || false;
         
         // Convert component parameter objects to DamageComponent instances
-        this.components = (params.components || []).map(comp => 
+        this.components = (params.components ? [...params.components] : []).map(comp => 
             new DamageComponent(comp.dice, comp.damageType, comp.category)
         );
         
