@@ -5784,6 +5784,59 @@ class DurationPattern extends BasePattern {
 }
 
 /**
+ * Counteract pattern class extending BasePattern
+ */
+class CounteractPattern extends BasePattern {
+    static type = 'generic';
+    static priority = 45;
+    static description = 'Counteract modifier patterns';
+
+    static EXTRACTORS = {
+        counteract: (match) => CounteractPattern.extractCounteractParameters(match)
+    };
+
+    static PATTERNS = [
+        // Match only the modifier part in "counteract modifier of +25"
+        {
+            regex: /(?<=\bcounteracts?\s+(?:check\s+)?modifier\s+of\s+)((?:\d+d\d+)?[+-]?\d+)/gi,
+            priority: 45,
+            extractor: 'counteract'
+        },
+        // Match only the modifier part in "+25 counteract modifier"
+        {
+            regex: /((?:\d+d\d+)?[+-]?\d+)(?=\s+counteracts?\s+(?:check\s+)?modifier)/gi,
+            priority: 45,
+            extractor: 'counteract'
+        }
+    ];
+
+    static extractCounteractParameters(match) {
+        const modifierText = match[0] || ''; // Now match[0] is just the modifier
+        
+        // If the modifier already includes dice (like 1d20+25), use it as-is
+        // Otherwise, prepend 1d20+ to make it a full roll
+        let dice;
+        if (/\d+d\d+/.test(modifierText)) {
+            // Already contains dice, use as-is
+            dice = modifierText;
+        } else {
+            // Just a modifier, prepend 1d20
+            const cleanModifier = modifierText.startsWith('+') || modifierText.startsWith('-') 
+                ? modifierText 
+                : `+${modifierText}`;
+            dice = `1d20${cleanModifier}`;
+        }
+        
+        return {
+            dice: dice,
+            label: 'Counteract',
+            gmOnly: false,
+            displayText: ''
+        };
+    }
+}
+
+/**
  * Action pattern class extending BasePattern
  */
 class ActionPattern extends BasePattern {
@@ -5874,6 +5927,7 @@ class PatternDetector {
         ConditionPattern,
         TemplatePattern,
         DurationPattern,
+        CounteractPattern,
         ActionPattern
     ];
 
