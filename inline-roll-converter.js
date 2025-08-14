@@ -3306,7 +3306,15 @@ class ConverterDialog {
      * Copy current output to clipboard
      */
     copyOutput() {
-        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, false, this.data);
+        // Use formatting applied, HTML not escaped for copying
+        const outputText = this.processor.renderFromReplacements(
+            this.data.inputText, 
+            this.data.replacements, 
+            false, // interactive = false
+            this.data,
+            true,  // applyFormatting = true
+            false  // escapeHtml = false
+        );
         copyToClipboard(outputText);
     }
     
@@ -3318,14 +3326,41 @@ class ConverterDialog {
             return;
         }
         
-        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, true, this.data);
-        this.data.lastRawOutput = outputText;
+        // Get the output with formatting applied and HTML escaped, plus interactive elements
+        const outputText = this.processor.renderFromReplacements(
+            this.data.inputText, 
+            this.data.replacements, 
+            true,  // interactive = true (to get clickable elements)
+            this.data, 
+            true,  // applyFormatting = true
+            true   // escapeHtml = true (to show formatting tags as text)
+        );
+        
+        // Store the raw version for copying (formatting applied, HTML not escaped)
+        this.data.lastRawOutput = this.processor.renderFromReplacements(
+            this.data.inputText, 
+            this.data.replacements, 
+            false, // interactive = false
+            this.data,
+            true,  // applyFormatting = true
+            false  // escapeHtml = false
+        );
         
         if (this.ui.outputHtmlDiv) {
-            // Use semantic class for the pre element
-            this.ui.outputHtmlDiv.innerHTML = outputText;
+            this.ui.outputHtmlDiv.innerHTML = `<div class="rollconverter-output-formatted">${outputText}</div>`;
             this.setupInteractiveElementHandlers();
         }
+    }
+    
+    /**
+     * Escape HTML for display
+     * @param {string} html - HTML to escape
+     * @returns {string} Escaped HTML
+     */
+    escapeHtml(html) {
+        const div = document.createElement('div');
+        div.textContent = html;
+        return div.innerHTML;
     }
     
     /**
@@ -3336,7 +3371,15 @@ class ConverterDialog {
             return;
         }
         
-        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, false, this.data);
+        // Use formatting applied, HTML not escaped for live preview
+        const outputText = this.processor.renderFromReplacements(
+            this.data.inputText, 
+            this.data.replacements, 
+            false, // interactive = false
+            this.data,
+            true,  // applyFormatting = true
+            false  // escapeHtml = false
+        );
         
         if (this.ui.livePreview) {
             createLivePreview(outputText, this.ui.livePreview);
@@ -6431,28 +6474,66 @@ class TextProcessor {
     }
 
     // Keep existing render methods unchanged
-    renderFromReplacements(text, replacements, interactive = false, state = null) {
-        const sorted = replacements.slice().sort((a, b) => b.startPos - a.startPos);
+    renderFromReplacements(text, replacements, interactive = false, state = null, applyFormatting = true, escapeHtml = false) {
         let result = text;
         
-        for (const replacement of sorted) {
-            result = this.applyReplacement(result, replacement, interactive, state);
-        }
-        
+        // Apply global legacy condition conversions first
         result = this.applyGlobalLegacyConditionConversions(result);
-
-        // Apply formatting rules if enabled
-        if (this.formattingRules.enabled) {
+        
+        // Apply formatting rules if requested
+        if (applyFormatting && this.formattingRules.enabled) {
             result = this.formattingRules.applyRules(result);
         }
-
+        
+        // Escape HTML if requested
+        if (escapeHtml) {
+            result = this.escapeHtml(result);
+        }
+        
+        // Apply replacements with appropriate offset calculation
+        const sorted = replacements.slice().sort((a, b) => b.startPos - a.startPos);
+        
+        for (const replacement of sorted) {
+            let offset = 0;
+            
+            // Calculate offset based on what transformations we applied
+            if (applyFormatting && this.formattingRules.enabled) {
+                const originalTextUpToPos = text.substring(0, replacement.startPos);
+                let processedTextUpToPos = this.applyGlobalLegacyConditionConversions(originalTextUpToPos);
+                processedTextUpToPos = this.formattingRules.applyRules(processedTextUpToPos);
+                
+                if (escapeHtml) {
+                    processedTextUpToPos = this.escapeHtml(processedTextUpToPos);
+                }
+                
+                offset = processedTextUpToPos.length - originalTextUpToPos.length;
+            }
+            
+            result = this.applyReplacement(result, replacement, interactive, state, offset);
+        }
+        
         return result;
     }
 
-    applyReplacement(text, replacement, interactive = false, state = null) {
-        const before = text.substring(0, replacement.startPos);
-        const after = text.substring(replacement.endPos);
+    /**
+     * Escape HTML for display
+     * @param {string} html - HTML to escape
+     * @returns {string} Escaped HTML
+     */
+    escapeHtml(html) {
+        const div = document.createElement('div');
+        div.textContent = html;
+        return div.innerHTML;
+    }
+
+    applyReplacement(text, replacement, interactive = false, state = null, offset = 0) {
+        const adjustedStartPos = replacement.startPos + offset;
+        const adjustedEndPos = replacement.endPos + offset;
+        
+        const before = text.substring(0, adjustedStartPos);
+        const after = text.substring(adjustedEndPos);
         const rendered = interactive ? replacement.renderInteractive(state) : replacement.render();
+        
         return before + rendered + after;
     }
 
