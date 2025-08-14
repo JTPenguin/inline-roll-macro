@@ -6318,14 +6318,16 @@ class RemoveLineBreaksRule extends FormattingRule {
 class DegreesOfSuccessRule extends FormattingRule {
     constructor() {
         super();
-        this.criticalSuccessRegex = /\b(Critical\s+Success)\b/g;
-        this.degreesOfSuccessRegex = /\b(Critical\s+Failure|(?<!Critical\s+)Success|(?<!Critical\s+)Failure)\b/g;
+        this.criticalSuccessRegex = /(\s*)(Critical\s+Success)\b/g;
+        this.degreesOfSuccessRegex = /(\s*)(Critical\s+Failure|(?<!Critical\s+)Success|(?<!Critical\s+)Failure)\b/g;
     }
+    
     apply(text) {
         // Format critical success
-        text = text.replace(this.criticalSuccessRegex, '</p><hr /><p><strong>$1</strong>');
-        // Format degrees of success
-        text = text.replace(this.degreesOfSuccessRegex, '</p><p><strong>$1</strong>');
+        text = text.replace(this.criticalSuccessRegex, '</p>\n<hr>\n<p><strong>$2</strong>');
+        
+        // Format other degrees of success
+        text = text.replace(this.degreesOfSuccessRegex, '</p>\n<p><strong>$2</strong>');
 
         return text;
     }
@@ -6355,20 +6357,6 @@ class StartAndEndParagraphTagsRule extends FormattingRule {
     }
 }
 
-class NewLineToBRRule extends FormattingRule {
-    apply(text) {
-        return text.replace(/\n/g, '<br>');
-    }
-    
-    getPriority() {
-        return 20;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
-    }
-}
-
 class FormattingRulesEngine {
     constructor() {
         this.rules = [];
@@ -6381,7 +6369,6 @@ class FormattingRulesEngine {
         this.registerRule(new DegreesOfSuccessRule());
         this.registerRule(new RemoveLineBreaksRule());
         this.registerRule(new StartAndEndParagraphTagsRule());
-        this.registerRule(new NewLineToBRRule());
     }
 
     /**
@@ -6684,7 +6671,8 @@ async function createLivePreview(text, container) {
     }
 
     try {
-        const htmlText = text.replace(/\n/g, '<br>');
+        const htmlText = text;
+        // const htmlText = text.replace(/\n/g, '<br>');
 
         const processedHTML = await TextEditor.enrichHTML(htmlText, {
             async: true,
