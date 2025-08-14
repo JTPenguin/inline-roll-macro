@@ -6303,8 +6303,8 @@ class RemoveLineBreaksRule extends FormattingRule {
 class DegreesOfSuccessRule extends FormattingRule {
     constructor() {
         super();
-        this.criticalSuccessRegex = /\b(critical\s+success)\b/gi;
-        this.degreesOfSuccessRegex = /\b(critical\s+failure|(?<!critical\s+)success|(?<!critical\s+)failure)\b/gi;
+        this.criticalSuccessRegex = /\b(Critical\s+Success)\b/g;
+        this.degreesOfSuccessRegex = /\b(Critical\s+Failure|(?<!Critical\s+)Success|(?<!Critical\s+)Failure)\b/g;
     }
     apply(text) {
         // Format critical success
