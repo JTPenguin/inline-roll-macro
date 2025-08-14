@@ -7,15 +7,22 @@
  */
 
 // Default input text for the converter
-const DEFAULT_INPUT = `You raise an illusion in the space of a fallen foe, crafting it to
-resemble a ghost of your target before parading it across the
-battlefield. Whenever you Cast this Spell or Sustain this spell,
-you move the illusion up to 30 feet and cause each enemy
-in a 30-foot emanation of the spirit to attempt a Will save
-against your spell DC. Enemies who fail become frightened 1
-(or frightened 2 on a critical failure).
-Heightened (6th) You can target a corpse of any size that has
-died within the past 8 hours.`;
+const DEFAULT_INPUT = `You conjure an exploding glass container filled with a sight-
+stealing poison and hurl it across enemy lines. Upon impact,
+the bottle bursts and exposes all creatures in the area to
+the toxin within. Each creature in the area must attempt a
+Fortitude save.
+Critical Success The creature is unaffected.
+Success The creature takes 3d6 poison damage.
+Failure The creature is afflicted with blinding poison at stage 1.
+Critical Failure The creature is afflicted with blinding poison
+at stage 2.
+Blinding Poison (incapacitation, poison) Level 9; Maximum
+Duration 4 rounds; Stage 1 3d6 poison damage and blinded
+for 1 round (1 round); Stage 2 4d6 poison damage and
+blinded for 1 round (1 round); Stage 3 5d6 poison damage
+and blinded for 1 round (1 round); Stage 4 6d6 poison
+damage and blinded for 1 minute (1 round)`;
 
 // ==================== INLINE AUTOMATIONS SYSTEM ====================
 // Classes that define objects which represent individual inline automations,
@@ -6361,7 +6368,7 @@ class BoldKeywordsRule extends FormattingRule {
             'Duration',
             'Trigger',
             'Targets',
-            'Requirements'
+            'Requirements',
         ]
         this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
         this.patternWithSemicolon = new RegExp(`(?<=;\\s*)(${this.keywords.join('|')})`, 'g');
@@ -6421,6 +6428,97 @@ class HeightenedRule extends FormattingRule {
     }
 }
 
+class AfflictionNameRule extends FormattingRule {
+    constructor() {
+        super();
+        // Pattern to match affliction names:
+        // - Start of line or preceded by whitespace/newline
+        // - Affliction name (captured - the only thing we need to modify)
+        // - Space and opening parenthesis
+        // - Comma-separated traits containing curse, disease, or poison
+        // - Closing parenthesis and " Level"
+        this.afflictionRegex = /(\s*)([^(\n]+?)\s+\([^)]*(?:curse|disease|poison)[^)]*\)\s+Level/gi;
+    }
+    
+    apply(text) {
+        // Replace affliction names with bolded versions
+        text = text.replace(this.afflictionRegex, (match, leadingSpace, afflictionName) => {
+            // Trim the affliction name to remove any trailing spaces
+            const trimmedName = afflictionName.trim();
+            
+            // Replace just the affliction name part with the bolded version
+            return match.replace(afflictionName, `</p>\n<hr>\n<p><strong>${trimmedName}</strong>`);
+        });
+
+        // If we find we've replaced the start of the text, remove unneccessary tags
+        if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
+            // Remove the </p>\n<hr>\n from the start of the text by removing the first 10 characters
+            text = text.substring(10);
+        }
+
+        return text;
+    }
+
+    getPriority() {
+        return 110;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class AfflictionPropertiesRule extends FormattingRule {
+    constructor() {
+        super();
+        this.keywords = [
+            'Maximum Duration',
+            'Level'
+        ]
+        this.pattern = new RegExp(`(${this.keywords.join('|')})`, 'g');
+    }
+
+    apply(text) {
+        text = text.replace(this.pattern, '<strong>$1</strong>');
+        return text;
+    }
+
+    getPriority() {
+        return 19;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class AfflictionStagesRule extends FormattingRule {
+    constructor() {
+        super();
+        this.pattern = new RegExp(`(;?\\s*)(Stage\\s+\\d+)\\b`, 'g');
+    }
+
+    apply(text) {
+        text = text.replace(this.pattern, '</p>\n<p><strong>$2</strong>');
+
+        // If we find we've replaced the start of the text, remove unneccessary tags
+        if (text.startsWith('</p>\n<p><strong>')) {
+            // Remove the </p>\n from the start of the text by removing the first 5 characters
+            text = text.substring(5);
+        }
+
+        return text;
+    }
+
+    getPriority() {
+        return 18;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
 class StartAndEndParagraphTagsRule extends FormattingRule {
     apply(text) {
         // Add <p> tags at the start and end of the text only if there are no <p> tags there already
@@ -6454,8 +6552,11 @@ class FormattingRulesEngine {
         this.registerRule(new DegreesOfSuccessRule());
         this.registerRule(new RemoveLineBreaksRule());
         this.registerRule(new StartAndEndParagraphTagsRule());
-        // this.registerRule(new BoldKeywordsRule()); // These keywords are not actually intended to be included in spell descriptions in Foundry
+        // this.registerRule(new BoldKeywordsRule());
         this.registerRule(new HeightenedRule());
+        this.registerRule(new AfflictionStagesRule());
+        this.registerRule(new AfflictionNameRule());
+        this.registerRule(new AfflictionPropertiesRule());
     }
 
     /**
