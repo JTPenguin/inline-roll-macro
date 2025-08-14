@@ -7,16 +7,15 @@
  */
 
 // Default input text for the converter
-const DEFAULT_INPUT = `You conjure an exploding glass container filled with a sight-
-stealing poison and hurl it across enemy lines. Upon impact,
-the bottle bursts and exposes all creatures in the area to
-the toxin within. Each creature in the area must attempt a
-Fortitude save.
-Critical Success The creature is unaffected.
-Success The creature takes 3d6 poison damage.
-Failure The creature is afflicted with blinding poison at stage 1.
-Critical Failure The creature is afflicted with blinding poison
-at stage 2.`;
+const DEFAULT_INPUT = `You raise an illusion in the space of a fallen foe, crafting it to
+resemble a ghost of your target before parading it across the
+battlefield. Whenever you Cast this Spell or Sustain this spell,
+you move the illusion up to 30 feet and cause each enemy
+in a 30-foot emanation of the spirit to attempt a Will save
+against your spell DC. Enemies who fail become frightened 1
+(or frightened 2 on a critical failure).
+Heightened (6th) You can target a corpse of any size that has
+died within the past 8 hours.`;
 
 // ==================== INLINE AUTOMATIONS SYSTEM ====================
 // Classes that define objects which represent individual inline automations,
@@ -6329,6 +6328,16 @@ class DegreesOfSuccessRule extends FormattingRule {
         // Format other degrees of success
         text = text.replace(this.degreesOfSuccessRegex, '</p>\n<p><strong>$2</strong>');
 
+        // If we find we've replaced the start of the text, remove unneccessary tags
+        if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
+            // Remove the </p>\n<hr>\n from the start of the text by removing the first 12 characters
+            text = text.substring(10);
+        }
+        if (text.startsWith('</p>\n<p><strong>')) {
+            // Remove the </p>\n from the start of the text by removing the first 6 characters
+            text = text.substring(5);
+        }
+
         return text;
     }
 
@@ -6341,15 +6350,91 @@ class DegreesOfSuccessRule extends FormattingRule {
     }
 }
 
-class StartAndEndParagraphTagsRule extends FormattingRule {
+class BoldKeywordsRule extends FormattingRule {
+    constructor() {
+        super();
+        this.keywords = [
+            'Traditions',
+            'Range',
+            'Area',
+            'Defense',
+            'Duration',
+            'Trigger',
+            'Targets',
+            'Requirements'
+        ]
+        this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
+        this.patternWithSemicolon = new RegExp(`(?<=;\\s*)(${this.keywords.join('|')})`, 'g');
+    }
+
     apply(text) {
-        // Add <p> tags at the start and end of the text
-        text = `<p>${text}</p>`;
+        text = text.replace(this.patternNoSemicolon, '</p>\n<p><strong>$1</strong>');
+        text = text.replace(this.patternWithSemicolon, '<strong>$1</strong>');
+
+        // If we find we've replaced the start of the text, remove unneccessary tags
+        if (text.startsWith('</p>\n<p><strong>')) {
+            // Remove the </p>\n from the start of the text by removing the first 6 characters
+            text = text.substring(5);
+            console.log('Removed </p>\n from the start of the text');
+        }
+
         return text;
     }
 
     getPriority() {
-        return 90;
+        return 80;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class HeightenedRule extends FormattingRule {
+    constructor() {
+        super();
+        // Match "Heightened" followed by level in parentheses
+        // Supports formats like: (1st), (4th), (+1), (2nd), (3rd), etc.
+        this.heightenedRegex = new RegExp(`(\\s*Heightened\\s*\\([^)]+\\))`, 'g');
+    }
+    
+    apply(text) {
+        console.log('Applying HeightenedRule');
+        // Format heightened entries similar to degrees of success
+        text = text.replace(this.heightenedRegex, '</p>\n<hr>\n<p><strong>$1</strong>');
+
+        // If we find we've replaced the start of the text, remove unnecessary tags
+        if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
+            // Remove the </p>\n<hr>\n from the start of the text by removing the first 10 characters
+            text = text.substring(10);
+        }
+
+        return text;
+    }
+
+    getPriority() {
+        return 60;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class StartAndEndParagraphTagsRule extends FormattingRule {
+    apply(text) {
+        // Add <p> tags at the start and end of the text only if there are no <p> tags there already
+        if (!text.startsWith('<p>')) {
+            text = `<p>${text}</p>`;
+        }
+        if (!text.endsWith('</p>')) {
+            text = `${text}</p>`;
+        }
+        return text;
+    }
+
+    getPriority() {
+        return 10;
     }
 
     getCategory() {
@@ -6369,6 +6454,8 @@ class FormattingRulesEngine {
         this.registerRule(new DegreesOfSuccessRule());
         this.registerRule(new RemoveLineBreaksRule());
         this.registerRule(new StartAndEndParagraphTagsRule());
+        // this.registerRule(new BoldKeywordsRule()); // These keywords are not actually intended to be included in spell descriptions in Foundry
+        this.registerRule(new HeightenedRule());
     }
 
     /**
