@@ -1,28 +1,13 @@
 /**
  * Pathfinder 2e Inline Roll Converter
  * 
- * v ---
+ * v 1.1.0
  * 
  * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
 
 // Default input text for the converter
-const DEFAULT_INPUT = `You conjure an exploding glass container filled with a sight-
-stealing poison and hurl it across enemy lines. Upon impact,
-the bottle bursts and exposes all creatures in the area to
-the toxin within. Each creature in the area must attempt a
-Fortitude save.
-Critical Success The creature is unaffected.
-Success The creature takes 3d6 poison damage.
-Failure The creature is afflicted with blinding poison at stage 1.
-Critical Failure The creature is afflicted with blinding poison
-at stage 2.
-Blinding Poison (incapacitation, poison) Level 9; Maximum
-Duration 4 rounds; Stage 1 3d6 poison damage and blinded
-for 1 round (1 round); Stage 2 4d6 poison damage and
-blinded for 1 round (1 round); Stage 3 5d6 poison damage
-and blinded for 1 round (1 round); Stage 4 6d6 poison
-damage and blinded for 1 minute (1 round)`;
+const DEFAULT_INPUT = ``;
 
 // ==================== INLINE AUTOMATIONS SYSTEM ====================
 // Classes that define objects which represent individual inline automations,
@@ -6357,46 +6342,6 @@ class DegreesOfSuccessRule extends FormattingRule {
     }
 }
 
-class BoldKeywordsRule extends FormattingRule {
-    constructor() {
-        super();
-        this.keywords = [
-            'Traditions',
-            'Range',
-            'Area',
-            'Defense',
-            'Duration',
-            'Trigger',
-            'Targets',
-            'Requirements',
-        ]
-        this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
-        this.patternWithSemicolon = new RegExp(`(?<=;\\s*)(${this.keywords.join('|')})`, 'g');
-    }
-
-    apply(text) {
-        text = text.replace(this.patternNoSemicolon, '</p>\n<p><strong>$1</strong>');
-        text = text.replace(this.patternWithSemicolon, '<strong>$1</strong>');
-
-        // If we find we've replaced the start of the text, remove unneccessary tags
-        if (text.startsWith('</p>\n<p><strong>')) {
-            // Remove the </p>\n from the start of the text by removing the first 6 characters
-            text = text.substring(5);
-            console.log('Removed </p>\n from the start of the text');
-        }
-
-        return text;
-    }
-
-    getPriority() {
-        return 80;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
-    }
-}
-
 class HeightenedRule extends FormattingRule {
     constructor() {
         super();
@@ -6552,7 +6497,6 @@ class FormattingRulesEngine {
         this.registerRule(new DegreesOfSuccessRule());
         this.registerRule(new RemoveLineBreaksRule());
         this.registerRule(new StartAndEndParagraphTagsRule());
-        // this.registerRule(new BoldKeywordsRule());
         this.registerRule(new HeightenedRule());
         this.registerRule(new AfflictionStagesRule());
         this.registerRule(new AfflictionNameRule());
