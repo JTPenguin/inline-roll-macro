@@ -6285,6 +6285,17 @@ class FormattingRule {
     getPriority() {
         return 0;
     }
+
+    getCategory() {
+        throw new Error('FormattingRule subclasses must implement getCategory() method');
+    }
+
+    static get CATEGORIES() {
+        return {
+            TEXT: 'text',
+            HTML: 'html'
+        };
+    }
 }
 
 class RemoveLineBreaksRule extends FormattingRule {
@@ -6298,6 +6309,10 @@ class RemoveLineBreaksRule extends FormattingRule {
     getPriority() {
         return 100;
     }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.TEXT;
+    }
 }
 
 class DegreesOfSuccessRule extends FormattingRule {
@@ -6308,9 +6323,9 @@ class DegreesOfSuccessRule extends FormattingRule {
     }
     apply(text) {
         // Format critical success
-        text = text.replace(this.criticalSuccessRegex, '<hr><strong>$1</strong>');
+        text = text.replace(this.criticalSuccessRegex, '</p><hr /><p><strong>$1</strong>');
         // Format degrees of success
-        text = text.replace(this.degreesOfSuccessRegex, '<br><strong>$1</strong>');
+        text = text.replace(this.degreesOfSuccessRegex, '</p><p><strong>$1</strong>');
 
         return text;
     }
@@ -6318,15 +6333,55 @@ class DegreesOfSuccessRule extends FormattingRule {
     getPriority() {
         return 50;
     }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class StartAndEndParagraphTagsRule extends FormattingRule {
+    apply(text) {
+        // Add <p> tags at the start and end of the text
+        text = `<p>${text}</p>`;
+        return text;
+    }
+
+    getPriority() {
+        return 90;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class NewLineToBRRule extends FormattingRule {
+    apply(text) {
+        return text.replace(/\n/g, '<br>');
+    }
+    
+    getPriority() {
+        return 20;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
 }
 
 class FormattingRulesEngine {
     constructor() {
         this.rules = [];
         this.enabled = true;
+        this.enabledCategories = new Set([
+            FormattingRule.CATEGORIES.TEXT,
+            FormattingRule.CATEGORIES.HTML
+        ]);
 
         this.registerRule(new DegreesOfSuccessRule());
         this.registerRule(new RemoveLineBreaksRule());
+        this.registerRule(new StartAndEndParagraphTagsRule());
+        this.registerRule(new NewLineToBRRule());
     }
 
     /**
@@ -6351,7 +6406,33 @@ class FormattingRulesEngine {
     }
 
     /**
-     * Apply all registered rules to the text
+     * Enable or disable specific categories of formatting rules
+     * @param {string|Array} categories - Category or array of categories to enable
+     * @param {boolean} enabled - Whether to enable (true) or disable (false) the categories
+     */
+    setCategoryEnabled(categories, enabled = true) {
+        const categoryArray = Array.isArray(categories) ? categories : [categories];
+        
+        categoryArray.forEach(category => {
+            if (enabled) {
+                this.enabledCategories.add(category);
+            } else {
+                this.enabledCategories.delete(category);
+            }
+        });
+    }
+
+    /**
+     * Check if a category is enabled
+     * @param {string} category - The category to check
+     * @returns {boolean} Whether the category is enabled
+     */
+    isCategoryEnabled(category) {
+        return this.enabledCategories.has(category);
+    }
+
+    /**
+     * Apply all registered and enabled rules to the text
      * @param {string} text - The text to apply the rules to
      * @returns {string} - The modified text
      */
@@ -6362,7 +6443,14 @@ class FormattingRulesEngine {
 
         let processedText = text;
         
-        for (const rule of this.rules) {
+        // Filter rules by enabled categories
+        const applicableRules = this.rules.filter(rule => {
+            const ruleCategory = rule.getCategory ? rule.getCategory() : FormattingRule.CATEGORIES.TEXT;
+            return this.isCategoryEnabled(ruleCategory);
+        });
+        
+        // Apply the filtered rules
+        for (const rule of applicableRules) {
             try {
                 processedText = rule.apply(processedText);
             } catch (error) {
@@ -6475,44 +6563,83 @@ class TextProcessor {
 
     // Keep existing render methods unchanged
     renderFromReplacements(text, replacements, interactive = false, state = null, applyFormatting = true, escapeHtml = false) {
-        let result = text;
+        // Step 1: Apply global legacy condition conversions to original text
+        let processedText = this.applyGlobalLegacyConditionConversions(text);
         
-        // Apply global legacy condition conversions first
-        result = this.applyGlobalLegacyConditionConversions(result);
-        
-        // Apply formatting rules if requested
-        if (applyFormatting && this.formattingRules.enabled) {
-            result = this.formattingRules.applyRules(result);
-        }
-        
-        // Escape HTML if requested
-        if (escapeHtml) {
-            result = this.escapeHtml(result);
-        }
-        
-        // Apply replacements with appropriate offset calculation
+        // Step 2: Apply replacements to the text BEFORE any other processing
         const sorted = replacements.slice().sort((a, b) => b.startPos - a.startPos);
         
         for (const replacement of sorted) {
-            let offset = 0;
-            
-            // Calculate offset based on what transformations we applied
-            if (applyFormatting && this.formattingRules.enabled) {
-                const originalTextUpToPos = text.substring(0, replacement.startPos);
-                let processedTextUpToPos = this.applyGlobalLegacyConditionConversions(originalTextUpToPos);
-                processedTextUpToPos = this.formattingRules.applyRules(processedTextUpToPos);
-                
-                if (escapeHtml) {
-                    processedTextUpToPos = this.escapeHtml(processedTextUpToPos);
-                }
-                
-                offset = processedTextUpToPos.length - originalTextUpToPos.length;
-            }
-            
-            result = this.applyReplacement(result, replacement, interactive, state, offset);
+            processedText = this.applyReplacement(processedText, replacement, interactive, state);
         }
         
+        // Step 4: Apply formatting rules if requested
+        if (applyFormatting && this.formattingRules.enabled) {
+            processedText = this.formattingRules.applyRules(processedText);
+        }
+        
+        // Step 3: If we're escaping HTML, protect original line breaks
+        const protectedElements = [];
+        if (escapeHtml) {
+            processedText = this.protectOriginalLineBreaks(processedText, protectedElements);
+        }
+        
+        // Step 5: Escape HTML if requested, passing the protected elements array
+        if (escapeHtml) {
+            processedText = this.escapeHtmlSelectively(processedText, protectedElements);
+        }
+        
+        return processedText;
+    }
+
+    /**
+     * Protect original line breaks by replacing them with placeholders
+     * @param {string} text - Text with original line breaks
+     * @param {Array} protectedElements - Array to store protected content
+     * @returns {string} Text with line breaks replaced by placeholders
+     */
+    protectOriginalLineBreaks(text, protectedElements) {
+        let result = text;
+        
+        // Handle different line break formats
+        result = result.replace(/\r\n/g, '\n'); // Normalize Windows line breaks
+        result = result.replace(/\r/g, '\n');   // Normalize Mac line breaks
+        
+        // Replace line breaks with placeholders and store the <br> replacement
+        result = result.replace(/\n/g, () => {
+            const placeholder = `___PROTECTED_ELEMENT_${protectedElements.length}___`;
+            protectedElements.push('<br>');
+            return placeholder;
+        });
+        
         return result;
+    }
+
+    /**
+     * Escape formatting HTML while preserving interactive elements
+     * This method processes the HTML string directly rather than DOM nodes
+     * to avoid double-escaping issues with interactive element attributes
+     */
+    escapeHtmlSelectively(html, protectedElements = []) {
+        let processedHtml = html;
+        
+        // Protect interactive spans (continue using the same array)
+        processedHtml = processedHtml.replace(/<span[^>]*class="[^"]*rollconverter-interactive[^"]*"[^>]*>.*?<\/span>/gi, (match) => {
+            const placeholder = `___PROTECTED_ELEMENT_${protectedElements.length}___`;
+            protectedElements.push(match);
+            return placeholder;
+        });
+        
+        // Now escape all HTML in the remaining content
+        processedHtml = this.escapeHtml(processedHtml);
+        
+        // Restore all protected elements (both line breaks and interactive spans)
+        protectedElements.forEach((element, index) => {
+            const placeholder = `___PROTECTED_ELEMENT_${index}___`;
+            processedHtml = processedHtml.replace(placeholder, element);
+        });
+        
+        return processedHtml;
     }
 
     /**
@@ -6526,12 +6653,9 @@ class TextProcessor {
         return div.innerHTML;
     }
 
-    applyReplacement(text, replacement, interactive = false, state = null, offset = 0) {
-        const adjustedStartPos = replacement.startPos + offset;
-        const adjustedEndPos = replacement.endPos + offset;
-        
-        const before = text.substring(0, adjustedStartPos);
-        const after = text.substring(adjustedEndPos);
+    applyReplacement(text, replacement, interactive = false, state = null) {
+        const before = text.substring(0, replacement.startPos);
+        const after = text.substring(replacement.endPos);
         const rendered = interactive ? replacement.renderInteractive(state) : replacement.render();
         
         return before + rendered + after;
