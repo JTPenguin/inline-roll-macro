@@ -1,43 +1,19 @@
 /**
- * PF2e Inline Roll Converter
+ * Pathfinder 2e Inline Roll Converter
  * 
- * Converts plain text descriptions into Foundry VTT inline automation syntax
- * for the Pathfinder 2e Remaster system.
+ * v 1.0.0
+ * 
+ * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
 
-// Define a test input for demonstration and testing
-const DEFAULT_TEST_INPUT = `You can Administer First Aid. Deal 4d6 fire damage and 2d4 persistent acid damage. The target becomes frightened 2 and clumsy 1. DC 21 Reflex save. DC 18 Arcana check or DC 18 Occultism check. Heal 3d8 hit points. 30-foot cone. Within 15 feet. Can't use this action again for 1d4 rounds. Use the Shove action.`;
+// Default input text for the converter
+const DEFAULT_INPUT = '';
 
-// Comprehensive test cases
-const COMPREHENSIVE_TEST_CASES = [
-    // Single pattern tests
-    { input: '2d6 fire damage', expected: { matchCount: 1, patterns: ['damage'] } },
-    { input: '1d4 persistent acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
-    { input: 'DC 15 Reflex save', expected: { matchCount: 1, patterns: ['check'] } },
-    { input: 'heal 3d8 hit points', expected: { matchCount: 1, patterns: ['healing'] } },
-    { input: 'becomes frightened 2', expected: { matchCount: 1, patterns: ['condition'] } },
-    { input: '30-foot cone', expected: { matchCount: 1, patterns: ['template'] } },
-    { input: '1d4 rounds', expected: { matchCount: 1, patterns: ['duration'] } },
-    { input: 'Use the Shove action', expected: { matchCount: 1, patterns: ['action'] } },
-    
-    // Multi-damage tests
-    { input: '2d6 fire damage and 1d4 acid damage', expected: { matchCount: 1, patterns: ['damage'] } },
-    
-    // Complex combinations
-    { 
-        input: 'Deal 2d6 fire damage. DC 15 Reflex save. Target becomes frightened 1.',
-        expected: { matchCount: 3, patterns: ['damage', 'check', 'condition'] }
-    },
-    
-    // Edge cases
-    { input: '', expected: { matchCount: 0, patterns: [] } },
-    { input: 'No patterns here', expected: { matchCount: 0, patterns: [] } },
-];
+// ==================== INLINE AUTOMATIONS SYSTEM ====================
+// Classes that define objects which represent individual inline automations,
+// each tracking its own parameters and syntax rendering
 
-// ==================== INLINE ROLL SYSTEM ====================
-
-// Base class for all inline rolls
-// Handles the actual syntax generation and parameters
+// Base class for all inline automations
 class InlineAutomation {
     constructor(type, params = {}) {
         this.type = type;
@@ -46,8 +22,6 @@ class InlineAutomation {
         this.options = params.options ? [...params.options] : [];
         this.displayText = params.displayText || '';
     }
-
-    // Helper methods to manage options
     
     // Return true if the option is in the options array
     // @param {string} option - The option to check
@@ -196,7 +170,7 @@ class DamageComponent {
 
     /**
      * Check if the component has dice
-     * @returns {boolean} - True if the component has dice
+     * @returns {boolean} - True if the component has a dice expression
      */
     hasDice() {
         return this._dice && this._dice.length > 0;
@@ -245,8 +219,7 @@ class DamageComponent {
     }
 }
 
-// Inline damage roll syntax
-// @Damage[...]
+// Inline Damage Roll
 class InlineDamage extends InlineAutomation {
     constructor(params = {}) {
         super('damage', params);
@@ -274,7 +247,6 @@ class InlineDamage extends InlineAutomation {
     addComponent(dice = '1d6', damageType = 'untyped', category = '') {
         const newComponent = new DamageComponent(dice, damageType, category);
         this.components.push(newComponent);
-        console.log('[InlineDamage] Added component:', newComponent.toJSON());
         return newComponent;
     }
 
@@ -296,7 +268,6 @@ class InlineDamage extends InlineAutomation {
         }
 
         const removedComponent = this.components.splice(index, 1)[0];
-        console.log('[InlineDamage] Removed component:', removedComponent.toJSON());
         return true;
     }
 
@@ -329,7 +300,6 @@ class InlineDamage extends InlineAutomation {
         if (updates.damageType !== undefined) component.damageType = updates.damageType;
         if (updates.category !== undefined) component.category = updates.category;
 
-        console.log(`[InlineDamage] Updated component ${index}:`, component.toJSON());
         return true;
     }
 
@@ -393,8 +363,7 @@ class InlineDamage extends InlineAutomation {
     }
 }
 
-// Inline check syntax
-// @Check[...|dc:...|options:...|traits:...]
+// Inline Checks and Saves
 class InlineCheck extends InlineAutomation {
     constructor(params = {}) {
         super('check', params);
@@ -534,14 +503,12 @@ class InlineCheck extends InlineAutomation {
     }
 }
 
+// Inline UUID Link
 class InlineLink extends InlineAutomation {
     constructor(params = {}) {
         super('link', params);
         this.uuid = params.uuid || '';
     }
-
-    // TODO: Add getter for uuid
-    // TODO: Add setter for uuid that validates the uuid
 
     render() {
         const displayTextSyntax = this.displayText !== '' ? `{${this.displayText}}` : ''; // Add display text syntax if it's not empty
@@ -549,6 +516,7 @@ class InlineLink extends InlineAutomation {
     }
 }
 
+// Inline Condition Link
 class InlineCondition extends InlineLink {
     constructor(params = {}) {
         super(params);
@@ -602,6 +570,7 @@ class InlineCondition extends InlineLink {
     }
 }
 
+// Inline Template Link
 class InlineTemplate extends InlineAutomation {
     constructor(params = {}) {
         super('template', params);
@@ -658,6 +627,7 @@ class InlineTemplate extends InlineAutomation {
     }
 }
 
+// Inline Generic Roll
 class InlineGenericRoll extends InlineAutomation {
     constructor(params = {}) {
         super('generic', params);
@@ -699,6 +669,7 @@ class InlineGenericRoll extends InlineAutomation {
     }
 }
 
+// Inline Action
 class InlineAction extends InlineAutomation {
     constructor(params = {}) {
         super('action', params);
@@ -824,34 +795,11 @@ class InlineAction extends InlineAutomation {
     }
 }
 
-// Enhanced field configuration object template
-// const fieldConfig = {
-//     id: 'field-name',           // Unique field identifier
-//     type: 'select',             // Field type (select, text, checkbox, etc.)
-//     label: 'Field Label',       // Display label
-//     getValue: (rep) => rep.value, // Function to get current value
-//     setValue: (rep, val) => {},  // Function to set new value (optional)
-    
-//     // Type-specific options
-//     options: [...],             // For select/multiselect fields
-//     placeholder: 'text...',     // For text fields
-//     min: 0,                     // For number fields
-    
-//     // Conditional display
-//     showIf: (rep) => true,      // Function to determine if field should be shown
-//     hideIf: (rep) => false,     // Function to determine if field should be hidden
-    
-//     // Enhanced dependency and update properties
-//     affects: ['other-field-id'],           // Fields this field affects
-//     dependsOn: ['source-field-id'],        // Fields this field depends on
-//     triggersUpdate: 'panel-partial',       // Update scope when changed
-//     validate: (value, rep) => boolean      // Field validation function
-// };
+// ==================== RENDERERS ====================
+// Classes that define how to render the modifier panel
+// for each type of inline automation
 
-/**
- * BaseRenderer - Base class for type-specific renderers
- * Provides common interface and utility methods for all renderers
- */
+// Base class for type-specific renderers
 class BaseRenderer {
     /**
      * Get field configurations for this replacement type
@@ -872,10 +820,7 @@ class BaseRenderer {
                 type: 'checkbox',
                 label: 'Enabled',
                 getValue: (r) => r.enabled !== false,
-                setValue: (r, value) => {
-                    console.log(`[BaseRenderer] Setting enabled for ${r.type || 'unknown'} (${r.id}): ${r.enabled} -> ${value}`);
-                    r.enabled = value;
-                }
+                setValue: (r, value) => { r.enabled = value; }
             }
         ];
     }
@@ -1019,10 +964,8 @@ class BaseRenderer {
     }
 }
 
-/**
- * FieldRenderer - Utility class for consistent field rendering
- * Provides static methods for generating field HTML
- */
+//Utility class for consistent field rendering
+// Provides static methods for generating field HTML
 class FieldRenderer {
     /**
      * Render a field with consistent styling
@@ -1180,9 +1123,7 @@ class FieldRenderer {
     }
 }
 
-/**
- * DamageRenderer - Handles damage roll modifier UI
- */
+// Renderer for Inline Damage Rolls
 class DamageRenderer extends BaseRenderer {
     getTitle(replacement) {
         return 'Inline Damage Roll';
@@ -1206,12 +1147,12 @@ class DamageRenderer extends BaseRenderer {
                     label: 'Remove',
                     action: 'remove-component',
                     componentIndex: index,
-                    triggersUpdate: 'config-refresh',  // ← Declarative: this action needs fresh configs
+                    triggersUpdate: 'config-refresh',
                     isComponentField: true
                 });
             }
             
-            // Component data fields - these work fine with current configs
+            // Component data fields
             configs.push({
                 id: `component-${index}-dice`,
                 type: 'text',
@@ -1227,7 +1168,6 @@ class DamageRenderer extends BaseRenderer {
                 isComponentField: true,
                 componentIndex: index,
                 componentField: 'dice'
-                // No triggersUpdate specified = defaults to 'field-only'
             });
             
             configs.push({
@@ -1245,7 +1185,6 @@ class DamageRenderer extends BaseRenderer {
                 isComponentField: true,
                 componentIndex: index,
                 componentField: 'damageType'
-                // No triggersUpdate specified = defaults to 'field-only'
             });
             
             configs.push({
@@ -1263,7 +1202,6 @@ class DamageRenderer extends BaseRenderer {
                 isComponentField: true,
                 componentIndex: index,
                 componentField: 'category'
-                // No triggersUpdate specified = defaults to 'field-only'
             });
         }
 
@@ -1273,10 +1211,10 @@ class DamageRenderer extends BaseRenderer {
             type: 'button',
             label: 'Add Damage Partial',
             action: 'add-component',
-            triggersUpdate: 'config-refresh'  // ← Declarative: this action needs fresh configs
+            triggersUpdate: 'config-refresh'
         });
 
-        // Global fields that don't affect component structure
+        // Global fields
         configs.push({
             id: 'area-damage',
             type: 'checkbox',
@@ -1284,7 +1222,6 @@ class DamageRenderer extends BaseRenderer {
             notes: 'For automating features like a swarm\'s weakness to area damage.',
             getValue: (r) => r.inlineAutomation.hasOption('area-damage') || false,
             setValue: (r, value) => r.inlineAutomation.setOption('area-damage', value)
-            // No triggersUpdate specified = defaults to 'field-only'
         });
 
         configs.push({
@@ -1305,9 +1242,7 @@ class DamageRenderer extends BaseRenderer {
     }
 }
 
-/**
- * CheckRenderer - Handles check/save modifier UI
- */
+// Renderer for Inline Checks and Saves
 class CheckRenderer extends BaseRenderer {
     getTitle(replacement) {
         return 'Inline Check/Save';
@@ -1419,9 +1354,7 @@ class CheckRenderer extends BaseRenderer {
     }
 }
 
-/**
- * ConditionRenderer - Handles condition link modifier UI
- */
+// Renderer for Inline Condition Links
 class ConditionRenderer extends BaseRenderer {
     getTitle(replacement) {
         return 'Inline Condition Link';
@@ -1466,9 +1399,7 @@ class ConditionRenderer extends BaseRenderer {
     }
 }
 
-/**
- * TemplateRenderer - Handles template modifier UI
- */
+// Renderer for Inline Template Links
 class TemplateRenderer extends BaseRenderer {
     getTitle(replacement) {
         return 'Inline Template Link';
@@ -1517,6 +1448,7 @@ class TemplateRenderer extends BaseRenderer {
     }
 }
 
+// Renderer for Inline Generic Rolls
 class GenericRollRenderer extends BaseRenderer {
     getTitle(replacement) {
         return 'Generic Inline Roll';
@@ -1556,15 +1488,13 @@ class GenericRollRenderer extends BaseRenderer {
         return configs;
     }
 
-    // Durations don't support traits
+    // Generic rolls don't support traits
     supportsTraits(replacement) {
         return false;
     }
 }
 
-/**
- * ActionRenderer - Handles action modifier UI
- */
+// Renderer for Inline Actions
 class ActionRenderer extends BaseRenderer {
     getTitle(replacement) {
         return 'Inline Action';
@@ -1649,16 +1579,12 @@ class ActionRenderer extends BaseRenderer {
 
 // ===================== CENTRALIZED CSS SYSTEM =====================
 
-/**
- * CSS Manager - Handles injection and management of styles
- */
+// Handles injection and management of styles
 class CSSManager {
     static STYLE_ID = 'rollconverter-styles';
     static isInjected = false;
 
-    /**
-     * Inject the centralized CSS into the document head
-     */
+    // Inject the centralized CSS into the document head
     static injectStyles() {
         if (this.isInjected) return;
 
@@ -1673,12 +1599,9 @@ class CSSManager {
         document.head.appendChild(style);
         
         this.isInjected = true;
-        console.log('[PF2e Converter] Centralized CSS injected');
     }
 
-    /**
-     * Remove the injected CSS (for cleanup)
-     */
+    // Remove the injected CSS (for cleanup)
     static removeStyles() {
         const existingStyle = document.getElementById(this.STYLE_ID);
         if (existingStyle) {
@@ -1687,9 +1610,7 @@ class CSSManager {
         }
     }
 
-    /**
-     * Get the complete CSS for the converter
-     */
+    // Get the complete CSS for the converter
     static getCSS() {
         return `
             /* ===== FOUNDRY DIALOG OVERRIDES ===== */
@@ -1713,7 +1634,7 @@ class CSSManager {
 
             .rollconverter-main {
                 flex: 1;
-                min-width: 0; /* Allows flex item to shrink below content size */
+                min-width: 0;
                 display: flex;
                 flex-direction: column;
                 height: 100%;
@@ -1736,8 +1657,8 @@ class CSSManager {
                 flex: 1;
                 display: flex;
                 flex-direction: column;
-                min-height: 0; /* Allows flex item to shrink */
-                max-height: 33.33%; /* Ensures sections don't exceed 1/3 of available height */
+                min-height: 0;
+                max-height: 33.33%;
                 max-width: 100%;
                 margin: 0;
             }
@@ -1748,7 +1669,7 @@ class CSSManager {
                 flex-direction: column;
                 min-height: 0;
                 max-height: 200px;
-                overflow: hidden; /* Prevents section from expanding beyond flex bounds */
+                overflow: hidden;
             }
 
             .rollconverter-section-content .form-fields {
@@ -1756,28 +1677,28 @@ class CSSManager {
                 display: flex;
                 flex-direction: column;
                 min-height: 0;
-                overflow: hidden; /* Ensures form fields respect flex bounds */
+                overflow: hidden;
             }
 
             .rollconverter-input-textarea {
                 flex: 1;
                 min-height: 100px;
-                max-height: 100%; /* Prevents textarea from exceeding container */
+                max-height: 100%;
                 resize: none;
                 font-family: 'Signika', sans-serif;
-                overflow-y: auto; /* Allow scrolling within textarea */
+                overflow-y: auto;
             }
 
             .rollconverter-output-area {
                 flex: 1;
-                min-height: 100px; /* Minimum height for usability */
-                max-height: 100%; /* Prevents exceeding container bounds */
+                min-height: 100px;
+                max-height: 100%;
                 max-width: 100%;
                 overflow-y: auto;
-                overflow-x: hidden; /* Prevent horizontal scrolling */
+                overflow-x: hidden;
                 font-family: 'Signika', sans-serif;
                 padding: 2px;
-                word-wrap: break-word; /* Handle long content gracefully */
+                word-wrap: break-word;
             }
 
             /* ===== MODIFIER PANEL ===== */
@@ -1823,12 +1744,6 @@ class CSSManager {
             }
 
             /* ===== MODIFIER PANEL HEADER CONTROLS ===== */
-            /* .rollconverter-header-controls {
-                border-bottom: 1px solid var(--color-border-light-secondary);
-                margin-bottom: 8px;
-                padding-bottom: 8px;
-            } */
-
             .rollconverter-header-controls .form-fields {
                 display: flex;
                 justify-content: space-between;
@@ -1843,20 +1758,6 @@ class CSSManager {
                 /* font-size: 12px; */
                 margin: 0;
             }
-
-            /* .rollconverter-reset-button {
-                background: var(--color-warning);
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 4px 8px;
-                font-size: 12px;
-                cursor: pointer;
-            } */
-
-            /* .rollconverter-reset-button:hover {
-                background: var(--color-danger);
-            } */
 
             /* ===== FORM GROUPS ===== */
             .rollconverter-fieldset.rollconverter-modifier-panel {
@@ -2048,11 +1949,7 @@ class CSSManager {
     }
 }
 
-/**
- * ModifierPanelManager - Handles the generation and management of modifier panels
- * for interactive replacement elements
- * Now uses organized renderer system for type-specific UI logic
- */
+// Handles the generation and management of modifier panels
 class ModifierPanelManager {
     // Shared label width for all modifier panel labels
     static labelWidth = '100px';
@@ -2066,9 +1963,7 @@ class ModifierPanelManager {
         CONFIG_REFRESH: 'config-refresh'    // Regenerate configs and full panel (no preservation)
     };
     
-    constructor() {
-        console.log('[PF2e Converter] Creating ModifierPanelManager instance');
-        
+    constructor() {        
         // Initialize renderer registry for type-specific UI logic
         this.renderers = {
             damage: new DamageRenderer(),
@@ -2297,9 +2192,7 @@ class ModifierPanelManager {
      * @param {Object} replacement - The replacement object
      * @param {Function} onChangeCallback - Callback function
      */
-    refreshConfigsAndRegeneratePanel(formElement, replacement, onChangeCallback) {
-        console.log('[ModifierPanelManager] Refreshing configs and regenerating panel - full regeneration for structural changes');
-        
+    refreshConfigsAndRegeneratePanel(formElement, replacement, onChangeCallback) {        
         const renderer = this.renderers[replacement.type];
         if (!renderer) return;
         
@@ -2315,11 +2208,8 @@ class ModifierPanelManager {
         // Re-setup all event listeners with fresh configurations
         this.addFormListeners(formElement, replacement.type, replacement, onChangeCallback);
         
-        // CRITICAL FIX: Also setup the header controls (including reset button)
-        // This was missing and caused the reset button to stop working
+        // Setup the header controls (including reset button)
         this.setupHeaderControlListeners(formElement, replacement, onChangeCallback);
-        
-        console.log('[ModifierPanelManager] Config refresh complete - full panel regenerated with correct indices and header controls');
     }
 
     /**
@@ -2338,7 +2228,6 @@ class ModifierPanelManager {
             // Prevent duplicate listeners
             if (!this.attachedListeners.has(listenerKey)) {
                 const listener = (e) => {
-                    console.log('[ModifierPanelManager] Enabled checkbox changed:', e.target.checked);
                     replacement.enabled = e.target.checked;
                     if (onChangeCallback) {
                         onChangeCallback(replacement, 'enabled');
@@ -2362,7 +2251,6 @@ class ModifierPanelManager {
             // Prevent duplicate listeners
             if (!this.attachedListeners.has(listenerKey)) {
                 const listener = () => {
-                    console.log('[ModifierPanelManager] Reset button clicked');
                     replacement.resetToOriginal();
                     if (onChangeCallback) {
                         onChangeCallback(replacement, 'reset');
@@ -2506,8 +2394,6 @@ class ModifierPanelManager {
             config && typeof config === 'object' && config.id
         );
         
-        console.log('[ModifierPanelManager] Processing', validConfigs.length, 'valid field configs');
-        
         // Process each field config in order
         validConfigs.forEach(config => {
             if (config.isComponentField && config.componentIndex !== undefined) {
@@ -2522,12 +2408,10 @@ class ModifierPanelManager {
                         cfg.isComponentField && cfg.componentIndex === componentIndex
                     );
                     
-                    console.log(`[ModifierPanelManager] Rendering component ${componentIndex} with ${componentFields.length} fields`);
                     html += this.renderDamageComponentContainer(componentFields, rep, componentIndex);
                 }
             } else {
                 // Regular field (not part of a component)
-                console.log(`[ModifierPanelManager] Rendering regular field: ${config.id}`);
                 html += this.renderFieldFromConfig(config, rep);
             }
         });
@@ -2726,21 +2610,16 @@ class ModifierPanelManager {
             case 'add-component':
                 replacement.inlineAutomation.addComponent();
                 success = true;
-                console.log('[ModifierPanelManager] Added damage component');
                 break;
                 
             case 'remove-component':
                 const indexToRemove = parseInt(componentIndex);
-                console.log(`[ModifierPanelManager] Attempting to remove component at index ${indexToRemove}`);
-                console.log(`[ModifierPanelManager] Current component count: ${replacement.inlineAutomation.getComponentCount()}`);
                 
                 success = replacement.inlineAutomation.removeComponent(indexToRemove);
                 if (!success) {
                     ui.notifications.warn("Cannot remove the last damage component");
                     return;
                 }
-                console.log(`[ModifierPanelManager] Successfully removed damage component at index ${indexToRemove}`);
-                console.log(`[ModifierPanelManager] New component count: ${replacement.inlineAutomation.getComponentCount()}`);
                 break;
                 
             default:
@@ -2756,7 +2635,6 @@ class ModifierPanelManager {
             
             // For structural changes like add/remove, we need a full config refresh
             // This ensures component indices are recalculated correctly
-            console.log('[ModifierPanelManager] Triggering CONFIG_REFRESH for structural change');
             this.handleFieldUpdate(
                 replacement, 
                 { 
@@ -2788,14 +2666,11 @@ class ModifierPanelManager {
             // Update traits array
             if (isChecked && !replacement.inlineAutomation.traits.includes(trait)) {
                 replacement.inlineAutomation.traits.push(trait);
-                console.log(`[ModifierPanelManager] Added trait ${trait} via checkbox`);
             } else if (!isChecked && replacement.inlineAutomation.traits.includes(trait)) {
                 replacement.inlineAutomation.traits = replacement.inlineAutomation.traits.filter(t => t !== trait);
-                console.log(`[ModifierPanelManager] Removed trait ${trait} via checkbox`);
             }
             
             // Sync with traits input if it exists
-            console.log(`[ModifierPanelManager] Syncing traits input from array:`, replacement.inlineAutomation.traits);
             this.syncTraitsInputFromArray(replacement.inlineAutomation.traits);
             
             if (onChangeCallback) {
@@ -2803,7 +2678,6 @@ class ModifierPanelManager {
             }
         };
         
-        console.log(`[ModifierPanelManager] Setting up listener for trait ${trait}`);
         traitCheckbox.addEventListener('change', listener);
         this.attachedListeners.set(listenerKey, { element: traitCheckbox, type: 'change', listener });
     }
@@ -2835,7 +2709,6 @@ class ModifierPanelManager {
                         const shouldBeChecked = enhancedTraits.includes(trait);
                         if (traitCheckbox.checked !== shouldBeChecked) {
                             traitCheckbox.checked = shouldBeChecked;
-                            console.log(`[ModifierPanelManager] Synced checkbox ${trait}: ${shouldBeChecked}`);
                         }
                     }
                 });
@@ -2866,12 +2739,9 @@ class ModifierPanelManager {
         if (traitsContainer && traitsContainer.traitsInput) {
             // Don't trigger onChange when syncing to avoid infinite loops
             traitsContainer.traitsInput.setValue(traitsArray, false);
-            console.log(`[ModifierPanelManager] Synced traits input:`, traitsArray);
         } else {
             // Debug: log what containers we actually have
             const allContainers = this.currentForm?.querySelectorAll('[id*="traits"]');
-            console.log(`[ModifierPanelManager] Available traits containers:`, 
-                Array.from(allContainers || []).map(c => c.id));
         }
     }
 
@@ -2891,7 +2761,6 @@ class ModifierPanelManager {
                 const shouldBeChecked = currentTraits.includes(trait);
                 if (traitCheckbox.checked !== shouldBeChecked) {
                     traitCheckbox.checked = shouldBeChecked;
-                    console.log(`[ModifierPanelManager] Synced checkbox ${trait}: ${shouldBeChecked}`);
                 }
             }
         });
@@ -3255,19 +3124,8 @@ class ModifierPanelManager {
             // Clear selection if current value is no longer valid
             const isValidOption = newOptions.some(opt => (typeof opt === 'object' ? opt.value : opt) === currentValue);
             if (currentValue && !isValidOption) {
-                console.log(`[ModifierPanelManager] Clearing invalid selection for ${fieldConfig.id}: ${currentValue}`);
                 fieldConfig.setValue(replacement, '');
                 selectElement.value = '';
-            }
-            
-            // Debug logging
-            if (console.debug) {
-                console.debug(`[ModifierPanelManager] Updated select options for ${fieldConfig.id}:`, {
-                    currentValue,
-                    newOptions: newOptions.length,
-                    wasSelected,
-                    isValidOption
-                });
             }
             
         } catch (error) {
@@ -3338,14 +3196,9 @@ class ModifierPanelManager {
     }
 }
 
-/**
- * ConverterDialog - Central state management for the PF2e Converter
- * Eliminates global state pollution and provides clear ownership of all dialog state
- */
+// Central state management for the PF2e Converter
 class ConverterDialog {
     constructor() {
-        console.log('[PF2e Converter] Creating ConverterDialog instance');
-        
         // Centralized state object - all dialog state goes here
         this.data = {
             inputText: '',
@@ -3358,15 +3211,11 @@ class ConverterDialog {
         };
         
         // Core processing components
-        console.log('[PF2e Converter] Creating TextProcessor instance');
         this.processor = new TextProcessor();
-        console.log('[PF2e Converter] Creating ModifierPanelManager instance');
         this.modifierManager = new ModifierPanelManager();
         
         // DOM element references
         this.ui = {};
-        
-        console.log('[PF2e Converter] ConverterDialog constructor completed');
     }
     
     /**
@@ -3374,7 +3223,6 @@ class ConverterDialog {
      * @param {Array} newReplacements - Array of replacement objects
      */
     updateReplacements(newReplacements) {
-        console.log('[PF2e Converter] Updating replacements:', newReplacements.length, 'items');
         this.data.replacements = newReplacements;
         this.renderOutput();
         this.renderLivePreview();
@@ -3385,7 +3233,6 @@ class ConverterDialog {
      * @param {string} elementId - ID of the selected element
      */
     selectElement(elementId) {
-        console.log('[PF2e Converter] Selecting element:', elementId);
         this.data.selectedElementId = elementId;
         this.renderModifierPanel();
         this.updateElementHighlighting();
@@ -3395,7 +3242,6 @@ class ConverterDialog {
      * Handle element deselection and modifier panel updates
      */
     deselectElement() {
-        console.log('[PF2e Converter] Deselecting element');
         this.data.selectedElementId = null;
         this.renderModifierPanel();
         this.updateElementHighlighting();
@@ -3406,7 +3252,6 @@ class ConverterDialog {
      * @param {string} inputText - Text to process
      */
     processInput(inputText) {
-        console.log('[PF2e Converter] Processing input text, length:', inputText.length);
         this.data.inputText = inputText;
         this.data.selectedElementId = null; // Clear selection on input change
         
@@ -3425,7 +3270,6 @@ class ConverterDialog {
      * Clean up resources when dialog is closed
      */
     cleanup() {
-        console.log('[PF2e Converter] Cleaning up dialog resources');
         if (this.modifierManager) {
             this.modifierManager.cleanupEventListeners();
         }
@@ -3436,7 +3280,6 @@ class ConverterDialog {
      * Clear all state and reset UI
      */
     clearAll() {
-        console.log('[PF2e Converter] Clearing all data');
         this.data.inputText = '';
         this.data.replacements = [];
         this.data.selectedElementId = null;
@@ -3454,7 +3297,6 @@ class ConverterDialog {
      * Copy current output to clipboard
      */
     copyOutput() {
-        console.log('[PF2e Converter] Copying output to clipboard');
         const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, false, this.data);
         copyToClipboard(outputText);
     }
@@ -3464,11 +3306,9 @@ class ConverterDialog {
      */
     renderOutput() {
         if (!this.data.isInitialized) {
-            console.log('[PF2e Converter] Skipping renderOutput - not initialized');
             return;
         }
         
-        console.log('[PF2e Converter] Rendering output');
         const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, true, this.data);
         this.data.lastRawOutput = outputText;
         
@@ -3484,11 +3324,9 @@ class ConverterDialog {
      */
     renderLivePreview() {
         if (!this.data.isInitialized) {
-            console.log('[PF2e Converter] Skipping renderLivePreview - not initialized');
             return;
         }
         
-        console.log('[PF2e Converter] Rendering live preview');
         const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, false, this.data);
         
         if (this.ui.livePreview) {
@@ -3501,11 +3339,9 @@ class ConverterDialog {
      */
     renderModifierPanel() {
         if (!this.data.isInitialized) {
-            console.log('[PF2e Converter] Skipping renderModifierPanel - not initialized');
             return;
         }
         
-        console.log('[PF2e Converter] Rendering modifier panel');
         const selectedElementId = this.data.selectedElementId;
         
         // Update the title in the legend
@@ -3563,14 +3399,12 @@ class ConverterDialog {
      * Setup interactive element handlers for the output area
      */
     setupInteractiveElementHandlers() {
-        console.log('[PF2e Converter] Setting up interactive element handlers');
         if (!this.ui.outputHtmlDiv) {
             console.log('[PF2e Converter] No output element found');
             return;
         }
         
         const interactiveElements = this.ui.outputHtmlDiv.querySelectorAll('.rollconverter-interactive');
-        console.log('[PF2e Converter] Found', interactiveElements.length, 'interactive elements');
         
         interactiveElements.forEach(element => {
             const elementId = element.getAttribute('data-id');
@@ -3582,14 +3416,11 @@ class ConverterDialog {
                 element.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('[PF2e Converter] Interactive element clicked:', elementId);
                     
                     // Toggle selection: deselect if already selected, select if not
                     if (this.data.selectedElementId === elementId) {
-                        console.log('[PF2e Converter] Deselecting element:', elementId);
                         this.deselectElement();
                     } else {
-                        console.log('[PF2e Converter] Selecting element:', elementId);
                         this.selectElement(elementId);
                     }
                 };
@@ -3624,8 +3455,6 @@ class ConverterDialog {
      * @param {string} changedFieldId - ID of the changed field
      */
     handleModifierChange(rep, changedFieldId) {
-        console.log('[PF2e Converter] Handling modifier change:', changedFieldId);
-        
         if (rep.markModified) {
             rep.markModified();
         }
@@ -3637,7 +3466,6 @@ class ConverterDialog {
         
         // Special handling for reset - regenerate the modifier panel
         if (changedFieldId === 'reset') {
-            console.log('[PF2e Converter] Reset triggered - regenerating modifier panel');
             this.renderModifierPanel();
         }
     }
@@ -3646,7 +3474,6 @@ class ConverterDialog {
      * Setup all event handlers
      */
     setupEventHandlers() {
-        console.log('[PF2e Converter] Setting up event handlers');
         this.setupInputHandlers();
         this.setupButtonHandlers();
     }
@@ -3655,7 +3482,6 @@ class ConverterDialog {
      * Setup input handlers
      */
     setupInputHandlers() {
-        console.log('[PF2e Converter] Setting up input handlers');
         if (this.ui.inputTextarea) {
             this.ui.inputTextarea.on('input', (e) => {
                 this.processInput(e.target.value);
@@ -3667,7 +3493,6 @@ class ConverterDialog {
      * Setup button handlers
      */
     setupButtonHandlers() {
-        console.log('[PF2e Converter] Setting up button handlers');
         if (this.ui.copyButton) {
             this.ui.copyButton.on('click', () => {
                 this.copyOutput();
@@ -3686,7 +3511,6 @@ class ConverterDialog {
      * @param {Object} html - jQuery object containing the dialog HTML
      */
     initializeUI(html) {
-        console.log('[PF2e Converter] Initializing UI references');
         this.ui.inputTextarea = html.find('#input-text');
         this.ui.outputHtmlDiv = html.find('#output-html')[0];
         this.ui.livePreview = html.find('#live-preview')[0];
@@ -3694,35 +3518,23 @@ class ConverterDialog {
         this.ui.copyButton = html.find('#copy-output');
         this.ui.clearButton = html.find('#clear-all');
         
-        console.log('[PF2e Converter] UI elements found:', {
-            inputTextarea: !!this.ui.inputTextarea.length,
-            outputHtmlDiv: !!this.ui.outputHtmlDiv,
-            livePreview: !!this.ui.livePreview,
-            modifierPanelContent: !!this.ui.modifierPanelContent,
-            copyButton: !!this.ui.copyButton.length,
-            clearButton: !!this.ui.clearButton.length
-        });
-        
         // Process initial input if present
         const initialText = this.ui.inputTextarea.val();
         if (initialText && initialText.trim()) {
             this.data.inputText = initialText;
         }
         else {
-            console.log('[PF2e Converter] No initial input text found');
             this.data.inputText = '';
         }
 
         this.data.isInitialized = true;
-        console.log('[PF2e Converter] Processing initial input text');
         this.processInput(this.data.inputText);
-        console.log('[PF2e Converter] UI initialization completed');
     }
 }
 
 // ConfigCategory is a class that represents a category of items.
-// It is used to store the items in the category, the options for the items,
-// the pattern for the items, and the set of items.
+// It provides these items in various formats for use in
+// the UI, Pattern regex, and other systems.
 class ConfigCategory {
     constructor(items, customLabels = {}, metadata = {}, alternates = {}) {
         this.slugs = items; // Only canonical forms - used for UI
@@ -3732,7 +3544,7 @@ class ConfigCategory {
         // Lazy initialization
         this._options = null;
         this._pattern = null;
-        this._patternWithAlternates = null; // New: enhanced pattern for matching
+        this._patternWithAlternates = null;
         this._set = null;
         this._customLabels = customLabels;
     }
@@ -3868,8 +3680,7 @@ class ConfigCategory {
     }
 }
 
-// LegacyConversionManager is a class that manages the conversion of legacy items to remaster items.
-// It is used to convert legacy damage types to remaster damage types, legacy conditions to remaster conditions.
+// Manages the conversion of legacy damage types and conditions to remaster equivalents
 class LegacyConversionManager {
     
     // Legacy damage type mappings (only applied within damage rolls)
@@ -4026,15 +3837,14 @@ class LegacyConversionManager {
     }
 }
 
-// ConfigManager is a class that manages the configuration of the converter.
-// It is used to store the configuration of the converter, including the damage types,
-// the conditions, the skills, the saves, the statistics, the template types, the actions,
-// the action variants, the healing terms, and the legacy conditions.
+// Stores the configuration of the converter, including damage types,
+// conditions, skills, saves, statistics, template types, actions,
+// action variants, healing terms, and legacy conditions.
 class ConfigManager {
     // Private cache for memoization
     static _cache = new Map();
     
-    // ===== DAMAGE SYSTEM =====
+    // ===== DAMAGE =====
     static get DAMAGE_TYPES() {
         if (!this._cache.has('DAMAGE_TYPES')) {
             this._cache.set('DAMAGE_TYPES', new ConfigCategory([
@@ -4083,7 +3893,7 @@ class ConfigManager {
         return this._cache.get('HEALING_TERMS');
     }
 
-    // ===== CONSOLIDATED CONDITIONS CONFIG =====
+    // ===== CONDITIONS =====
     static get CONDITIONS() {
         if (!this._cache.has('CONDITIONS')) {
             const conditionData = {
@@ -4158,7 +3968,7 @@ class ConfigManager {
         return this.CONDITIONS.metadata.uuids[normalizedName] || null;
     }
 
-    // ===== CHECKS AND SKILLS =====
+    // ===== CHECKS AND SAVES =====
     static get SAVES() {
         if (!this._cache.has('SAVES')) {
             this._cache.set('SAVES', new ConfigCategory(['reflex', 'fortitude', 'will']));
@@ -4278,7 +4088,7 @@ class ConfigManager {
         return this._cache.get('TEMPLATE_TYPES');
     }
 
-    // Template mapping consolidated
+    // Template mapping
     static get TEMPLATE_CONFIG() {
         if (!this._cache.has('TEMPLATE_CONFIG')) {
             const templateData = {
@@ -4538,8 +4348,6 @@ class ConfigManager {
         return this._cache.get('ACTION_VARIANTS');
     }
 
-    // ===== Action helper methods =====
-
     /**
      * Check if an action has variants
      * @param {string} action - Action slug to check
@@ -4624,14 +4432,14 @@ class ConfigManager {
             this.TEMPLATE_TYPES, this.TEMPLATE_CONFIG, this.ACTIONS, this.ACTION_VARIANTS,
             this.DURATION_UNITS, this.ACTION_DC_METHODS, this.ALTERNATE_ROLL_STATISTICS,  this.HEALING_TERMS
         ];
-        console.log(`[ConfigManager] Pre-warmed cache with ${configs.length} configurations`);
     }
 }
 
-/**
- * Base Pattern class that provides common functionality for all pattern types
- * Eliminates code duplication across pattern implementations
- */
+// ==================== PATTERNS ====================
+// Classes that define the patterns that the macro will match and replace
+// Each pattern includes regex for matching, and logic for extracting parameters,
+
+// Base class for all patterns
 class BasePattern {
     static type = 'base';
     static priority = 0;
@@ -4770,17 +4578,13 @@ class BasePattern {
     }
 }
 
-/**
- * Enhanced AutomationPattern with generic parameter extraction
- * This refactor eliminates code duplication and provides a consistent
- * approach to parsing inline automation syntax
- */
+// Pattern that recognizes existing automation syntax
+// so that it can be recreated
 class AutomationPattern extends BasePattern {
     static type = 'automation';
     static priority = 200;
     static description = 'Existing automation syntax detection';
 
-    // Updated extractors to use generic method
     static EXTRACTORS = {
         damage: (match, pattern) => AutomationPattern.extractGenericParameters(match, 'damage'),
         check: (match, pattern) => AutomationPattern.extractGenericParameters(match, 'check'),
@@ -5221,9 +5025,7 @@ class AutomationPattern extends BasePattern {
     }
 }
 
-/**
- * Damage pattern class extending BasePattern
- */
+// Pattern that matches damage rolls
 class DamagePattern extends BasePattern {
     static type = 'damage';
     static priority = 100;
@@ -5290,15 +5092,15 @@ class DamagePattern extends BasePattern {
         };
     }
 
-    // ROBUST: Extract damage type and category by scanning the entire match text
+    // Extract damage type and category by scanning the entire match text
     static extractSingleDamageComponent(match) {
         const dice = match[1] || '';
         const originalText = match[0].toLowerCase();
         
-        // ROBUST: Find damage type by scanning the entire match text for known damage types
+        // Find damage type by scanning the entire match text for known damage types
         let damageType = this.findDamageTypeInText(originalText);
         
-        // ROBUST: Find category by scanning for category keywords
+        // Find category by scanning for category keywords
         let category = this.findDamageCategoryInText(originalText);
         
         // Convert legacy types
@@ -5314,7 +5116,7 @@ class DamagePattern extends BasePattern {
     }
 
     /**
-     * ROBUST: Find damage type by scanning text for any known damage type
+     * Find damage type by scanning text for any known damage type
      * @param {string} text - Text to scan
      * @returns {string} Found damage type or empty string
      */
@@ -5338,7 +5140,7 @@ class DamagePattern extends BasePattern {
     }
 
     /**
-     * ROBUST: Find damage category by scanning text for category keywords  
+     * Find damage category by scanning text for category keywords  
      * @param {string} text - Text to scan
      * @returns {string} Found category or empty string
      */
@@ -5408,9 +5210,7 @@ class DamagePattern extends BasePattern {
     }
 }
 
-/**
- * Check pattern class extending BasePattern
- */
+// Pattern that matches checks and saves
 class CheckPattern extends BasePattern {
     static type = 'check';
     static priority = 90;
@@ -5601,9 +5401,7 @@ class CheckPattern extends BasePattern {
     }
 }
 
-/**
- * Healing pattern class extending BasePattern
- */
+// Pattern that matches healing rolls
 class HealingPattern extends BasePattern {
     static type = 'damage';
     static priority = 80;
@@ -5628,9 +5426,7 @@ class HealingPattern extends BasePattern {
     }
 }
 
-/**
- * Condition pattern class extending BasePattern
- */
+// Pattern that matches condition links
 class ConditionPattern extends BasePattern {
     static type = 'condition';
     static priority = 70;
@@ -5689,9 +5485,7 @@ class ConditionPattern extends BasePattern {
     }
 }
 
-/**
- * Template pattern class extending BasePattern
- */
+// Pattern that matches template links
 class TemplatePattern extends BasePattern {
     static type = 'template';
     static priority = 60;
@@ -5756,9 +5550,7 @@ class TemplatePattern extends BasePattern {
     }
 }
 
-/**
- * Duration pattern class extending BasePattern
- */
+// Pattern that matches duration rolls (such as ability recharge rolls)
 class DurationPattern extends BasePattern {
     static type = 'generic';
     static priority = 50;
@@ -5783,9 +5575,7 @@ class DurationPattern extends BasePattern {
     }
 }
 
-/**
- * Counteract pattern class extending BasePattern
- */
+// Pattern that matches counteract rolls
 class CounteractPattern extends BasePattern {
     static type = 'generic';
     static priority = 45;
@@ -5836,9 +5626,7 @@ class CounteractPattern extends BasePattern {
     }
 }
 
-/**
- * Action pattern class extending BasePattern
- */
+// Pattern that matches actions
 class ActionPattern extends BasePattern {
     static type = 'action';
     static priority = 40;
@@ -5862,7 +5650,7 @@ class ActionPattern extends BasePattern {
             extractor: 'action'
         },
         {
-            // Use patternWithAlternates for enhanced matching (plain actions without DC)
+            // Plain actions without DC
             regex: new RegExp(`\\b(${ConfigManager.ACTIONS.patternWithAlternates})\\b`, 'gi'),
             priority: 40,
             extractor: 'action'
@@ -5873,7 +5661,7 @@ class ActionPattern extends BasePattern {
         const actionText = match[1] || '';
         const dc = match[2] ? parseInt(match[2]) : null;
         
-        // Find the canonical action form using the new method
+        // Find the canonical action form
         const canonicalAction = ConfigManager.ACTIONS.findCanonicalForm(actionText);
         const actionSlug = canonicalAction || this.actionToSlug(actionText);
         
@@ -5909,8 +5697,8 @@ class ActionPattern extends BasePattern {
     }
 }
 
+// PatternDetector - detects all patterns in text
 class PatternDetector {
-    // All patterns defined as a static constant - no runtime changes
     static PATTERN_CLASSES = [
         AutomationPattern,
         DamagePattern,
@@ -5929,17 +5717,12 @@ class PatternDetector {
      * @returns {Array} - All matches with conflicts resolved
      */
     static detectAll(text) {
-        console.log('[PF2e Converter] PatternDetector.detectAll called with text length:', text?.length);
-        
         const allMatches = [];
         
         // Test each pattern class directly
-        console.log('[PF2e Converter] Testing', this.PATTERN_CLASSES.length, 'pattern classes');
         for (const PatternClass of this.PATTERN_CLASSES) {
             try {
-                console.log('[PF2e Converter] Testing pattern class:', PatternClass.type);
                 const matches = PatternClass.test(text);
-                console.log('[PF2e Converter] Pattern', PatternClass.type, 'found', matches.length, 'matches');
                 allMatches.push(...matches);
             } catch (error) {
                 console.error(`[PF2e Converter] Error in pattern ${PatternClass.type}:`, error);
@@ -5947,9 +5730,7 @@ class PatternDetector {
             }
         }
 
-        console.log('[PF2e Converter] Total matches before conflict resolution:', allMatches.length);
         const resolvedMatches = this.resolveConflicts(allMatches);
-        console.log('[PF2e Converter] Total matches after conflict resolution:', resolvedMatches.length);
         
         return resolvedMatches;
     }
@@ -6025,146 +5806,12 @@ class PatternDetector {
     }
 }
 
-// // ===================== PATTERN TESTING SUITE =====================
-
-// class PatternTester {
-//     // Test a specific pattern against text
-//     static testPattern(patternType, text) {
-//         const PatternClass = PatternDetector.PATTERN_CLASSES.find(cls => cls.type === patternType);
-//         if (!PatternClass) {
-//             return { error: `Pattern type '${patternType}' not found` };
-//         }
-
-//         const matches = PatternClass.test(text);
-//         return {
-//             pattern: patternType,
-//             text: text,
-//             matches: matches.length,
-//             results: matches.map(match => ({
-//                 matched: PatternDetector.getMatchObject(match.match)?.[0],
-//                 position: PatternDetector.getMatchPosition(match.match),
-//                 priority: match.priority
-//             }))
-//         };
-//     }
-
-//     /**
-//      * Test all patterns against text
-//      */
-//     static testAll(text) {
-//         const results = {};
-//         const allMatches = PatternDetector.detectAll(text);
-        
-//         // Test each pattern individually
-//         for (const PatternClass of PatternDetector.PATTERN_CLASSES) {
-//             results[PatternClass.type] = this.testPattern(PatternClass.type, text);
-//         }
-
-//         // Add summary
-//         results._summary = {
-//             totalPatterns: PatternDetector.PATTERN_CLASSES.length,
-//             totalMatches: allMatches.length,
-//             finalMatches: allMatches.map(match => ({
-//                 type: match.type,
-//                 matched: PatternDetector.getMatchObject(match.match)?.[0],
-//                 position: PatternDetector.getMatchPosition(match.match),
-//                 priority: match.priority
-//             }))
-//         };
-
-//         return results;
-//     }
-
-//     /**
-//      * Run a test suite with predefined test cases
-//      */
-//     static runTestSuite(testCases) {
-//         const results = {
-//             passed: 0,
-//             failed: 0,
-//             total: testCases.length,
-//             details: []
-//         };
-
-//         for (const testCase of testCases) {
-//             try {
-//                 const result = this.testAll(testCase.input);
-//                 const passed = this.validateTestCase(result, testCase.expected);
-                
-//                 results.details.push({
-//                     input: testCase.input,
-//                     expected: testCase.expected,
-//                     actual: result,
-//                     passed: passed
-//                 });
-
-//                 if (passed) {
-//                     results.passed++;
-//                 } else {
-//                     results.failed++;
-//                 }
-//             } catch (error) {
-//                 results.failed++;
-//                 results.details.push({
-//                     input: testCase.input,
-//                     error: error.message,
-//                     passed: false
-//                 });
-//             }
-//         }
-
-//         return results;
-//     }
-
-//     static validateTestCase(actual, expected) {
-//         if (expected.matchCount !== undefined) {
-//             return actual._summary.totalMatches === expected.matchCount;
-//         }
-        
-//         if (expected.patterns !== undefined) {
-//             const actualPatterns = actual._summary.finalMatches.map(m => m.type);
-//             const expectedPatterns = expected.patterns;
-//             return JSON.stringify(actualPatterns.sort()) === JSON.stringify(expectedPatterns.sort());
-//         }
-
-//         return true;
-//     }
-// }
-
-// function runComprehensiveTestSuite() {
-//     console.log('=== Comprehensive Test Suite ===');
-//     const results = PatternTester.runTestSuite(COMPREHENSIVE_TEST_CASES);
-    
-//     console.log(`Total: ${results.total}`);
-//     console.log(`Passed: ${results.passed}`);
-//     console.log(`Failed: ${results.failed}`);
-//     console.log(`Success Rate: ${((results.passed / results.total) * 100).toFixed(1)}%`);
-    
-//     if (results.failed > 0) {
-//         console.log('\n=== Failed Tests ===');
-//         results.details.filter(d => !d.passed).forEach(detail => {
-//             console.log(`❌ "${detail.input}"`);
-//             console.log(`   Expected: ${JSON.stringify(detail.expected)}`);
-//             if (detail.error) {
-//                 console.log(`   Error: ${detail.error}`);
-//             }
-//         });
-//     }
-    
-//     return results;
-// }
-
-// runComprehensiveTestSuite();
-
-// ===================== REPLACEMENT CLASS SYSTEM =====================
-// Replacement base class is extended by a class for each type of replacement.
-// ====================================================================
-
 // Utility for unique IDs
 function generateId() {
     return '_' + Math.random().toString(36).substr(2, 9);
 }
 
+// Replacement - represents a single detected pattern and the inline roll that replaces it
 class Replacement {
     constructor(match, type, parameters = {}) {
         if (!match || typeof match !== 'object' || typeof match[0] !== 'string' || typeof match.index !== 'number') {
@@ -6190,13 +5837,11 @@ class Replacement {
         // Create renderer instance
         this.renderer = this.getRenderer(type);
         
-        // NOTE: We DON'T store original state here anymore!
         // The TextProcessor will call finalizeOriginalState() after business rules
         this._originalStateFinalized = false;
         this._originalEnabledState = true; // Will be overwritten
         this._originalRender = null; // Will be set later
-        
-        console.log(`[Replacement] Created ${type} replacement with parameters:`, parameters);
+
     }
 
     /**
@@ -6216,8 +5861,6 @@ class Replacement {
         this._originalRender = this.render();
         
         this._originalStateFinalized = true;
-        
-        console.log(`[Replacement] Finalized original state: enabled=${this._originalEnabledState}, type=${this.type}`);
     }
 
     createInlineAutomation(type, parameters) {
@@ -6262,10 +5905,6 @@ class Replacement {
      * Reset to the original state (including business-rules-determined enabled state)
      */
     resetToOriginal() {
-        console.log('[Replacement] Resetting to original state');
-        console.log('[Replacement] Original parameters:', this._originalParameters);
-        console.log('[Replacement] Original enabled state:', this._originalEnabledState);
-        
         if (!this._originalStateFinalized) {
             console.warn('[Replacement] Cannot reset - original state not finalized yet');
             return;
@@ -6282,8 +5921,6 @@ class Replacement {
         
         // Clear any custom display text
         this.displayText = this.inlineAutomation.displayText || '';
-        
-        console.log('[Replacement] Reset completed');
     }
 
     // Return the original or converted text depending on the enabled state
@@ -6374,17 +6011,12 @@ class Replacement {
     }
 }
 
-/**
- * Business Rules System for Replacement Processing
- * 
- * This system handles post-processing business logic that determines
- * which replacements should be enabled/disabled based on context.
- */
+// ==================== BUSINESS RULES ====================
+// Handles post-processing business logic that determines
+// which replacements should be enabled/disabled based on context.
 
-/**
- * Base class for business rules
- * Each rule can examine the full context and modify replacements
- */
+// Base class for business rules
+// Each rule can examine the full context and modify replacements
 class BusinessRule {
     /**
      * Apply this rule to the replacements
@@ -6414,10 +6046,8 @@ class BusinessRule {
     }
 }
 
-/**
- * Rule: Only enable the first occurrence of duplicate conditions
- * Conditions with different values are considered separate
- */
+// Rule: Only enable the first occurrence of duplicate conditions
+// Conditions with different values are considered separate
 class DuplicateConditionRule extends BusinessRule {
     apply(replacements, originalText, context = {}) {
         const seenConditions = new Map(); // condition -> { value: firstOccurrenceIndex }
@@ -6436,11 +6066,9 @@ class DuplicateConditionRule extends BusinessRule {
             if (seenConditions.has(conditionKey)) {
                 // This is a duplicate - disable it
                 replacement.enabled = false;
-                console.log(`[DuplicateConditionRule] Disabled duplicate condition: ${conditionKey} at position ${replacement.startPos}`);
             } else {
                 // First occurrence - keep it enabled and record it
                 seenConditions.set(conditionKey, index);
-                console.log(`[DuplicateConditionRule] First occurrence of condition: ${conditionKey} at position ${replacement.startPos}`);
             }
         });
         
@@ -6456,9 +6084,7 @@ class DuplicateConditionRule extends BusinessRule {
     }
 }
 
-/**
- * Rule: Disable generic rolls that are just numbers (no dice)
- */
+// Rule: Disable generic rolls that are just numbers (no dice)
 class NumberOnlyGenericRollRule extends BusinessRule {
     apply(replacements, originalText, context = {}) {
         replacements.forEach((replacement) => {
@@ -6470,7 +6096,6 @@ class NumberOnlyGenericRollRule extends BusinessRule {
             // Check if it's just a number (no 'd' for dice)
             if (this.isNumberOnlyDice(dice)) {
                 replacement.enabled = false;
-                console.log(`[NumberOnlyGenericRollRule] Disabled number-only generic roll: "${dice}" at position ${replacement.startPos}`);
             }
         });
         
@@ -6496,10 +6121,8 @@ class NumberOnlyGenericRollRule extends BusinessRule {
     }
 }
 
-/**
- * Business Rules Engine
- * Manages and applies all business rules to replacements
- */
+// Business Rules Engine
+// Manages and applies all business rules to replacements
 class BusinessRulesEngine {
     constructor() {
         this.rules = [];
@@ -6524,8 +6147,6 @@ class BusinessRulesEngine {
         
         this.rules.push(rule);
         this.rules.sort((a, b) => b.getPriority() - a.getPriority());
-        
-        console.log(`[BusinessRulesEngine] Registered rule: ${rule.getDescription()} (priority: ${rule.getPriority()})`);
     }
 
     /**
@@ -6535,10 +6156,6 @@ class BusinessRulesEngine {
     unregisterRule(RuleClass) {
         const initialLength = this.rules.length;
         this.rules = this.rules.filter(rule => !(rule instanceof RuleClass));
-        
-        if (this.rules.length < initialLength) {
-            console.log(`[BusinessRulesEngine] Unregistered rule: ${RuleClass.name}`);
-        }
     }
 
     /**
@@ -6550,7 +6167,6 @@ class BusinessRulesEngine {
      */
     applyRules(replacements, originalText, context = {}) {
         if (!this.enabled) {
-            console.log('[BusinessRulesEngine] Rules engine is disabled, skipping rule application');
             return replacements;
         }
 
@@ -6559,13 +6175,10 @@ class BusinessRulesEngine {
             return replacements;
         }
 
-        console.log(`[BusinessRulesEngine] Applying ${this.rules.length} business rules to ${replacements.length} replacements`);
-        
         let processedReplacements = [...replacements]; // Create a copy
         
         for (const rule of this.rules) {
             try {
-                console.log(`[BusinessRulesEngine] Applying rule: ${rule.getDescription()}`);
                 processedReplacements = rule.apply(processedReplacements, originalText, context);
                 
                 if (!Array.isArray(processedReplacements)) {
@@ -6578,10 +6191,7 @@ class BusinessRulesEngine {
                 // Continue with other rules rather than failing completely
             }
         }
-        
-        const disabledCount = processedReplacements.filter(r => !r.enabled).length;
-        console.log(`[BusinessRulesEngine] Rules application complete. ${disabledCount} replacements disabled.`);
-        
+
         return processedReplacements;
     }
 
@@ -6591,7 +6201,6 @@ class BusinessRulesEngine {
      */
     setEnabled(enabled) {
         this.enabled = Boolean(enabled);
-        console.log(`[BusinessRulesEngine] Rules engine ${this.enabled ? 'enabled' : 'disabled'}`);
     }
 
     /**
@@ -6611,23 +6220,19 @@ class BusinessRulesEngine {
      */
     clearRules() {
         this.rules = [];
-        console.log('[BusinessRulesEngine] All rules cleared');
     }
 }
 
-// -------------------- Text Processor --------------------
+// ==================== TEXT PROCESSOR ====================
+// Processes the text and returns an array of replacements
 class TextProcessor {
     constructor() {
-        console.log('[PF2e Converter] Creating TextProcessor instance');
         this.linkedConditions = new Set();
         this.businessRules = new BusinessRulesEngine();
     }
 
     process(inputText, state = null) {
-        console.log('[PF2e Converter] TextProcessor.process called with text length:', inputText?.length);
-        
         if (!inputText || !inputText.trim()) {
-            console.log('[PF2e Converter] No input text to process');
             return [];
         }
         
@@ -6635,9 +6240,7 @@ class TextProcessor {
             this.linkedConditions = new Set();
             
             // Step 1: Pattern detection and replacement creation
-            console.log('[PF2e Converter] Detecting patterns in text');
             const matches = PatternDetector.detectAll(inputText);
-            console.log('[PF2e Converter] Found', matches.length, 'pattern matches');
             
             const replacements = [];
 
@@ -6666,16 +6269,13 @@ class TextProcessor {
                 }
             }
 
-            console.log('[PF2e Converter] Created', replacements.length, 'replacement objects');
-            
             // Step 2: Sort by priority
             const sortedReplacements = this.sortByPriority(replacements);
             
             // Step 3: Apply business rules to set enabled state
             const processedReplacements = this.applyBusinessRules(sortedReplacements, inputText, state);
             
-            // Step 4: IMPORTANT - Finalize original state after business rules
-            console.log('[PF2e Converter] Finalizing original state for all replacements');
+            // Step 4: Finalize original state after business rules
             processedReplacements.forEach(replacement => {
                 replacement.finalizeOriginalState();
             });
@@ -6692,8 +6292,6 @@ class TextProcessor {
      * Apply business rules to determine replacement enabled state
      */
     applyBusinessRules(replacements, originalText, state = null) {
-        console.log('[PF2e Converter] Applying business rules to replacements');
-        
         const context = {
             state: state,
             timestamp: Date.now(),
@@ -6842,7 +6440,7 @@ async function createLivePreview(text, container) {
 async function copyToClipboard(text) {
     try {
         await navigator.clipboard.writeText(text);
-        ui.notifications.info("Text copied to clipboard!");
+        ui.notifications.info("Text copied to clipboard.");
     } catch (error) {
         ui.notifications.error("Failed to copy text to clipboard.");
     }
@@ -6852,8 +6450,6 @@ async function copyToClipboard(text) {
  * Create and show the converter dialog
  */
 function showConverterDialog() {
-    console.log('[PF2e Converter] showConverterDialog called');
-    
     // Inject CSS before creating dialog
     CSSManager.injectStyles();
     
@@ -6869,7 +6465,7 @@ function showConverterDialog() {
                                 name="inputText" 
                                 placeholder="Paste your spell, ability, or feat description here..."
                                 class="rollconverter-input-textarea"
-                                >${DEFAULT_TEST_INPUT}</textarea>
+                                >${DEFAULT_INPUT}</textarea>
                         </div>
                         <p class="notes">Making changes here will clear any modifications made below.</p>
                     </div>
@@ -6917,20 +6513,16 @@ function showConverterDialog() {
     `;
 
     // Create the converter dialog instance
-    console.log('[PF2e Converter] Creating ConverterDialog instance');
     const converterDialog = new ConverterDialog();
 
-    console.log('[PF2e Converter] Creating Dialog instance');
     const dialog = new Dialog({
         title: "PF2e Inline Roll Converter",
         content: dialogContent,
         buttons: {},
         render: (html) => {
-            console.log('[PF2e Converter] Dialog render callback called');
             try {
                 converterDialog.initializeUI(html);
                 converterDialog.setupEventHandlers();
-                console.log('[PF2e Converter] Dialog render completed successfully');
             } catch (error) {
                 console.error('[PF2e Converter] Error in dialog render callback:', error);
                 console.error('[PF2e Converter] Error stack:', error.stack);
@@ -6954,16 +6546,10 @@ function showConverterDialog() {
         classes: ["rollconverter-dialog-window"] // Add custom class for additional styling if needed
     });
     
-    console.log('[PF2e Converter] Rendering dialog');
     dialog.render(true);
-    console.log('[PF2e Converter] Dialog render called');
 }
 
 // Main execution
-console.log('[PF2e Converter] Starting PF2e Inline Roll Converter');
-console.log('[PF2e Converter] Foundry version:', game.version);
-console.log('[PF2e Converter] Game system:', game.system?.id);
-
 try {
     // Verify we're in a PF2e game
     if (game.system.id !== 'pf2e') {
@@ -6972,20 +6558,14 @@ try {
         return;
     }
     
-    console.log('[PF2e Converter] PF2e system confirmed');
-    
     // Verify minimum Foundry version
     if (!game.version || parseInt(game.version.split('.')[0]) < 12) {
         console.warn('[PF2e Converter] Foundry version may be too old:', game.version);
         ui.notifications.warn("This macro is designed for Foundry VTT v12+. Some features may not work properly.");
     }
     
-    console.log('[PF2e Converter] Version check completed');
-    
-    // Show the converter dialog (condition mapping is now handled by ConverterDialog)
-    console.log('[PF2e Converter] Calling showConverterDialog');
+    // Show the converter dialog
     showConverterDialog();
-    console.log('[PF2e Converter] showConverterDialog completed');
     
 } catch (error) {
     console.error('[PF2e Converter] Error during startup:', error);
@@ -6993,7 +6573,7 @@ try {
     ui.notifications.error("Failed to start PF2e Inline Roll Converter. Check console for details.");
 }
 
-// ===================== MODIFIER PANEL SYSTEM =====================
+// ===================== TRAITS INPUT =====================
 
 /**
  * Get trait options from the PF2e system configuration
@@ -7027,11 +6607,9 @@ function getTraitOptions() {
     }
 }
 
-/**
- * Enhanced traits input component that mimics pf2e system behavior
- * Supports typing, filtering, multiple selection, and tab completion
- * UPDATED: Maintains alphabetical order when adding traits
- */
+// Traits input component that mimics pf2e system behavior
+// Supports typing, filtering, multiple selection, and tab completion
+// Maintains alphabetical order when adding traits
 class TraitsInput {
     constructor(containerId, options = {}) {
         this.containerId = containerId;
@@ -7331,7 +6909,6 @@ class TraitsInput {
     
     /**
      * Add a trait and maintain alphabetical order
-     * UPDATED: Now sorts traits alphabetically after adding
      */
     addTrait(trait) {
         if (!trait || !trait.value) return;
@@ -7375,7 +6952,7 @@ class TraitsInput {
         const existingTags = this.selectedContainer.querySelectorAll('tag.tagify__tag');
         existingTags.forEach(tag => tag.remove());
         
-        // UPDATED: Traits are already sorted, so render them in order
+        // Traits are already sorted, so render them in order
         this.selectedTraits.forEach((trait, index) => {
             if (!trait || !trait.value || !trait.label) return;
             
@@ -7419,7 +6996,6 @@ class TraitsInput {
     
     /**
      * Set traits and maintain alphabetical order
-     * UPDATED: Now sorts traits alphabetically when setting values
      */
     setValue(traits, triggerChange = false) {
         if (!Array.isArray(traits)) {
@@ -7434,7 +7010,7 @@ class TraitsInput {
             return traitOption || { label: value, value: value };
         }).filter(trait => trait !== null);
         
-        // UPDATED: Sort traits alphabetically when setting values
+        // Sort traits alphabetically when setting values
         this.selectedTraits = this.sortTraitsAlphabetically(this.selectedTraits);
         
         this.renderSelected();
