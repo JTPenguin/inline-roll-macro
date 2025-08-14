@@ -1,13 +1,22 @@
 /**
  * Pathfinder 2e Inline Roll Converter
  * 
- * v 1.0.0
+ * v ---
  * 
  * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
 
 // Default input text for the converter
-const DEFAULT_INPUT = '';
+const DEFAULT_INPUT = `You conjure an exploding glass container filled with a sight-
+stealing poison and hurl it across enemy lines. Upon impact,
+the bottle bursts and exposes all creatures in the area to
+the toxin within. Each creature in the area must attempt a
+Fortitude save.
+Critical Success The creature is unaffected.
+Success The creature takes 3d6 poison damage.
+Failure The creature is afflicted with blinding poison at stage 1.
+Critical Failure The creature is afflicted with blinding poison
+at stage 2.`;
 
 // ==================== INLINE AUTOMATIONS SYSTEM ====================
 // Classes that define objects which represent individual inline automations,
@@ -6154,7 +6163,6 @@ class BusinessRulesEngine {
      * @param {Function} RuleClass - The rule class to remove
      */
     unregisterRule(RuleClass) {
-        const initialLength = this.rules.length;
         this.rules = this.rules.filter(rule => !(rule instanceof RuleClass));
     }
 
@@ -6223,12 +6231,122 @@ class BusinessRulesEngine {
     }
 }
 
+// ==================== FORMATTING RULES ====================
+// Rules for formatting the text according to PF2e standards
+
+class FormattingRule {
+    apply (text) {
+        throw new Error('FormattingRule subclasses must implement apply() method');
+    }
+
+    getPriority() {
+        return 0;
+    }
+}
+
+class RemoveLineBreaksRule extends FormattingRule {
+    apply(text) {
+        let result = text.replace(/(?<=-)\n/g, ''); // Remove line breaks that are preceded by a hyphen
+        result = result.replace(/\n/g, ' '); // Remove any remaining line breaks
+
+        return result;
+    }
+
+    getPriority() {
+        return 100;
+    }
+}
+
+class DegreesOfSuccessRule extends FormattingRule {
+    constructor() {
+        super();
+        this.criticalSuccessRegex = /\b(critical\s+success)\b/gi;
+        this.degreesOfSuccessRegex = /\b(critical\s+failure|(?<!critical\s+)success|(?<!critical\s+)failure)\b/gi;
+    }
+    apply(text) {
+        // Format critical success
+        text = text.replace(this.criticalSuccessRegex, '<hr><strong>$1</strong>');
+        // Format degrees of success
+        text = text.replace(this.degreesOfSuccessRegex, '<br><strong>$1</strong>');
+
+        return text;
+    }
+
+    getPriority() {
+        return 50;
+    }
+}
+
+class FormattingRulesEngine {
+    constructor() {
+        this.rules = [];
+        this.enabled = true;
+
+        this.registerRule(new DegreesOfSuccessRule());
+        this.registerRule(new RemoveLineBreaksRule());
+    }
+
+    /**
+     * Register a new formatting rule
+     * @param {FormattingRule} rule - The rule to register
+     */
+    registerRule(rule) {
+        if (!(rule instanceof FormattingRule)) {
+            throw new Error('Rule must be an instance of FormattingRule');
+        }
+        
+        this.rules.push(rule);
+        this.rules.sort((a, b) => b.getPriority() - a.getPriority());
+    }
+
+    /**
+     * Remove a rule by class
+     * @param {Function} RuleClass - The rule class to remove
+     */
+    unregisterRule(RuleClass) {
+        this.rules = this.rules.filter(rule => !(rule instanceof RuleClass));
+    }
+
+    /**
+     * Apply all registered rules to the text
+     * @param {string} text - The text to apply the rules to
+     * @returns {string} - The modified text
+     */
+    applyRules(text) {
+        if (!this.enabled) {
+            return text;
+        }
+
+        let processedText = text;
+        
+        for (const rule of this.rules) {
+            try {
+                processedText = rule.apply(processedText);
+            } catch (error) {
+                console.error(`[FormattingRulesEngine] Error applying rule ${rule.constructor.name}:`, error);
+                // Continue with other rules rather than failing completely
+            }
+        }
+
+        return processedText;
+    }
+
+    /**
+     * Enable or disable the rules engine
+     * @param {boolean} enabled - Whether to enable the rules engine
+     */
+    setEnabled(enabled) {
+        this.enabled = Boolean(enabled);
+    }
+}
+
 // ==================== TEXT PROCESSOR ====================
 // Processes the text and returns an array of replacements
 class TextProcessor {
     constructor() {
         this.linkedConditions = new Set();
         this.businessRules = new BusinessRulesEngine();
+        this.formattingRules = new FormattingRulesEngine();
     }
 
     process(inputText, state = null) {
@@ -6306,38 +6424,6 @@ class TextProcessor {
         }
     }
 
-    /**
-     * Add a custom business rule
-     * @param {BusinessRule} rule - The rule to add
-     */
-    addBusinessRule(rule) {
-        this.businessRules.registerRule(rule);
-    }
-
-    /**
-     * Remove a business rule by class
-     * @param {Function} RuleClass - The rule class to remove
-     */
-    removeBusinessRule(RuleClass) {
-        this.businessRules.unregisterRule(RuleClass);
-    }
-
-    /**
-     * Enable or disable business rules processing
-     * @param {boolean} enabled - Whether to enable business rules
-     */
-    setBusinessRulesEnabled(enabled) {
-        this.businessRules.setEnabled(enabled);
-    }
-
-    /**
-     * Get information about active business rules
-     * @returns {Array} Array of rule information
-     */
-    getBusinessRulesInfo() {
-        return this.businessRules.getRulesInfo();
-    }
-
     sortByPriority(replacements) {
         return replacements.sort((a, b) => {
             return b.priority - a.priority || a.startPos - b.startPos;
@@ -6353,7 +6439,14 @@ class TextProcessor {
             result = this.applyReplacement(result, replacement, interactive, state);
         }
         
-        return this.applyGlobalLegacyConditionConversions(result);
+        result = this.applyGlobalLegacyConditionConversions(result);
+
+        // Apply formatting rules if enabled
+        if (this.formattingRules.enabled) {
+            result = this.formattingRules.applyRules(result);
+        }
+
+        return result;
     }
 
     applyReplacement(text, replacement, interactive = false, state = null) {
