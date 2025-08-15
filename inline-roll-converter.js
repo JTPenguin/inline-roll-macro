@@ -24,8 +24,6 @@ blinded for 1 round (1 round); Stage 3 5d6 poison damage
 and blinded for 1 round (1 round); Stage 4 6d6 poison
 damage and blinded for 1 minute (1 round)`;
 
-const FORMAT_WITH_HTML = true;
-
 // ==================== INLINE AUTOMATIONS SYSTEM ====================
 // Classes that define objects which represent individual inline automations,
 // each tracking its own parameters and syntax rendering
@@ -1035,7 +1033,7 @@ class FieldRenderer {
                 return `
                     <div id="${fieldId}-container" class="form-group" style="${containerStyle}" data-field-id="${fieldId}">
                         <label>${label}</label>
-                        <div class="form-fields">
+                        <div class="form-fields" style="flex: 0 0 50px;">
                             <input type="checkbox" id="${fieldId}" class="rollconverter-field-checkbox" ${checked} />
                         </div>
                         ${options.notes ? `<p class="notes">${options.notes}</p>` : ''}
@@ -1161,7 +1159,7 @@ class DamageRenderer extends BaseRenderer {
                 configs.push({
                     id: `remove-component-${index}`,
                     type: 'button',
-                    label: 'Remove',
+                    label: '<i class="fas fa-trash"></i>',
                     action: 'remove-component',
                     componentIndex: index,
                     triggersUpdate: 'config-refresh',
@@ -1655,7 +1653,7 @@ class CSSManager {
                 display: flex;
                 flex-direction: column;
                 height: 100%;
-                gap: 0;
+                gap: 3px;
             }
 
             .rollconverter-sidebar {
@@ -1663,8 +1661,12 @@ class CSSManager {
                 flex-shrink: 0;
                 display: flex;
                 flex-direction: column;
-                height: 550px;
-                gap: 10px;
+                height: 620px;
+                gap: 3px;
+            }
+
+            .rollconverter-fieldset {
+                margin: 0;
             }
 
             /* ===== MAIN CONTENT SECTIONS ===== */
@@ -1743,6 +1745,7 @@ class CSSManager {
                 display: flex;
                 gap: 8px;
                 flex-shrink: 0;
+                margin-top: 7px;
             }
 
             .rollconverter-control-button {
@@ -1772,7 +1775,6 @@ class CSSManager {
                 display: flex;
                 align-items: center;
                 gap: 4px;
-                /* font-size: 12px; */
                 margin: 0;
             }
 
@@ -1930,15 +1932,10 @@ class CSSManager {
 
             .rollconverter-damage-component legend {
                 display: flex;
+                gap: 8px;
                 justify-content: space-between;
                 align-items: center;
-                width: 100%;
-                font-weight: bold;
                 padding: 0 4px;
-            }
-
-            .rollconverter-damage-component legend span {
-                flex-grow: 1;
             }
 
             /* ===== COMPONENT MANAGEMENT CONTROLS ===== */
@@ -1956,11 +1953,17 @@ class CSSManager {
                 background: var(--color-warning);
                 color: white;
                 font-size: 10px;
-                padding: 2px 6px;
+                line-height: 10px !important;
+                height: 17px !important;
             }
 
             .rollconverter-action-button[data-action="remove-component"]:hover {
                 background: var(--color-danger);
+            }
+
+            .rollconverter-damage-component legend .form-group {
+                margin-bottom: 0;
+                margin-top: 0;
             }
         `;
     }
@@ -3565,6 +3568,42 @@ class ConverterDialog {
             });
         }
     }
+
+    /**
+     * Setup formatting options handlers
+     */
+    setupFormattingHandlers() {
+        const removeLineBreaksCheckbox = document.getElementById('remove-line-breaks');
+        const htmlFormattingCheckbox = document.getElementById('html-formatting');
+        
+        if (removeLineBreaksCheckbox) {
+            removeLineBreaksCheckbox.addEventListener('change', (e) => {
+                const isEnabled = e.target.checked;
+                this.processor.formattingRules.setCategoryEnabled(
+                    FormattingRule.CATEGORIES.TEXT, 
+                    isEnabled
+                );
+                
+                // Re-render output and preview
+                this.renderOutput();
+                this.renderLivePreview();
+            });
+        }
+        
+        if (htmlFormattingCheckbox) {
+            htmlFormattingCheckbox.addEventListener('change', (e) => {
+                const isEnabled = e.target.checked;
+                this.processor.formattingRules.setCategoryEnabled(
+                    FormattingRule.CATEGORIES.HTML, 
+                    isEnabled
+                );
+                
+                // Re-render output and preview
+                this.renderOutput();
+                this.renderLivePreview();
+            });
+        }
+    }
     
     /**
      * Initialize UI references
@@ -3577,6 +3616,10 @@ class ConverterDialog {
         this.ui.modifierPanelContent = html.find('#modifier-panel-content')[0];
         this.ui.copyButton = html.find('#copy-output');
         this.ui.clearButton = html.find('#clear-all');
+        this.ui.formattingOptionsContent = html.find('#formatting-options-form')[0];
+        
+        // Generate formatting options HTML using FieldRenderer
+        this.renderFormattingOptions();
         
         // Process initial input if present
         const initialText = this.ui.inputTextarea.val();
@@ -3586,9 +3629,36 @@ class ConverterDialog {
         else {
             this.data.inputText = '';
         }
-
+    
         this.data.isInitialized = true;
         this.processInput(this.data.inputText);
+    }
+
+    /**
+     * Render formatting options using FieldRenderer for consistency
+     */
+    renderFormattingOptions() {
+        if (!this.ui.formattingOptionsContent) return;
+        
+        // Use FieldRenderer to create consistent checkbox styling
+        const removeLineBreaksHtml = FieldRenderer.render(
+            'checkbox', 
+            'remove-line-breaks', 
+            'Remove Line Breaks', 
+            true // checked by default
+        );
+        
+        const htmlFormattingHtml = FieldRenderer.render(
+            'checkbox', 
+            'html-formatting', 
+            'HTML Formatting', 
+            true // checked by default
+        );
+        
+        this.ui.formattingOptionsContent.innerHTML = removeLineBreaksHtml + htmlFormattingHtml;
+        
+        // Setup event handlers after rendering
+        this.setupFormattingHandlers();
     }
 }
 
@@ -6469,7 +6539,7 @@ class BoldKeywordsRule extends FormattingRule {
     }
 
     getPriority() {
-        return 80;
+        return 15;
     }
 
     getCategory() {
@@ -6642,8 +6712,6 @@ class FormattingRulesEngine {
             FormattingRule.CATEGORIES.TEXT,
             FormattingRule.CATEGORIES.HTML
         ]);
-
-        this.setCategoryEnabled(FormattingRule.CATEGORIES.HTML, FORMAT_WITH_HTML);
 
         this.registerRule(new DegreesOfSuccessRule());
         this.registerRule(new RemoveLineBreaksRule());
@@ -7066,6 +7134,13 @@ function showConverterDialog() {
             </div>
             
             <div class="rollconverter-sidebar">
+                <fieldset class="rollconverter-fieldset rollconverter-formatting-options">
+                    <legend>Formatting Options</legend>
+                        <form id="formatting-options-form" class="rollconverter-form">
+                            <!-- Content will be generated by FieldRenderer -->
+                        </form>
+                </fieldset>
+                
                 <fieldset class="rollconverter-fieldset rollconverter-modifier-panel">
                     <legend class="rollconverter-modifier-legend">
                         <span class="rollconverter-modifier-title">Modifier Panel</span>
