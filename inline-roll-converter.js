@@ -7,7 +7,22 @@
  */
 
 // Default input text for the converter
-const DEFAULT_INPUT = ``;
+const DEFAULT_INPUT = `You conjure an exploding glass container filled with a sight-
+stealing poison and hurl it across enemy lines. Upon impact,
+the bottle bursts and exposes all creatures in the area to
+the toxin within. Each creature in the area must attempt a
+Fortitude save.
+Critical Success The creature is unaffected.
+Success The creature takes 3d6 poison damage.
+Failure The creature is afflicted with blinding poison at stage 1.
+Critical Failure The creature is afflicted with blinding poison
+at stage 2.
+Blinding Poison (incapacitation, poison) Level 9; Maximum
+Duration 4 rounds; Stage 1 3d6 poison damage and blinded
+for 1 round (1 round); Stage 2 4d6 poison damage and
+blinded for 1 round (1 round); Stage 3 5d6 poison damage
+and blinded for 1 round (1 round); Stage 4 6d6 poison
+damage and blinded for 1 minute (1 round)`;
 
 const FORMAT_WITH_HTML = true;
 
@@ -6289,6 +6304,65 @@ class FormattingRule {
             HTML: 'html'
         };
     }
+
+    /**
+     * Check if a match is already formatted with direct adjacent HTML tags
+     * @param {string} text - The full text being processed
+     * @param {number} matchStart - Start position of the match
+     * @param {number} matchEnd - End position of the match
+     * @param {string} tagName - The HTML tag name to check for (e.g., 'strong', 'em')
+     * @returns {boolean} - True if the match has the specified tags directly adjacent
+     */
+    isAlreadyFormatted(text, matchStart, matchEnd, tagName) {
+        const beforeMatch = text.substring(0, matchStart);
+        const afterMatch = text.substring(matchEnd);
+        
+        // Check for direct adjacent tags (e.g., <strong>match</strong>)
+        // Allow for optional whitespace between tags and content
+        const hasOpeningTag = new RegExp(`<${tagName}\\b[^>]*>\\s*$`).test(beforeMatch);
+        const hasClosingTag = new RegExp(`^\\s*</${tagName}>`).test(afterMatch);
+        
+        return hasOpeningTag || hasClosingTag;
+    }
+
+    /**
+     * Apply a replacement function only to matches that aren't already formatted
+     * @param {string} text - The text to process
+     * @param {RegExp} pattern - The regex pattern to match
+     * @param {Function} replacementFn - Function that returns the replacement text
+     * @param {string} tagName - The HTML tag name to check for existing formatting
+     * @returns {string} - The processed text
+     */
+    replaceUnformatted(text, pattern, replacementFn, tagName) {
+        let result = text;
+        let offset = 0;
+        let match;
+        
+        // Reset regex lastIndex to ensure we start from the beginning
+        pattern.lastIndex = 0;
+        
+        while ((match = pattern.exec(text)) !== null) {
+            const matchStart = match.index + offset;
+            const matchEnd = matchStart + match[0].length;
+            
+            // Check if this match is already formatted
+            if (!this.isAlreadyFormatted(result, matchStart, matchEnd, tagName)) {
+                const replacement = replacementFn(match);
+                const lengthDiff = replacement.length - match[0].length;
+                
+                result = result.substring(0, matchStart) + 
+                        replacement + 
+                        result.substring(matchEnd);
+                
+                offset += lengthDiff;
+            }
+            
+            // Prevent infinite loops for global regexes
+            if (!pattern.global) break;
+        }
+        
+        return result;
+    }
 }
 
 class RemoveLineBreaksRule extends FormattingRule {
@@ -6316,19 +6390,27 @@ class DegreesOfSuccessRule extends FormattingRule {
     }
     
     apply(text) {
-        // Format critical success
-        text = text.replace(this.criticalSuccessRegex, '</p>\n<hr>\n<p><strong>$2</strong>');
+        // Format critical success (avoiding already formatted text)
+        text = this.replaceUnformatted(
+            text,
+            this.criticalSuccessRegex,
+            (match) => `</p>\n<hr>\n<p><strong>${match[2]}</strong>`,
+            'strong'
+        );
         
         // Format other degrees of success
-        text = text.replace(this.degreesOfSuccessRegex, '</p>\n<p><strong>$2</strong>');
+        text = this.replaceUnformatted(
+            text,
+            this.degreesOfSuccessRegex,
+            (match) => `</p>\n<p><strong>${match[2]}</strong>`,
+            'strong'
+        );
 
-        // If we find we've replaced the start of the text, remove unneccessary tags
+        // Clean up start of text if needed
         if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
-            // Remove the </p>\n<hr>\n from the start of the text by removing the first 12 characters
             text = text.substring(10);
         }
         if (text.startsWith('</p>\n<p><strong>')) {
-            // Remove the </p>\n from the start of the text by removing the first 6 characters
             text = text.substring(5);
         }
 
@@ -6356,19 +6438,30 @@ class BoldKeywordsRule extends FormattingRule {
             'Frequency',
             'Trigger',
             'Targets',
-            'Requirements',
-        ]
+            'Requirements'
+        ];
         this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
         this.patternWithSemicolon = new RegExp(`(?<=;\\s*)(${this.keywords.join('|')})`, 'g');
     }
 
     apply(text) {
-        text = text.replace(this.patternNoSemicolon, '</p>\n<p><strong>$1</strong>');
-        text = text.replace(this.patternWithSemicolon, '<strong>$1</strong>');
+        // Apply formatting only to unformatted matches
+        text = this.replaceUnformatted(
+            text, 
+            this.patternNoSemicolon, 
+            (match) => `</p>\n<p><strong>${match[1]}</strong>`,
+            'strong'
+        );
+        
+        text = this.replaceUnformatted(
+            text,
+            this.patternWithSemicolon,
+            (match) => `<strong>${match[1]}</strong>`,
+            'strong'
+        );
 
-        // If we find we've replaced the start of the text, remove unneccessary tags
+        // Clean up start of text if needed
         if (text.startsWith('</p>\n<p><strong>')) {
-            // Remove the </p>\n from the start of the text by removing the first 5 characters
             text = text.substring(5);
         }
 
@@ -6393,12 +6486,15 @@ class HeightenedRule extends FormattingRule {
     }
     
     apply(text) {
-        // Format heightened entries similar to degrees of success
-        text = text.replace(this.heightenedRegex, '</p>\n<hr>\n<p><strong>$1</strong>');
+        text = this.replaceUnformatted(
+            text,
+            this.heightenedRegex,
+            (match) => `</p>\n<hr>\n<p><strong>${match[1]}</strong>`,
+            'strong'
+        );
 
-        // If we find we've replaced the start of the text, remove unnecessary tags
+        // Clean up start of text if needed
         if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
-            // Remove the </p>\n<hr>\n from the start of the text by removing the first 10 characters
             text = text.substring(10);
         }
 
@@ -6427,18 +6523,20 @@ class AfflictionNameRule extends FormattingRule {
     }
     
     apply(text) {
-        // Replace affliction names with bolded versions
-        text = text.replace(this.afflictionRegex, (match, leadingSpace, afflictionName) => {
-            // Trim the affliction name to remove any trailing spaces
-            const trimmedName = afflictionName.trim();
-            
-            // Replace just the affliction name part with the bolded version
-            return match.replace(afflictionName, `</p>\n<hr>\n<p><strong>${trimmedName}</strong>`);
-        });
+        text = this.replaceUnformatted(
+            text,
+            this.afflictionRegex,
+            (match) => {
+                const leadingSpace = match[1];
+                const afflictionName = match[2].trim();
+                // Replace just the affliction name part with the bolded version
+                return match[0].replace(match[2], `</p>\n<hr>\n<p><strong>${afflictionName}</strong>`);
+            },
+            'strong'
+        );
 
-        // If we find we've replaced the start of the text, remove unneccessary tags
+        // Clean up start of text if needed
         if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
-            // Remove the </p>\n<hr>\n from the start of the text by removing the first 10 characters
             text = text.substring(10);
         }
 
@@ -6460,12 +6558,18 @@ class AfflictionPropertiesRule extends FormattingRule {
         this.keywords = [
             'Maximum Duration',
             'Level'
-        ]
+        ];
         this.pattern = new RegExp(`(${this.keywords.join('|')})`, 'g');
     }
 
     apply(text) {
-        text = text.replace(this.pattern, '<strong>$1</strong>');
+        text = this.replaceUnformatted(
+            text,
+            this.pattern,
+            (match) => `<strong>${match[1]}</strong>`,
+            'strong'
+        );
+        
         return text;
     }
 
@@ -6485,11 +6589,15 @@ class AfflictionStagesRule extends FormattingRule {
     }
 
     apply(text) {
-        text = text.replace(this.pattern, '</p>\n<p><strong>$2</strong>');
+        text = this.replaceUnformatted(
+            text,
+            this.pattern,
+            (match) => `</p>\n<p><strong>${match[2]}</strong>`,
+            'strong'
+        );
 
-        // If we find we've replaced the start of the text, remove unneccessary tags
+        // Clean up start of text if needed
         if (text.startsWith('</p>\n<p><strong>')) {
-            // Remove the </p>\n from the start of the text by removing the first 5 characters
             text = text.substring(5);
         }
 
@@ -6509,7 +6617,7 @@ class StartAndEndParagraphTagsRule extends FormattingRule {
     apply(text) {
         // Add <p> tags at the start and end of the text only if there are no <p> tags there already
         if (!text.startsWith('<p>')) {
-            text = `<p>${text}</p>`;
+            text = `<p>${text}`;
         }
         if (!text.endsWith('</p>')) {
             text = `${text}</p>`;
