@@ -1,13 +1,13 @@
 /**
  * Pathfinder 2e Inline Roll Converter
  * 
- * v 1.0.0
+ * v 1.1.0
  * 
  * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
 
 // Default input text for the converter
-const DEFAULT_INPUT = '';
+const DEFAULT_INPUT = ``;
 
 // ==================== INLINE AUTOMATIONS SYSTEM ====================
 // Classes that define objects which represent individual inline automations,
@@ -3297,7 +3297,15 @@ class ConverterDialog {
      * Copy current output to clipboard
      */
     copyOutput() {
-        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, false, this.data);
+        // Use formatting applied, HTML not escaped for copying
+        const outputText = this.processor.renderFromReplacements(
+            this.data.inputText, 
+            this.data.replacements, 
+            false, // interactive = false
+            this.data,
+            true,  // applyFormatting = true
+            false  // escapeHtml = false
+        );
         copyToClipboard(outputText);
     }
     
@@ -3309,14 +3317,41 @@ class ConverterDialog {
             return;
         }
         
-        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, true, this.data);
-        this.data.lastRawOutput = outputText;
+        // Get the output with formatting applied and HTML escaped, plus interactive elements
+        const outputText = this.processor.renderFromReplacements(
+            this.data.inputText, 
+            this.data.replacements, 
+            true,  // interactive = true (to get clickable elements)
+            this.data, 
+            true,  // applyFormatting = true
+            true   // escapeHtml = true (to show formatting tags as text)
+        );
+        
+        // Store the raw version for copying (formatting applied, HTML not escaped)
+        this.data.lastRawOutput = this.processor.renderFromReplacements(
+            this.data.inputText, 
+            this.data.replacements, 
+            false, // interactive = false
+            this.data,
+            true,  // applyFormatting = true
+            false  // escapeHtml = false
+        );
         
         if (this.ui.outputHtmlDiv) {
-            // Use semantic class for the pre element
-            this.ui.outputHtmlDiv.innerHTML = outputText;
+            this.ui.outputHtmlDiv.innerHTML = `<div class="rollconverter-output-formatted">${outputText}</div>`;
             this.setupInteractiveElementHandlers();
         }
+    }
+    
+    /**
+     * Escape HTML for display
+     * @param {string} html - HTML to escape
+     * @returns {string} Escaped HTML
+     */
+    escapeHtml(html) {
+        const div = document.createElement('div');
+        div.textContent = html;
+        return div.innerHTML;
     }
     
     /**
@@ -3327,7 +3362,15 @@ class ConverterDialog {
             return;
         }
         
-        const outputText = this.processor.renderFromReplacements(this.data.inputText, this.data.replacements, false, this.data);
+        // Use formatting applied, HTML not escaped for live preview
+        const outputText = this.processor.renderFromReplacements(
+            this.data.inputText, 
+            this.data.replacements, 
+            false, // interactive = false
+            this.data,
+            true,  // applyFormatting = true
+            false  // escapeHtml = false
+        );
         
         if (this.ui.livePreview) {
             createLivePreview(outputText, this.ui.livePreview);
@@ -6154,7 +6197,6 @@ class BusinessRulesEngine {
      * @param {Function} RuleClass - The rule class to remove
      */
     unregisterRule(RuleClass) {
-        const initialLength = this.rules.length;
         this.rules = this.rules.filter(rule => !(rule instanceof RuleClass));
     }
 
@@ -6223,12 +6265,338 @@ class BusinessRulesEngine {
     }
 }
 
+// ==================== FORMATTING RULES ====================
+// Rules for formatting the text according to PF2e standards
+
+class FormattingRule {
+    apply (text) {
+        throw new Error('FormattingRule subclasses must implement apply() method');
+    }
+
+    getPriority() {
+        return 0;
+    }
+
+    getCategory() {
+        throw new Error('FormattingRule subclasses must implement getCategory() method');
+    }
+
+    static get CATEGORIES() {
+        return {
+            TEXT: 'text',
+            HTML: 'html'
+        };
+    }
+}
+
+class RemoveLineBreaksRule extends FormattingRule {
+    apply(text) {
+        let result = text.replace(/(?<=-)\n/g, ''); // Remove line breaks that are preceded by a hyphen
+        result = result.replace(/\n/g, ' '); // Remove any remaining line breaks
+
+        return result;
+    }
+
+    getPriority() {
+        return 100;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.TEXT;
+    }
+}
+
+class DegreesOfSuccessRule extends FormattingRule {
+    constructor() {
+        super();
+        this.criticalSuccessRegex = /(\s*)(Critical\s+Success)\b/g;
+        this.degreesOfSuccessRegex = /(\s*)(Critical\s+Failure|(?<!Critical\s+)Success|(?<!Critical\s+)Failure)\b/g;
+    }
+    
+    apply(text) {
+        // Format critical success
+        text = text.replace(this.criticalSuccessRegex, '</p>\n<hr>\n<p><strong>$2</strong>');
+        
+        // Format other degrees of success
+        text = text.replace(this.degreesOfSuccessRegex, '</p>\n<p><strong>$2</strong>');
+
+        // If we find we've replaced the start of the text, remove unneccessary tags
+        if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
+            // Remove the </p>\n<hr>\n from the start of the text by removing the first 12 characters
+            text = text.substring(10);
+        }
+        if (text.startsWith('</p>\n<p><strong>')) {
+            // Remove the </p>\n from the start of the text by removing the first 6 characters
+            text = text.substring(5);
+        }
+
+        return text;
+    }
+
+    getPriority() {
+        return 50;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class HeightenedRule extends FormattingRule {
+    constructor() {
+        super();
+        // Match "Heightened" followed by level in parentheses
+        // Supports formats like: (1st), (4th), (+1), (2nd), (3rd), etc.
+        this.heightenedRegex = new RegExp(`(\\s*Heightened\\s*\\([^)]+\\))`, 'g');
+    }
+    
+    apply(text) {
+        console.log('Applying HeightenedRule');
+        // Format heightened entries similar to degrees of success
+        text = text.replace(this.heightenedRegex, '</p>\n<hr>\n<p><strong>$1</strong>');
+
+        // If we find we've replaced the start of the text, remove unnecessary tags
+        if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
+            // Remove the </p>\n<hr>\n from the start of the text by removing the first 10 characters
+            text = text.substring(10);
+        }
+
+        return text;
+    }
+
+    getPriority() {
+        return 60;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class AfflictionNameRule extends FormattingRule {
+    constructor() {
+        super();
+        // Pattern to match affliction names:
+        // - Start of line or preceded by whitespace/newline
+        // - Affliction name (captured - the only thing we need to modify)
+        // - Space and opening parenthesis
+        // - Comma-separated traits containing curse, disease, or poison
+        // - Closing parenthesis and " Level"
+        this.afflictionRegex = /(\s*)([^(\n]+?)\s+\([^)]*(?:curse|disease|poison)[^)]*\)\s+Level/gi;
+    }
+    
+    apply(text) {
+        // Replace affliction names with bolded versions
+        text = text.replace(this.afflictionRegex, (match, leadingSpace, afflictionName) => {
+            // Trim the affliction name to remove any trailing spaces
+            const trimmedName = afflictionName.trim();
+            
+            // Replace just the affliction name part with the bolded version
+            return match.replace(afflictionName, `</p>\n<hr>\n<p><strong>${trimmedName}</strong>`);
+        });
+
+        // If we find we've replaced the start of the text, remove unneccessary tags
+        if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
+            // Remove the </p>\n<hr>\n from the start of the text by removing the first 10 characters
+            text = text.substring(10);
+        }
+
+        return text;
+    }
+
+    getPriority() {
+        return 110;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class AfflictionPropertiesRule extends FormattingRule {
+    constructor() {
+        super();
+        this.keywords = [
+            'Maximum Duration',
+            'Level'
+        ]
+        this.pattern = new RegExp(`(${this.keywords.join('|')})`, 'g');
+    }
+
+    apply(text) {
+        text = text.replace(this.pattern, '<strong>$1</strong>');
+        return text;
+    }
+
+    getPriority() {
+        return 19;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class AfflictionStagesRule extends FormattingRule {
+    constructor() {
+        super();
+        this.pattern = new RegExp(`(;?\\s*)(Stage\\s+\\d+)\\b`, 'g');
+    }
+
+    apply(text) {
+        text = text.replace(this.pattern, '</p>\n<p><strong>$2</strong>');
+
+        // If we find we've replaced the start of the text, remove unneccessary tags
+        if (text.startsWith('</p>\n<p><strong>')) {
+            // Remove the </p>\n from the start of the text by removing the first 5 characters
+            text = text.substring(5);
+        }
+
+        return text;
+    }
+
+    getPriority() {
+        return 18;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class StartAndEndParagraphTagsRule extends FormattingRule {
+    apply(text) {
+        // Add <p> tags at the start and end of the text only if there are no <p> tags there already
+        if (!text.startsWith('<p>')) {
+            text = `<p>${text}</p>`;
+        }
+        if (!text.endsWith('</p>')) {
+            text = `${text}</p>`;
+        }
+        return text;
+    }
+
+    getPriority() {
+        return 10;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
+class FormattingRulesEngine {
+    constructor() {
+        this.rules = [];
+        this.enabled = true;
+        this.enabledCategories = new Set([
+            FormattingRule.CATEGORIES.TEXT,
+            FormattingRule.CATEGORIES.HTML
+        ]);
+
+        this.registerRule(new DegreesOfSuccessRule());
+        this.registerRule(new RemoveLineBreaksRule());
+        this.registerRule(new StartAndEndParagraphTagsRule());
+        this.registerRule(new HeightenedRule());
+        this.registerRule(new AfflictionStagesRule());
+        this.registerRule(new AfflictionNameRule());
+        this.registerRule(new AfflictionPropertiesRule());
+    }
+
+    /**
+     * Register a new formatting rule
+     * @param {FormattingRule} rule - The rule to register
+     */
+    registerRule(rule) {
+        if (!(rule instanceof FormattingRule)) {
+            throw new Error('Rule must be an instance of FormattingRule');
+        }
+        
+        this.rules.push(rule);
+        this.rules.sort((a, b) => b.getPriority() - a.getPriority());
+    }
+
+    /**
+     * Remove a rule by class
+     * @param {Function} RuleClass - The rule class to remove
+     */
+    unregisterRule(RuleClass) {
+        this.rules = this.rules.filter(rule => !(rule instanceof RuleClass));
+    }
+
+    /**
+     * Enable or disable specific categories of formatting rules
+     * @param {string|Array} categories - Category or array of categories to enable
+     * @param {boolean} enabled - Whether to enable (true) or disable (false) the categories
+     */
+    setCategoryEnabled(categories, enabled = true) {
+        const categoryArray = Array.isArray(categories) ? categories : [categories];
+        
+        categoryArray.forEach(category => {
+            if (enabled) {
+                this.enabledCategories.add(category);
+            } else {
+                this.enabledCategories.delete(category);
+            }
+        });
+    }
+
+    /**
+     * Check if a category is enabled
+     * @param {string} category - The category to check
+     * @returns {boolean} Whether the category is enabled
+     */
+    isCategoryEnabled(category) {
+        return this.enabledCategories.has(category);
+    }
+
+    /**
+     * Apply all registered and enabled rules to the text
+     * @param {string} text - The text to apply the rules to
+     * @returns {string} - The modified text
+     */
+    applyRules(text) {
+        if (!this.enabled) {
+            return text;
+        }
+
+        let processedText = text;
+        
+        // Filter rules by enabled categories
+        const applicableRules = this.rules.filter(rule => {
+            const ruleCategory = rule.getCategory ? rule.getCategory() : FormattingRule.CATEGORIES.TEXT;
+            return this.isCategoryEnabled(ruleCategory);
+        });
+        
+        // Apply the filtered rules
+        for (const rule of applicableRules) {
+            try {
+                processedText = rule.apply(processedText);
+            } catch (error) {
+                console.error(`[FormattingRulesEngine] Error applying rule ${rule.constructor.name}:`, error);
+                // Continue with other rules rather than failing completely
+            }
+        }
+
+        return processedText;
+    }
+
+    /**
+     * Enable or disable the rules engine
+     * @param {boolean} enabled - Whether to enable the rules engine
+     */
+    setEnabled(enabled) {
+        this.enabled = Boolean(enabled);
+    }
+}
+
 // ==================== TEXT PROCESSOR ====================
 // Processes the text and returns an array of replacements
 class TextProcessor {
     constructor() {
         this.linkedConditions = new Set();
         this.businessRules = new BusinessRulesEngine();
+        this.formattingRules = new FormattingRulesEngine();
     }
 
     process(inputText, state = null) {
@@ -6306,38 +6674,6 @@ class TextProcessor {
         }
     }
 
-    /**
-     * Add a custom business rule
-     * @param {BusinessRule} rule - The rule to add
-     */
-    addBusinessRule(rule) {
-        this.businessRules.registerRule(rule);
-    }
-
-    /**
-     * Remove a business rule by class
-     * @param {Function} RuleClass - The rule class to remove
-     */
-    removeBusinessRule(RuleClass) {
-        this.businessRules.unregisterRule(RuleClass);
-    }
-
-    /**
-     * Enable or disable business rules processing
-     * @param {boolean} enabled - Whether to enable business rules
-     */
-    setBusinessRulesEnabled(enabled) {
-        this.businessRules.setEnabled(enabled);
-    }
-
-    /**
-     * Get information about active business rules
-     * @returns {Array} Array of rule information
-     */
-    getBusinessRulesInfo() {
-        return this.businessRules.getRulesInfo();
-    }
-
     sortByPriority(replacements) {
         return replacements.sort((a, b) => {
             return b.priority - a.priority || a.startPos - b.startPos;
@@ -6345,21 +6681,102 @@ class TextProcessor {
     }
 
     // Keep existing render methods unchanged
-    renderFromReplacements(text, replacements, interactive = false, state = null) {
+    renderFromReplacements(text, replacements, interactive = false, state = null, applyFormatting = true, escapeHtml = false) {
+        // Step 1: Apply global legacy condition conversions to original text
+        let processedText = this.applyGlobalLegacyConditionConversions(text);
+        
+        // Step 2: Apply replacements to the text BEFORE any other processing
         const sorted = replacements.slice().sort((a, b) => b.startPos - a.startPos);
-        let result = text;
         
         for (const replacement of sorted) {
-            result = this.applyReplacement(result, replacement, interactive, state);
+            processedText = this.applyReplacement(processedText, replacement, interactive, state);
         }
         
-        return this.applyGlobalLegacyConditionConversions(result);
+        // Step 4: Apply formatting rules if requested
+        if (applyFormatting && this.formattingRules.enabled) {
+            processedText = this.formattingRules.applyRules(processedText);
+        }
+        
+        // Step 3: If we're escaping HTML, protect original line breaks
+        const protectedElements = [];
+        if (escapeHtml) {
+            processedText = this.protectOriginalLineBreaks(processedText, protectedElements);
+        }
+        
+        // Step 5: Escape HTML if requested, passing the protected elements array
+        if (escapeHtml) {
+            processedText = this.escapeHtmlSelectively(processedText, protectedElements);
+        }
+        
+        return processedText;
+    }
+
+    /**
+     * Protect original line breaks by replacing them with placeholders
+     * @param {string} text - Text with original line breaks
+     * @param {Array} protectedElements - Array to store protected content
+     * @returns {string} Text with line breaks replaced by placeholders
+     */
+    protectOriginalLineBreaks(text, protectedElements) {
+        let result = text;
+        
+        // Handle different line break formats
+        result = result.replace(/\r\n/g, '\n'); // Normalize Windows line breaks
+        result = result.replace(/\r/g, '\n');   // Normalize Mac line breaks
+        
+        // Replace line breaks with placeholders and store the <br> replacement
+        result = result.replace(/\n/g, () => {
+            const placeholder = `___PROTECTED_ELEMENT_${protectedElements.length}___`;
+            protectedElements.push('<br>');
+            return placeholder;
+        });
+        
+        return result;
+    }
+
+    /**
+     * Escape formatting HTML while preserving interactive elements
+     * This method processes the HTML string directly rather than DOM nodes
+     * to avoid double-escaping issues with interactive element attributes
+     */
+    escapeHtmlSelectively(html, protectedElements = []) {
+        let processedHtml = html;
+        
+        // Protect interactive spans (continue using the same array)
+        processedHtml = processedHtml.replace(/<span[^>]*class="[^"]*rollconverter-interactive[^"]*"[^>]*>.*?<\/span>/gi, (match) => {
+            const placeholder = `___PROTECTED_ELEMENT_${protectedElements.length}___`;
+            protectedElements.push(match);
+            return placeholder;
+        });
+        
+        // Now escape all HTML in the remaining content
+        processedHtml = this.escapeHtml(processedHtml);
+        
+        // Restore all protected elements (both line breaks and interactive spans)
+        protectedElements.forEach((element, index) => {
+            const placeholder = `___PROTECTED_ELEMENT_${index}___`;
+            processedHtml = processedHtml.replace(placeholder, element);
+        });
+        
+        return processedHtml;
+    }
+
+    /**
+     * Escape HTML for display
+     * @param {string} html - HTML to escape
+     * @returns {string} Escaped HTML
+     */
+    escapeHtml(html) {
+        const div = document.createElement('div');
+        div.textContent = html;
+        return div.innerHTML;
     }
 
     applyReplacement(text, replacement, interactive = false, state = null) {
         const before = text.substring(0, replacement.startPos);
         const after = text.substring(replacement.endPos);
         const rendered = interactive ? replacement.renderInteractive(state) : replacement.render();
+        
         return before + rendered + after;
     }
 
@@ -6386,7 +6803,8 @@ async function createLivePreview(text, container) {
     }
 
     try {
-        const htmlText = text.replace(/\n/g, '<br>');
+        const htmlText = text;
+        // const htmlText = text.replace(/\n/g, '<br>');
 
         const processedHTML = await TextEditor.enrichHTML(htmlText, {
             async: true,
