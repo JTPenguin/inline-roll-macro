@@ -6344,6 +6344,46 @@ class DegreesOfSuccessRule extends FormattingRule {
     }
 }
 
+class BoldKeywordsRule extends FormattingRule {
+    constructor() {
+        super();
+        this.keywords = [
+            'Traditions',
+            'Range',
+            'Area',
+            'Defense',
+            'Duration',
+            'Frequency',
+            'Trigger',
+            'Targets',
+            'Requirements',
+        ]
+        this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
+        this.patternWithSemicolon = new RegExp(`(?<=;\\s*)(${this.keywords.join('|')})`, 'g');
+    }
+
+    apply(text) {
+        text = text.replace(this.patternNoSemicolon, '</p>\n<p><strong>$1</strong>');
+        text = text.replace(this.patternWithSemicolon, '<strong>$1</strong>');
+
+        // If we find we've replaced the start of the text, remove unneccessary tags
+        if (text.startsWith('</p>\n<p><strong>')) {
+            // Remove the </p>\n from the start of the text by removing the first 5 characters
+            text = text.substring(5);
+        }
+
+        return text;
+    }
+
+    getPriority() {
+        return 80;
+    }
+
+    getCategory() {
+        return FormattingRule.CATEGORIES.HTML;
+    }
+}
+
 class HeightenedRule extends FormattingRule {
     constructor() {
         super();
@@ -6353,7 +6393,6 @@ class HeightenedRule extends FormattingRule {
     }
     
     apply(text) {
-        console.log('Applying HeightenedRule');
         // Format heightened entries similar to degrees of success
         text = text.replace(this.heightenedRegex, '</p>\n<hr>\n<p><strong>$1</strong>');
 
@@ -6505,6 +6544,7 @@ class FormattingRulesEngine {
         this.registerRule(new AfflictionStagesRule());
         this.registerRule(new AfflictionNameRule());
         this.registerRule(new AfflictionPropertiesRule());
+        this.registerRule(new BoldKeywordsRule());
     }
 
     /**
