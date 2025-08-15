@@ -1,13 +1,15 @@
 /**
  * Pathfinder 2e Inline Roll Converter
  * 
- * v 1.1.0
+ * v 1.1.1
  * 
  * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
 
 // Default input text for the converter
 const DEFAULT_INPUT = ``;
+
+const FORMAT_WITH_HTML = true;
 
 // ==================== INLINE AUTOMATIONS SYSTEM ====================
 // Classes that define objects which represent individual inline automations,
@@ -6493,6 +6495,8 @@ class FormattingRulesEngine {
             FormattingRule.CATEGORIES.TEXT,
             FormattingRule.CATEGORIES.HTML
         ]);
+
+        this.setCategoryEnabled(FormattingRule.CATEGORIES.HTML, FORMAT_WITH_HTML);
 
         this.registerRule(new DegreesOfSuccessRule());
         this.registerRule(new RemoveLineBreaksRule());
