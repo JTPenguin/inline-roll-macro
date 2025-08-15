@@ -6508,7 +6508,10 @@ class BoldKeywordsRule extends FormattingRule {
             'Frequency',
             'Trigger',
             'Targets',
-            'Requirements'
+            'Requirements',
+            'Prerequisites',
+            'Cost',
+            'Cast'
         ];
         this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
         this.patternWithSemicolon = new RegExp(`(?<=;\\s*)(${this.keywords.join('|')})`, 'g');
@@ -6547,18 +6550,36 @@ class BoldKeywordsRule extends FormattingRule {
     }
 }
 
-class HeightenedRule extends FormattingRule {
+class BackMatterRule extends FormattingRule {
     constructor() {
         super();
         // Match "Heightened" followed by level in parentheses
         // Supports formats like: (1st), (4th), (+1), (2nd), (3rd), etc.
         this.heightenedRegex = new RegExp(`(\\s*Heightened\\s*\\([^)]+\\))`, 'g');
+        this.specialRegex = new RegExp(`(\\s*Special)`, 'g');
     }
     
     apply(text) {
+        // Track first occurrence of Heightened
+        let isFirstHeightened = true;
+        
         text = this.replaceUnformatted(
             text,
             this.heightenedRegex,
+            (match) => {
+                if (isFirstHeightened) {
+                    isFirstHeightened = false;
+                    return `</p>\n<hr>\n<p><strong>${match[1]}</strong>`;
+                } else {
+                    return `</p>\n<p><strong>${match[1]}</strong>`;
+                }
+            },
+            'strong'
+        );
+
+        text = this.replaceUnformatted(
+            text,
+            this.specialRegex,
             (match) => `</p>\n<hr>\n<p><strong>${match[1]}</strong>`,
             'strong'
         );
@@ -6716,7 +6737,7 @@ class FormattingRulesEngine {
         this.registerRule(new DegreesOfSuccessRule());
         this.registerRule(new RemoveLineBreaksRule());
         this.registerRule(new StartAndEndParagraphTagsRule());
-        this.registerRule(new HeightenedRule());
+        this.registerRule(new BackMatterRule());
         this.registerRule(new AfflictionStagesRule());
         this.registerRule(new AfflictionNameRule());
         this.registerRule(new AfflictionPropertiesRule());
