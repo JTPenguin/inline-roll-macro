@@ -1,28 +1,13 @@
 /**
  * Pathfinder 2e Inline Roll Converter
  * 
- * v 1.1.1
+ * v 1.2.0
  * 
  * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
 
 // Default input text for the converter
-const DEFAULT_INPUT = `You conjure an exploding glass container filled with a sight-
-stealing poison and hurl it across enemy lines. Upon impact,
-the bottle bursts and exposes all creatures in the area to
-the toxin within. Each creature in the area must attempt a
-Fortitude save.
-Critical Success The creature is unaffected.
-Success The creature takes 3d6 poison damage.
-Failure The creature is afflicted with blinding poison at stage 1.
-Critical Failure The creature is afflicted with blinding poison
-at stage 2.
-Blinding Poison (incapacitation, poison) Level 9; Maximum
-Duration 4 rounds; Stage 1 3d6 poison damage and blinded
-for 1 round (1 round); Stage 2 4d6 poison damage and
-blinded for 1 round (1 round); Stage 3 5d6 poison damage
-and blinded for 1 round (1 round); Stage 4 6d6 poison
-damage and blinded for 1 minute (1 round)`;
+const DEFAULT_INPUT = ``;
 
 // ==================== INLINE AUTOMATIONS SYSTEM ====================
 // Classes that define objects which represent individual inline automations,
