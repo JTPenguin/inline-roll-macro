@@ -6565,12 +6565,12 @@ class AfflictionNameRule extends FormattingRule {
     constructor() {
         super();
         // Pattern to match affliction names:
-        // - Start of line or preceded by whitespace/newline
-        // - Affliction name (captured - the only thing we need to modify)
+        // - Either: period followed by whitespace OR start of string
+        // - Affliction name that doesn't contain periods (captured)
         // - Space and opening parenthesis
         // - Comma-separated traits containing curse, disease, or poison
-        // - Closing parenthesis and " Level"
-        this.afflictionRegex = /(\s*)([^(\n]+?)\s+\([^)]*(?:curse|disease|poison)[^)]*\)/gi;
+        // - Closing parenthesis
+        this.afflictionRegex = /(^|\.\s+)([^(.]+?)\s+\([^)]*(?:curse|disease|poison)[^)]*\)/gi;
     }
     
     apply(text) {
@@ -6578,7 +6578,6 @@ class AfflictionNameRule extends FormattingRule {
             text,
             this.afflictionRegex,
             (match) => {
-                const leadingSpace = match[1];
                 const afflictionName = match[2].trim();
                 // Replace just the affliction name part with the bolded version
                 return match[0].replace(match[2], `</p>\n<hr>\n<p><strong>${afflictionName}</strong>`);
@@ -6595,7 +6594,7 @@ class AfflictionNameRule extends FormattingRule {
     }
 
     getPriority() {
-        return 110;
+        return 100;
     }
 
     getCategory() {
@@ -6699,7 +6698,7 @@ class FormattingRulesEngine {
         this.registerRule(new StartAndEndParagraphTagsRule());
         this.registerRule(new BackMatterRule());
         this.registerRule(new AfflictionStagesRule());
-        // this.registerRule(new AfflictionNameRule());
+        this.registerRule(new AfflictionNameRule());
         this.registerRule(new AfflictionPropertiesRule());
         this.registerRule(new BoldKeywordsRule());
     }
