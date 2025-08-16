@@ -6940,22 +6940,20 @@ class TextProcessor {
             processedText = this.applyReplacement(processedText, replacement, interactive, state);
         }
         
-        // Step 3: Protect inline automations from formatting rules using replacement positions
+        // Step 3: Apply formatting with inline automation protection
         const protectedElements = [];
         if (applyFormatting && this.formattingRules.enabled) {
-            processedText = this.protectInlineAutomationsFromReplacements(processedText, replacements, interactive, state, protectedElements);
+            processedText = this.protectInlineAutomations(processedText, replacements, interactive, state, protectedElements);
             processedText = this.formattingRules.applyRules(processedText);
             processedText = this.restoreProtectedElements(processedText, protectedElements);
         }
         
-        // Step 4: If we're escaping HTML, protect original line breaks
+        // Step 4: Handle HTML escaping with protection
         if (escapeHtml) {
             processedText = this.protectOriginalLineBreaks(processedText, protectedElements);
-        }
-        
-        // Step 5: Escape HTML if requested, passing the protected elements array
-        if (escapeHtml) {
-            processedText = this.escapeHtmlSelectively(processedText, protectedElements);
+            processedText = this.protectInteractiveElements(processedText, protectedElements);
+            processedText = this.escapeHtml(processedText);
+            processedText = this.restoreProtectedElements(processedText, protectedElements);
         }
         
         return processedText;
@@ -6970,7 +6968,7 @@ class TextProcessor {
      * @param {Array} protectedElements - Array to store protected content
      * @returns {string} Text with inline automations replaced by placeholders
      */
-    protectInlineAutomationsFromReplacements(text, replacements, interactive, state, protectedElements) {
+    protectInlineAutomations(text, replacements, interactive, state, protectedElements) {
         if (!replacements || replacements.length === 0) {
             return text;
         }
@@ -7004,7 +7002,7 @@ class TextProcessor {
         
         ranges.forEach(range => {
             const content = result.substring(range.start, range.end);
-            const placeholder = `___PROTECTED_INLINE_${protectedElements.length}___`;
+            const placeholder = `___PROTECTED_ELEMENT_${protectedElements.length}___`;
             protectedElements.push(content);
             
             result = result.substring(0, range.start) + placeholder + result.substring(range.end);
@@ -7037,7 +7035,21 @@ class TextProcessor {
     }
 
     /**
-     * Restore protected inline automations
+     * Protect interactive span elements from HTML escaping
+     * @param {string} text - Text containing interactive elements
+     * @param {Array} protectedElements - Array to store protected content
+     * @returns {string} Text with interactive elements replaced by placeholders
+     */
+    protectInteractiveElements(text, protectedElements) {
+        return text.replace(/<span[^>]*class="[^"]*rollconverter-interactive[^"]*"[^>]*>.*?<\/span>/gi, (match) => {
+            const placeholder = `___PROTECTED_ELEMENT_${protectedElements.length}___`;
+            protectedElements.push(match);
+            return placeholder;
+        });
+    }
+
+    /**
+     * Restore all protected elements using a shared numbering system
      * @param {string} text - Text with placeholders
      * @param {Array} protectedElements - Array of protected content
      * @returns {string} Text with placeholders replaced by original content
@@ -7046,38 +7058,11 @@ class TextProcessor {
         let result = text;
         
         protectedElements.forEach((element, index) => {
-            const placeholder = `___PROTECTED_INLINE_${index}___`;
+            const placeholder = `___PROTECTED_ELEMENT_${index}___`;
             result = result.replace(placeholder, element);
         });
         
         return result;
-    }
-
-    /**
-     * Escape formatting HTML while preserving interactive elements
-     * This method processes the HTML string directly rather than DOM nodes
-     * to avoid double-escaping issues with interactive element attributes
-     */
-    escapeHtmlSelectively(html, protectedElements = []) {
-        let processedHtml = html;
-        
-        // Protect interactive spans (continue using the same array)
-        processedHtml = processedHtml.replace(/<span[^>]*class="[^"]*rollconverter-interactive[^"]*"[^>]*>.*?<\/span>/gi, (match) => {
-            const placeholder = `___PROTECTED_ELEMENT_${protectedElements.length}___`;
-            protectedElements.push(match);
-            return placeholder;
-        });
-        
-        // Now escape all HTML in the remaining content
-        processedHtml = this.escapeHtml(processedHtml);
-        
-        // Restore all protected elements (both inline automations and interactive spans)
-        protectedElements.forEach((element, index) => {
-            const placeholder = `___PROTECTED_ELEMENT_${index}___`;
-            processedHtml = processedHtml.replace(placeholder, element);
-        });
-        
-        return processedHtml;
     }
 
     /**
