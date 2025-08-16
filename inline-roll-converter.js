@@ -6500,18 +6500,18 @@ class BoldKeywordsRule extends FormattingRule {
     constructor() {
         super();
         this.keywords = [
-            'Traditions',
-            'Range',
             'Area',
+            'Cast',
+            'Cost',
             'Defense',
             'Duration',
             'Frequency',
-            'Trigger',
-            'Targets',
-            'Requirements',
             'Prerequisites',
-            'Cost',
-            'Cast'
+            'Range',
+            'Requirements',
+            'Targets',
+            'Traditions',
+            'Trigger'
         ];
         this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
         this.patternWithSemicolon = new RegExp(`(?<=;\\s*)(${this.keywords.join('|')})`, 'g');
@@ -6553,10 +6553,14 @@ class BoldKeywordsRule extends FormattingRule {
 class BackMatterRule extends FormattingRule {
     constructor() {
         super();
+        this.keywords = [
+            'Effect',
+            'Special'
+        ];
         // Match "Heightened" followed by level in parentheses
         // Supports formats like: (1st), (4th), (+1), (2nd), (3rd), etc.
         this.heightenedRegex = new RegExp(`(\\s*Heightened\\s*\\([^)]+\\))`, 'g');
-        this.specialRegex = new RegExp(`(\\s*Special)`, 'g');
+        this.keywordsRegex = new RegExp(`(\\s*${this.keywords.join('|')})`, 'g');
     }
     
     apply(text) {
@@ -6579,7 +6583,7 @@ class BackMatterRule extends FormattingRule {
 
         text = this.replaceUnformatted(
             text,
-            this.specialRegex,
+            this.keywordsRegex,
             (match) => `</p>\n<hr>\n<p><strong>${match[1]}</strong>`,
             'strong'
         );
@@ -6610,7 +6614,7 @@ class AfflictionNameRule extends FormattingRule {
         // - Space and opening parenthesis
         // - Comma-separated traits containing curse, disease, or poison
         // - Closing parenthesis and " Level"
-        this.afflictionRegex = /(\s*)([^(\n]+?)\s+\([^)]*(?:curse|disease|poison)[^)]*\)\s+Level/gi;
+        this.afflictionRegex = /(\s*)([^(\n]+?)\s+\([^)]*(?:curse|disease|poison)[^)]*\)\s/gi;
     }
     
     apply(text) {
@@ -6647,6 +6651,7 @@ class AfflictionPropertiesRule extends FormattingRule {
     constructor() {
         super();
         this.keywords = [
+            'Saving Throw',
             'Maximum Duration',
             'Level'
         ];
