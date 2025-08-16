@@ -1745,7 +1745,6 @@ class CSSManager {
                 display: flex;
                 gap: 8px;
                 flex-shrink: 0;
-                margin-top: 7px;
             }
 
             .rollconverter-control-button {
@@ -3275,12 +3274,8 @@ class ConverterDialog {
         this.data.inputText = inputText;
         this.data.selectedElementId = null; // Clear selection on input change
         
-        if (inputText.trim()) {
-            const newReplacements = this.processor.process(inputText, this.data);
-            this.updateReplacements(newReplacements);
-        } else {
-            this.updateReplacements([]);
-        }
+        const newReplacements = this.processor.process(inputText, this.data);
+        this.updateReplacements(newReplacements);
 
         // Reset modifier panel to default state when input changes
         this.renderModifierPanel();
@@ -3573,22 +3568,7 @@ class ConverterDialog {
      * Setup formatting options handlers
      */
     setupFormattingHandlers() {
-        const removeLineBreaksCheckbox = document.getElementById('remove-line-breaks');
         const htmlFormattingCheckbox = document.getElementById('html-formatting');
-        
-        if (removeLineBreaksCheckbox) {
-            removeLineBreaksCheckbox.addEventListener('change', (e) => {
-                const isEnabled = e.target.checked;
-                this.processor.formattingRules.setCategoryEnabled(
-                    FormattingRule.CATEGORIES.TEXT, 
-                    isEnabled
-                );
-                
-                // Re-render output and preview
-                this.renderOutput();
-                this.renderLivePreview();
-            });
-        }
         
         if (htmlFormattingCheckbox) {
             htmlFormattingCheckbox.addEventListener('change', (e) => {
@@ -3640,14 +3620,7 @@ class ConverterDialog {
     renderFormattingOptions() {
         if (!this.ui.formattingOptionsContent) return;
         
-        // Use FieldRenderer to create consistent checkbox styling
-        const removeLineBreaksHtml = FieldRenderer.render(
-            'checkbox', 
-            'remove-line-breaks', 
-            'Remove Line Breaks', 
-            true // checked by default
-        );
-        
+        // Use FieldRenderer to create consistent checkbox styling - only HTML formatting option now
         const htmlFormattingHtml = FieldRenderer.render(
             'checkbox', 
             'html-formatting', 
@@ -3655,7 +3628,7 @@ class ConverterDialog {
             true // checked by default
         );
         
-        this.ui.formattingOptionsContent.innerHTML = removeLineBreaksHtml + htmlFormattingHtml;
+        this.ui.formattingOptionsContent.innerHTML = htmlFormattingHtml;
         
         // Setup event handlers after rendering
         this.setupFormattingHandlers();
@@ -6435,23 +6408,6 @@ class FormattingRule {
     }
 }
 
-class RemoveLineBreaksRule extends FormattingRule {
-    apply(text) {
-        let result = text.replace(/(?<=-)\n/g, ''); // Remove line breaks that are preceded by a hyphen
-        result = result.replace(/\n/g, ' '); // Remove any remaining line breaks
-
-        return result;
-    }
-
-    getPriority() {
-        return 100;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.TEXT;
-    }
-}
-
 class DegreesOfSuccessRule extends FormattingRule {
     constructor() {
         super();
@@ -6740,11 +6696,10 @@ class FormattingRulesEngine {
         ]);
 
         this.registerRule(new DegreesOfSuccessRule());
-        this.registerRule(new RemoveLineBreaksRule());
         this.registerRule(new StartAndEndParagraphTagsRule());
         this.registerRule(new BackMatterRule());
         this.registerRule(new AfflictionStagesRule());
-        this.registerRule(new AfflictionNameRule());
+        // this.registerRule(new AfflictionNameRule());
         this.registerRule(new AfflictionPropertiesRule());
         this.registerRule(new BoldKeywordsRule());
     }
@@ -6844,23 +6799,29 @@ class TextProcessor {
         this.businessRules = new BusinessRulesEngine();
         this.formattingRules = new FormattingRulesEngine();
         this.originalText = '';
+        this.originalInputText = '';
+        this.processedText = '';
     }
 
     process(inputText, state = null) {
-        this.originalText = inputText;
+        const processedInput = this.removeLineBreaks(inputText); // Remove line breaks immediately as first step
         
-        if (!inputText || !inputText.trim()) {
+        // Store both versions for different purposes
+        this.originalInputText = inputText; // Store original for reference/debugging
+        this.processedText = processedInput; // Store processed version for rendering
+        
+        if (!processedInput || !processedInput.trim()) {
             return [];
         }
         
         try {
             this.linkedConditions = new Set();
             
-            // Step 1: Pattern detection and replacement creation
-            const matches = PatternDetector.detectAll(inputText);
+            // Step 1: Pattern detection and replacement creation (now uses processed input)
+            const matches = PatternDetector.detectAll(processedInput);
             
             const replacements = [];
-
+    
             for (const matchResult of matches) {
                 try {
                     let replacement;
@@ -6885,12 +6846,12 @@ class TextProcessor {
                     console.error('[PF2e Converter] Error creating replacement:', error, matchResult);
                 }
             }
-
+    
             // Step 2: Sort by priority
             const sortedReplacements = this.sortByPriority(replacements);
             
             // Step 3: Apply business rules to set enabled state
-            const processedReplacements = this.applyBusinessRules(sortedReplacements, inputText, state);
+            const processedReplacements = this.applyBusinessRules(sortedReplacements, processedInput, state);
             
             // Step 4: Finalize original state after business rules
             processedReplacements.forEach(replacement => {
@@ -6903,6 +6864,34 @@ class TextProcessor {
             console.error('[PF2e Converter] Error stack:', error.stack);
             return [];
         }
+    }
+
+    /**
+     * Remove line breaks from input text, preserving intentional spacing
+     * @param {string} text - Input text with potential line breaks
+     * @returns {string} Text with line breaks removed appropriately
+     */
+    removeLineBreaks(text) {
+        if (!text || typeof text !== 'string') {
+            return text;
+        }
+        
+        let result = text;
+        
+        // Handle different line break formats first
+        result = result.replace(/\r\n/g, '\n'); // Normalize Windows line breaks
+        result = result.replace(/\r/g, '\n');   // Normalize Mac line breaks
+        
+        // Remove line breaks that are preceded by a hyphen (word continuation)
+        result = result.replace(/(?<=-)\n/g, '');
+        
+        // Replace remaining line breaks with spaces
+        result = result.replace(/\n/g, ' ');
+        
+        // Clean up multiple spaces that might result from the replacement
+        result = result.replace(/\s+/g, ' ');
+        
+        return result;
     }
 
     /**
@@ -6930,8 +6919,12 @@ class TextProcessor {
     }
 
     renderFromReplacements(text, replacements, interactive = false, state = null, applyFormatting = true, escapeHtml = false) {
-        // Step 1: Apply global legacy condition conversions to original text
-        let processedText = this.applyGlobalLegacyConditionConversions(text);
+        // IMPORTANT: Use the processed text (line breaks removed) that was used to create the replacements
+        // This ensures replacement positions are correct
+        let processedText = this.processedText || text;
+        
+        // Step 1: Apply global legacy condition conversions
+        processedText = this.applyGlobalLegacyConditionConversions(processedText);
         
         // Step 2: Apply replacements to the text BEFORE any other processing
         const sorted = replacements.slice().sort((a, b) => b.startPos - a.startPos);
@@ -6950,7 +6943,8 @@ class TextProcessor {
         
         // Step 4: Handle HTML escaping with protection
         if (escapeHtml) {
-            processedText = this.protectOriginalLineBreaks(processedText, protectedElements);
+            // Protect line breaks introduced by formatting rules (not original input line breaks)
+            processedText = this.protectLineBreaks(processedText, protectedElements);
             processedText = this.protectInteractiveElements(processedText, protectedElements);
             processedText = this.escapeHtml(processedText);
             processedText = this.restoreProtectedElements(processedText, protectedElements);
@@ -7017,7 +7011,7 @@ class TextProcessor {
      * @param {Array} protectedElements - Array to store protected content
      * @returns {string} Text with line breaks replaced by placeholders
      */
-    protectOriginalLineBreaks(text, protectedElements) {
+    protectLineBreaks(text, protectedElements) {
         let result = text;
         
         // Handle different line break formats
@@ -7218,13 +7212,6 @@ function showConverterDialog() {
             </div>
             
             <div class="rollconverter-sidebar">
-                <fieldset class="rollconverter-fieldset rollconverter-formatting-options">
-                    <legend>Formatting Options</legend>
-                        <form id="formatting-options-form" class="rollconverter-form">
-                            <!-- Content will be generated by FieldRenderer -->
-                        </form>
-                </fieldset>
-                
                 <fieldset class="rollconverter-fieldset rollconverter-modifier-panel">
                     <legend class="rollconverter-modifier-legend">
                         <span class="rollconverter-modifier-title">Modifier Panel</span>
@@ -7233,6 +7220,10 @@ function showConverterDialog() {
                         <p>Select an element to modify.</p>
                     </div>
                 </fieldset>
+                
+                <form id="formatting-options-form" class="rollconverter-form">
+                    <!-- Content will be generated by FieldRenderer -->
+                </form>
                 
                 <div class="rollconverter-sidebar-controls">
                     <button type="button" id="copy-output" class="rollconverter-control-button">Copy Output</button>
