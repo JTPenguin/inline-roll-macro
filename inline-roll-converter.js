@@ -6843,9 +6843,12 @@ class TextProcessor {
         this.linkedConditions = new Set();
         this.businessRules = new BusinessRulesEngine();
         this.formattingRules = new FormattingRulesEngine();
+        this.originalText = '';
     }
 
     process(inputText, state = null) {
+        this.originalText = inputText;
+        
         if (!inputText || !inputText.trim()) {
             return [];
         }
@@ -6926,7 +6929,6 @@ class TextProcessor {
         });
     }
 
-    // Keep existing render methods unchanged
     renderFromReplacements(text, replacements, interactive = false, state = null, applyFormatting = true, escapeHtml = false) {
         // Step 1: Apply global legacy condition conversions to original text
         let processedText = this.applyGlobalLegacyConditionConversions(text);
@@ -6938,13 +6940,15 @@ class TextProcessor {
             processedText = this.applyReplacement(processedText, replacement, interactive, state);
         }
         
-        // Step 4: Apply formatting rules if requested
+        // Step 3: Protect inline automations from formatting rules using replacement positions
+        const protectedElements = [];
         if (applyFormatting && this.formattingRules.enabled) {
+            processedText = this.protectInlineAutomationsFromReplacements(processedText, replacements, interactive, state, protectedElements);
             processedText = this.formattingRules.applyRules(processedText);
+            processedText = this.restoreProtectedElements(processedText, protectedElements);
         }
         
-        // Step 3: If we're escaping HTML, protect original line breaks
-        const protectedElements = [];
+        // Step 4: If we're escaping HTML, protect original line breaks
         if (escapeHtml) {
             processedText = this.protectOriginalLineBreaks(processedText, protectedElements);
         }
@@ -6955,6 +6959,58 @@ class TextProcessor {
         }
         
         return processedText;
+    }
+
+    /**
+     * Protect inline automations from formatting rules using replacement data
+     * @param {string} text - Text after replacements have been applied
+     * @param {Array} replacements - Array of replacement objects
+     * @param {boolean} interactive - Whether interactive elements were rendered
+     * @param {Object} state - State object for interactive rendering
+     * @param {Array} protectedElements - Array to store protected content
+     * @returns {string} Text with inline automations replaced by placeholders
+     */
+    protectInlineAutomationsFromReplacements(text, replacements, interactive, state, protectedElements) {
+        if (!replacements || replacements.length === 0) {
+            return text;
+        }
+        
+        // Start with original text and simulate the replacement process to get exact positions
+        let simulatedText = this.applyGlobalLegacyConditionConversions(this.originalText);
+        const ranges = [];
+        
+        // Sort replacements by position (ascending) to process in order
+        const sorted = replacements.slice().sort((a, b) => a.startPos - b.startPos);
+        let offset = 0;
+        
+        sorted.forEach(replacement => {
+            const adjustedStart = replacement.startPos + offset;
+            const renderedContent = interactive ? 
+                replacement.renderInteractive(state) : 
+                replacement.render();
+            
+            ranges.push({
+                start: adjustedStart,
+                end: adjustedStart + renderedContent.length
+            });
+            
+            // Update offset for next replacement
+            offset += (renderedContent.length - replacement.originalText.length);
+        });
+        
+        // Now protect the ranges (process from end to start to maintain positions)
+        ranges.sort((a, b) => b.start - a.start);
+        let result = text;
+        
+        ranges.forEach(range => {
+            const content = result.substring(range.start, range.end);
+            const placeholder = `___PROTECTED_INLINE_${protectedElements.length}___`;
+            protectedElements.push(content);
+            
+            result = result.substring(0, range.start) + placeholder + result.substring(range.end);
+        });
+        
+        return result;
     }
 
     /**
@@ -6981,6 +7037,23 @@ class TextProcessor {
     }
 
     /**
+     * Restore protected inline automations
+     * @param {string} text - Text with placeholders
+     * @param {Array} protectedElements - Array of protected content
+     * @returns {string} Text with placeholders replaced by original content
+     */
+    restoreProtectedElements(text, protectedElements) {
+        let result = text;
+        
+        protectedElements.forEach((element, index) => {
+            const placeholder = `___PROTECTED_INLINE_${index}___`;
+            result = result.replace(placeholder, element);
+        });
+        
+        return result;
+    }
+
+    /**
      * Escape formatting HTML while preserving interactive elements
      * This method processes the HTML string directly rather than DOM nodes
      * to avoid double-escaping issues with interactive element attributes
@@ -6998,7 +7071,7 @@ class TextProcessor {
         // Now escape all HTML in the remaining content
         processedHtml = this.escapeHtml(processedHtml);
         
-        // Restore all protected elements (both line breaks and interactive spans)
+        // Restore all protected elements (both inline automations and interactive spans)
         protectedElements.forEach((element, index) => {
             const placeholder = `___PROTECTED_ELEMENT_${index}___`;
             processedHtml = processedHtml.replace(placeholder, element);
