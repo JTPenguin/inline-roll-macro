@@ -4094,7 +4094,7 @@ class ConfigManager {
     static get CHECK_TYPES() {
         if (!this._cache.has('CHECK_TYPES')) {
             this._cache.set('CHECK_TYPES', new ConfigCategory([
-                'flat', 'lore', 'perception',
+                'flat', 'lore', 'perception', 'spell-attack',
                 ...this.SAVES.slugs,
                 ...this.SKILLS.slugs
             ]));
@@ -5313,6 +5313,33 @@ class DamagePattern extends BasePattern {
     }
 }
 
+// Pattern that matches spell attacks
+class SpellAttackPattern extends BasePattern {
+    static type = 'check';
+    static priority = 85;
+    static description = 'Spell attack patterns';
+
+    static EXTRACTORS = {
+        spellAttack: (match) => SpellAttackPattern.extractSpellAttackParameters(match)
+    };
+
+    static PATTERNS = [
+        {
+            regex: /spell\s+attack/gi, // Just match the string 'spell attack', case insensitive
+            priority: 85,
+            extractor: 'spellAttack'
+        }
+    ];
+
+    static extractSpellAttackParameters(match) {
+        return {
+            checkType: 'spell-attack',
+            dcMethod: 'target',
+            statistic: 'ac'
+        };
+    }
+}
+
 // Pattern that matches checks and saves
 class CheckPattern extends BasePattern {
     static type = 'check';
@@ -5811,7 +5838,8 @@ class PatternDetector {
         TemplatePattern,
         DurationPattern,
         CounteractPattern,
-        ActionPattern
+        ActionPattern,
+        SpellAttackPattern
     ];
 
     /**
