@@ -6500,17 +6500,17 @@ class BoldKeywordsRule extends FormattingRule {
     constructor() {
         super();
         this.keywords = [
-            'Area',
-            'Cast',
-            'Cost',
-            'Defense',
-            'Duration',
+            //'Area',
+            //'Cast',
+            //'Cost',
+            //'Defense',
+            //'Duration',
             'Frequency',
-            'Prerequisites',
-            'Range',
+            //'Prerequisites',
+            //'Range',
             'Requirements',
-            'Targets',
-            'Traditions',
+            //'Targets',
+            //'Traditions',
             'Trigger'
         ];
         this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
@@ -6614,7 +6614,7 @@ class AfflictionNameRule extends FormattingRule {
         // - Space and opening parenthesis
         // - Comma-separated traits containing curse, disease, or poison
         // - Closing parenthesis and " Level"
-        this.afflictionRegex = /(\s*)([^(\n]+?)\s+\([^)]*(?:curse|disease|poison)[^)]*\)\s/gi;
+        this.afflictionRegex = /(\s*)([^(\n]+?)\s+\([^)]*(?:curse|disease|poison)[^)]*\)/gi;
     }
     
     apply(text) {
