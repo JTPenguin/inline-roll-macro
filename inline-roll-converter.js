@@ -6483,7 +6483,7 @@ class DegreesOfSuccessRule extends FormattingRule {
 class BoldKeywordsRule extends FormattingRule {
     constructor() {
         super();
-        this.keywords = [
+        this.standardKeywords = [
             //'Area',
             //'Cast',
             //'Cost',
@@ -6497,29 +6497,37 @@ class BoldKeywordsRule extends FormattingRule {
             //'Traditions',
             'Trigger'
         ];
-        this.patternNoSemicolon = new RegExp(`(?<!;\\s*)(${this.keywords.join('|')})`, 'g');
-        this.patternWithSemicolon = new RegExp(`(?<=;\\s*)(${this.keywords.join('|')})`, 'g');
+        this.hrKeywords = [
+            'Effect'
+        ]
+        // Single pattern that optionally matches semicolon and whitespace before the keyword
+        this.pattern = new RegExp(`(?:;\\s*)?(${this.standardKeywords.join('|')})`, 'g');
+        this.hrPattern = new RegExp(`(?:;\\s*)?(${this.hrKeywords.join('|')})`, 'g');
     }
 
     apply(text) {
-        // Apply formatting only to unformatted matches
+        // Apply formatting for standard keywords
         text = this.replaceUnformatted(
             text, 
-            this.patternNoSemicolon, 
+            this.pattern, 
             (match) => `</p>\n<p><strong>${match[1]}</strong>`,
             'strong'
         );
-        
+
+        // Apply formatting for HR keywords
         text = this.replaceUnformatted(
             text,
-            this.patternWithSemicolon,
-            (match) => `<strong>${match[1]}</strong>`,
+            this.hrPattern,
+            (match) => `</p>\n<hr>\n<p><strong>${match[1]}</strong>`,
             'strong'
         );
 
         // Clean up start of text if needed
         if (text.startsWith('</p>\n<p><strong>')) {
             text = text.substring(5);
+        }
+        if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
+            text = text.substring(10);
         }
 
         return text;
@@ -6538,7 +6546,6 @@ class BackMatterRule extends FormattingRule {
     constructor() {
         super();
         this.keywords = [
-            'Effect',
             'Special'
         ];
         // Match "Heightened" followed by level in parentheses
