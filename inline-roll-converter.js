@@ -1,7 +1,7 @@
 /**
  * Pathfinder 2e Inline Roll Converter
  * 
- * v 1.2.1
+ * v 1.2.2
  * 
  * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
@@ -5406,7 +5406,13 @@ class CheckPattern extends BasePattern {
         if (!match || !match[0]) return match;
         
         const originalText = match[0];
-        let trimmedText = originalText.replace(/\s+check\s*$/i, '');
+        let trimmedText = originalText;
+
+        // If it's not a flat check, remove the trailing "check"
+        if (!this.containsWord(trimmedText, 'flat')) {
+            trimmedText = trimmedText.replace(/\s+check\s*$/i, '');
+        }
+
         trimmedText = trimmedText.replace(/\s+save\s*$/i, '');
         trimmedText = trimmedText.replace(/\s+saving\s+throw\s*$/i, '');
         
