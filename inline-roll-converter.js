@@ -1,7 +1,7 @@
 /**
  * Pathfinder 2e Inline Roll Converter
  * 
- * v 1.2.2
+ * v 1.3.0
  * 
  * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
@@ -6349,16 +6349,21 @@ class BusinessRulesEngine {
 // Rules for formatting the text according to PF2e standards
 
 class FormattingRule {
+    constructor(priority = 50) {
+        this.priority = priority;
+        this.category = FormattingRule.CATEGORIES.HTML;
+    }
+
     apply (text) {
         throw new Error('FormattingRule subclasses must implement apply() method');
     }
 
     getPriority() {
-        return 0;
+        return this.priority;
     }
 
     getCategory() {
-        throw new Error('FormattingRule subclasses must implement getCategory() method');
+        return this.category;
     }
 
     static get CATEGORIES() {
@@ -6462,14 +6467,6 @@ class DegreesOfSuccessRule extends FormattingRule {
 
         return text;
     }
-
-    getPriority() {
-        return 50;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
-    }
 }
 
 class BoldKeywordsRule extends FormattingRule {
@@ -6524,13 +6521,64 @@ class BoldKeywordsRule extends FormattingRule {
 
         return text;
     }
+}
 
-    getPriority() {
-        return 15;
+class ActionSymbolsRule extends FormattingRule {
+    constructor() {
+        super();
+        // Regex pattern that matches '[one-action]'
+        this.oneActionPattern = /\[one-action\]/g;
+        // Regex pattern that matches '[two-actions]'
+        this.twoActionsPattern = /\[two-actions\]/g;
+        // Regex pattern that matches '[three-actions]'
+        this.threeActionsPattern = /\[three-actions\]/g;
+        // Regex pattern that matches '[reaction]'
+        this.reactionPattern = /\[reaction\]/g;
+        // Regex pattern that matches '[free-action]'
+        this.freeActionPattern = /\[free-action\]/g;
     }
 
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
+    apply(text) {
+        // Replace '[one-action]' with '<span class="action-glyph">1</span>'
+        text = text.replace(this.oneActionPattern, '<span class="action-glyph">1</span>');
+        // Replace '[two-actions]' with '<span class="action-glyph">2</span>'
+        text = text.replace(this.twoActionsPattern, '<span class="action-glyph">2</span>');
+        // Replace '[three-actions]' with '<span class="action-glyph">3</span>'
+        text = text.replace(this.threeActionsPattern, '<span class="action-glyph">3</span>');
+        // Replace '[reaction]' with '<span class="action-glyph">R</span>'
+        text = text.replace(this.reactionPattern, '<span class="action-glyph">R</span>');
+        // Replace '[free-action]' with '<span class="action-glyph">F</span>'
+        text = text.replace(this.freeActionPattern, '<span class="action-glyph">F</span>');
+
+        return text;
+    }
+}
+
+class ActivationRule extends FormattingRule {
+    constructor() {
+        super();
+        // Updated regex to match "Activate" followed by em dash, ability name, and action cost
+        this.activatePattern = /Activate—([^[]+)\[/g;
+    }
+
+    apply(text) {
+        // Replace the matched pattern with properly formatted HTML
+        text = this.replaceUnformatted(
+            text,
+            this.activatePattern,
+            (match) => {
+                const abilityName = match[1].trim(); // Extract and trim the ability name
+                return `</p>\n<hr>\n<p><strong>Activate—${abilityName}</strong> [`;
+            },
+            'strong'
+        );
+
+        // Clean up start of text if needed
+        if (text.startsWith('</p>\n<hr>\n<p><strong>')) {
+            text = text.substring(10);
+        }
+
+        return text;
     }
 }
 
@@ -6578,14 +6626,6 @@ class BackMatterRule extends FormattingRule {
 
         return text;
     }
-
-    getPriority() {
-        return 60;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
-    }
 }
 
 class AfflictionNameRule extends FormattingRule {
@@ -6619,14 +6659,6 @@ class AfflictionNameRule extends FormattingRule {
 
         return text;
     }
-
-    getPriority() {
-        return 100;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
-    }
 }
 
 class AfflictionPropertiesRule extends FormattingRule {
@@ -6649,14 +6681,6 @@ class AfflictionPropertiesRule extends FormattingRule {
         );
         
         return text;
-    }
-
-    getPriority() {
-        return 19;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
     }
 }
 
@@ -6681,14 +6705,6 @@ class AfflictionStagesRule extends FormattingRule {
 
         return text;
     }
-
-    getPriority() {
-        return 18;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
-    }
 }
 
 class StartAndEndParagraphTagsRule extends FormattingRule {
@@ -6702,14 +6718,6 @@ class StartAndEndParagraphTagsRule extends FormattingRule {
         }
         return text;
     }
-
-    getPriority() {
-        return 10;
-    }
-
-    getCategory() {
-        return FormattingRule.CATEGORIES.HTML;
-    }
 }
 
 class FormattingRulesEngine {
@@ -6721,13 +6729,23 @@ class FormattingRulesEngine {
             FormattingRule.CATEGORIES.HTML
         ]);
 
-        this.registerRule(new DegreesOfSuccessRule());
-        this.registerRule(new StartAndEndParagraphTagsRule());
-        this.registerRule(new BackMatterRule());
-        this.registerRule(new AfflictionStagesRule());
-        this.registerRule(new AfflictionNameRule());
-        this.registerRule(new AfflictionPropertiesRule());
-        this.registerRule(new BoldKeywordsRule());
+        this.initializeRules();
+    }
+
+    /**
+     * Initialize all formatting rules with their priorities
+     * Higher priority numbers run first
+     */
+    initializeRules() {
+        this.registerRule(new AfflictionNameRule(100));
+        this.registerRule(new BackMatterRule(60));
+        this.registerRule(new DegreesOfSuccessRule(50));
+        this.registerRule(new AfflictionPropertiesRule(19));
+        this.registerRule(new AfflictionStagesRule(18));
+        this.registerRule(new ActivationRule(15));
+        this.registerRule(new BoldKeywordsRule(15));
+        this.registerRule(new ActionSymbolsRule(10));
+        this.registerRule(new StartAndEndParagraphTagsRule(10));
     }
 
     /**
