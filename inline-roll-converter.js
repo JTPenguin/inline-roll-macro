@@ -1,7 +1,7 @@
 /**
  * Pathfinder 2e Inline Roll Converter
  * 
- * v 1.2.0
+ * v 1.2.1
  * 
  * Converts plain text descriptions into Pathfinder 2e inline automation syntax for Foundry VTT.
  */
@@ -3988,7 +3988,7 @@ class ConfigManager {
                 items: [
                     'blinded', 'broken', 'clumsy', 'concealed', 'confused', 'controlled', 'dazzled',
                     'deafened', 'doomed', 'drained', 'dying', 'enfeebled', 'fascinated', 'fatigued',
-                    'fleeing', 'frightened', 'grabbed', 'immobilized', 'invisible', 'off-guard',
+                    'fleeing', 'frightened', 'grabbed', 'hidden', 'immobilized', 'invisible', 'off-guard',
                     'paralyzed', 'petrified', 'prone', 'quickened', 'restrained', 'sickened',
                     'slowed', 'stunned', 'stupefied', 'unconscious', 'undetected', 'wounded'
                 ],
@@ -4018,6 +4018,7 @@ class ConfigManager {
                         'fleeing': 'Compendium.pf2e.conditionitems.Item.sDPxOjQ9kx2RZE8D',
                         'frightened': 'Compendium.pf2e.conditionitems.Item.TBSHQspnbcqxsmjL',
                         'grabbed': 'Compendium.pf2e.conditionitems.Item.kWc1fhmv9LBiTuei',
+                        'hidden': 'Compendium.pf2e.conditionitems.iU0fEDdBp3rXpTMC',
                         'immobilized': 'Compendium.pf2e.conditionitems.Item.eIcWbB5o3pP6OIMe',
                         'invisible': 'Compendium.pf2e.conditionitems.Item.zJxUflt9np0q4yML',
                         'off-guard': 'Compendium.pf2e.conditionitems.Item.AJh5ex99aV6VTggg',
